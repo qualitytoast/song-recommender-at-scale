@@ -16,3 +16,12 @@ val_size = 3000        # first N held-out windows, used for early stopping
 embed_dim = 64
 num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
+
+[train]
+optimizer = "sgd"      # plain SGD, no momentum
+lr = 0.05
+weight_decay = 1e-3    # added to the gradient, applied to every parameter
+batch_size = 32
+epochs = 40
+min_epochs = 20
+patience = 10

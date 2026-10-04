@@ -16,6 +16,15 @@ val_size = 3000
 embed_dim = 64
 num_layers = 2
 dropout = 0.1
+
+[train]
+optimizer = "sgd"
+lr = 0.05
+weight_decay = 1e-3
+batch_size = 32
+epochs = 40
+min_epochs = 20
+patience = 10
 """
 
 

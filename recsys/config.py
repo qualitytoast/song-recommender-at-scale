@@ -26,10 +26,22 @@ class ModelConfig:
 
 
 @dataclass(frozen=True)
+class TrainConfig:
+    optimizer: str         # "sgd"
+    lr: float
+    weight_decay: float
+    batch_size: int
+    epochs: int            # maximum epochs
+    min_epochs: int        # early-stopping patience only counts from this epoch on
+    patience: int          # stop after this many counted epochs without a new best NDCG@10
+
+
+@dataclass(frozen=True)
 class Config:
     seed: int
     data: DataConfig
     model: ModelConfig
+    train: TrainConfig
 
 
 def load_config(path):
@@ -37,4 +49,5 @@ def load_config(path):
         raw = tomllib.load(f)
     data = DataConfig(**raw.pop("data"))
     model = ModelConfig(**raw.pop("model"))
-    return Config(data=data, model=model, **raw)
+    train = TrainConfig(**raw.pop("train"))
+    return Config(data=data, model=model, train=train, **raw)

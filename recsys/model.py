@@ -84,3 +84,15 @@ class SongRecommender(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, std=math.sqrt(2.0 / m.in_features))
                 nn.init.zeros_(m.bias)
+
+
+@torch.no_grad()
+def predict(model, X, device, batch_size=512):
+    """Logits for every row of X (numpy song IDs) as a numpy array, dropout off.
+
+    Runs in chunks: the full held-out logits would be 14,844 x 33,770 floats at once.
+    """
+    model.eval()
+    chunks = [model(torch.from_numpy(X[i:i + batch_size]).to(device)).cpu()
+              for i in range(0, len(X), batch_size)]
+    return torch.cat(chunks).numpy()
