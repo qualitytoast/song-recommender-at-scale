@@ -36,6 +36,9 @@ def make_optimizer(params, t):
     if t.optimizer == "sgd":
         # Same update as v1's SGD: w -= lr * (grad + weight_decay * w)
         return torch.optim.SGD(params, lr=t.lr, weight_decay=t.weight_decay)
+    if t.optimizer == "adam":
+        # weight_decay is added to the gradient (L2), the same rule as SGD above, not AdamW
+        return torch.optim.Adam(params, lr=t.lr, weight_decay=t.weight_decay)
     raise ValueError(f"unknown optimizer {t.optimizer!r}")
 
 

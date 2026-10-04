@@ -27,7 +27,7 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    optimizer: str         # "sgd"
+    optimizer: str         # "sgd" or "adam"
     lr: float
     weight_decay: float
     batch_size: int
