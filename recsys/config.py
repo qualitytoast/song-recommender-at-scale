@@ -19,13 +19,22 @@ class DataConfig:
 
 
 @dataclass(frozen=True)
+class ModelConfig:
+    embed_dim: int
+    num_layers: int        # Transformer blocks
+    dropout: float
+
+
+@dataclass(frozen=True)
 class Config:
     seed: int
     data: DataConfig
+    model: ModelConfig
 
 
 def load_config(path):
     with open(path, "rb") as f:
         raw = tomllib.load(f)
     data = DataConfig(**raw.pop("data"))
-    return Config(data=data, **raw)
+    model = ModelConfig(**raw.pop("model"))
+    return Config(data=data, model=model, **raw)

@@ -11,3 +11,8 @@ min_freq = 2           # songs seen fewer times than this are dropped
 context_length = 10    # predict the 11th song from the previous 10
 test_split = 0.1       # fraction of playlists held out
 val_size = 3000        # first N held-out windows, used for early stopping
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward

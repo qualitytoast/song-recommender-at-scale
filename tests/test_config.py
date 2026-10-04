@@ -11,6 +11,11 @@ min_freq = 2
 context_length = 10
 test_split = 0.1
 val_size = 3000
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1
 """
 
 
