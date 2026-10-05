@@ -152,6 +152,7 @@ change only counts if it is clearly larger than the seed spread.
 | `p2_base` | 3 | 0.0556 (0.0548–0.0570) | — | 8.3% (8.1%–8.6%) | 3.4% (3.4%–3.4%) | 5, 7, 8 | 4,038,011 | 3.1 |
 | `p2_artist` | 3 | 0.0657 (0.0646–0.0680) | +0.0101 | 10.6% (10.5%–10.9%) | 3.5% (3.3%–3.8%) | 3, 4, 4 | 4,999,035 | 4.0 |
 | `p2_album` | 3 | 0.0671 (0.0657–0.0697) | +0.0013 | 10.9% (10.7%–11.3%) | 3.5% (3.4%–3.6%) | 3, 4, 4 | 7,110,139 | 4.7 |
+| `p2_duration` | 3 | 0.0674 (0.0667–0.0685) | +0.0003 | 11.0% (10.9%–11.2%) | 3.5% (3.3%–3.7%) | 3, 3, 4 | 7,111,419 | 5.1 |
 
 Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
 
@@ -178,3 +179,9 @@ Runs (table made with `python -m recsys.summarize <configs>`):
   still (epoch-1 validation 0.037-0.048 vs 0.023-0.034) and overfits faster
   (epoch-4 training loss ~4.8 vs ~5.2, validation declines sooner after the
   peak), as expected from adding 2.1M per-album parameters.
+- `p2_duration` (2026-10-05, `a4b0c3d`): + duration, as 10 equal-sized length
+  buckets (cut points 2:50, 3:10, 3:23, 3:34, 3:44, 3:56, 4:10, 4:30, 5:04;
+  +1,280 params). No measurable effect: against the same seed with album, one
+  seed goes down and two go up (-0.0012, +0.0010, +0.0010), well inside seed
+  noise. A song's length says little about what comes next once artist and
+  album are known.
