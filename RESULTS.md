@@ -14,7 +14,7 @@ definitions (rank = 1 + songs scored strictly higher than the true one).
 
 ## Notes
 
-**Held-out numbers include the validation subset.** Like v1, the validation
+**Held-out numbers include the validation subset (v1 through `v1_adamw`).** Like v1, the validation
 set used for early stopping is the first 3,000 held-out windows, and the
 reported numbers cover all 14,844. Split out for `v1_baseline`:
 
