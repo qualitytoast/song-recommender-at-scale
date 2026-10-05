@@ -137,3 +137,23 @@ so all runs can be scored on exactly the same windows:
 weights; same data, split and metrics), runs ~4x faster, and with AdamW and
 the fixes reaches 0.054 NDCG@10 / 7.8% Hits@10 on an honest held-out set,
 7.9x the most-popular baseline.
+
+# Phase 2: adding song and playlist features
+
+Each row adds one feature on top of the row above, so "Change vs previous" is
+what that feature added given the ones before it. Every row uses the
+`v1_fixed` data (same 7,722 held-out windows) and training setup, with
+`min_epochs = 10`, and is run with training seeds 1, 2 and 3 (`data_seed` 42
+for all, so the split never changes). Numbers are on the held-out set; a
+change only counts if it is clearly larger than the seed spread.
+
+| Config | Seeds | NDCG@10 mean (min–max) | Change vs previous | Hits@10 | Hits@1 | Best epochs | Params | Min / seed |
+|---|---|---|---|---|---|---|---|---|
+| `p2_base` | 3 | 0.0556 (0.0548–0.0570) | — | 8.3% (8.1%–8.6%) | 3.4% (3.4%–3.4%) | 5, 7, 8 | 4,038,011 | 3.1 |
+
+Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
+
+Runs (table made with `python -m recsys.summarize <configs>`):
+- `p2_base` (2026-10-05, `3910bde`): `v1_fixed` with `min_epochs` 20 -> 10 and
+  3 training seeds. Seed spread 0.0022 NDCG@10; `v1_fixed` (seed 42, 0.0539)
+  sits just below it, so seed-to-seed noise is about +-0.002.
