@@ -9,6 +9,7 @@ definitions (rank = 1 + songs scored strictly higher than the true one).
 | 2026-09-05 | v1 (NumPy, reference) | — | MPD, first 5,000 playlists: 33,770 songs, 110,333 train / 14,844 held-out windows | 0.0330 | 5.9% | 0.0049 / 1.1% | 22 (of 33) | 20.2 min (CPU) | v1 `cab8a1d` |
 | 2026-10-03 | `v1_baseline` | Rebuilt v1 in PyTorch: same data, split, architecture, init, SGD settings, early stopping | same | 0.0373 | 6.3% | 0.0049 / 1.1% | 27 (of 38) | 5.0 min (mps) | `1afdcf8` |
 | 2026-10-03 | `v1_adam` | `v1_baseline` with Adam (lr 1e-3, L2 weight decay 1e-3) instead of SGD (lr 0.05) | same | 0.0339 | 6.6% | 0.0049 / 1.1% | 38 (of 40, hit the cap) | 9.8 min (mps) | `650a7bb` |
+| 2026-10-05 | `v1_adamw` | `v1_adam` with AdamW (decoupled weight decay, wd 0.05) instead of Adam (L2, wd 1e-3) | same | 0.0460 | 6.9% | 0.0049 / 1.1% | 11 (of 30) | 7.2 min (mps) | `be55be7` |
 
 ## Notes
 
@@ -46,10 +47,51 @@ that randomness is.
   epoch 19 (157 s) for SGD. Each Adam epoch is slower (~14 s vs ~8 s), since
   it updates two extra running averages for each of the 4.4M weights.
 - Adam's training loss stalls at ~7.45 with a small train/val gap, while
-  SGD's keeps falling to ~6.1 and overfits. That looks like much stronger
-  regularization. Likely cause: L2 weight decay is added to the gradient,
-  and Adam rescales each weight's gradient, so decay on weights with small
-  data gradients (most song-embedding rows in any batch) becomes relatively
-  much larger. AdamW (decay applied separately) avoids that. Not tested.
+  SGD's keeps falling to ~6.1 and overfits: Adam is over-regularized. Its
+  learned song vectors end 30-40% smaller than SGD's for songs of every
+  popularity (see the weight-size table under `v1_adamw`), not mainly rare
+  songs as first guessed. The L2 decay is added to the gradient and goes
+  through Adam's per-weight rescaling; for the 7,502 songs that never appear
+  in a training window, decay is the whole gradient, and Adam drives their
+  vectors to exactly 0. `v1_adamw` tests the fix.
 - It never early-stopped: patience only counts from epoch 20, and new bests
   kept arriving, with the best at epoch 38 of the 40-epoch cap.
+
+**`v1_adamw`: best run so far, by a margin larger than the seed noise seen.**
+
+| | NDCG@10 | Hits@1 | Hits@5 | Hits@10 | Held-out minus val NDCG@10 | Val NDCG@10 | Final train / val loss |
+|---|---|---|---|---|---|---|---|
+| SGD (`v1_baseline`) | 0.0373 | 1.8% | 4.5% | 6.3% | 0.0392 | 0.0301 | 6.08 / 9.10 |
+| Adam (`v1_adam`) | 0.0339 | 1.2% | 3.9% | 6.6% | 0.0343 | 0.0319 | 7.46 / 8.27 |
+| AdamW (`v1_adamw`) | **0.0460** | **2.9%** | **5.2%** | **6.9%** | **0.0482** | **0.0373** | 2.97 / 11.44 |
+
+- On the 11,844 held-out windows not used for early stopping, AdamW beats
+  SGD by 0.009 NDCG@10. The only seed-to-seed gap measured so far (v1 vs
+  `v1_baseline` on the same windows: 0.0340 vs 0.0392) is about half that.
+  Biggest gain is at the top: Hits@1 1.8% -> 2.9%.
+- It learns fast and overfits hard: best epoch 11, validation loss rises
+  from epoch 3 while NDCG@10 keeps improving until epoch 7-11, and training
+  loss falls to 2.97. Early stopping on NDCG@10 (not loss) is what keeps the
+  good checkpoint. Validation loss gets worse because the model grows
+  overconfident in wrong answers even as its ranking of the right one improves.
+- wd 0.05 was picked so AdamW shrinks weights by lr x wd = 5e-5 per step, the
+  same as SGD. The decay did match: unseen songs' vectors (decay only) end at
+  0.101 after 12 epochs, exactly 0.8 x (1 - 5e-5)^41,376. But regularization
+  overall is much weaker than SGD's, because Adam's rescaling moves every
+  weight that gets a gradient by ~lr per step, which outweighs the decay,
+  where SGD's steps on rarely-seen songs are tiny and decay wins.
+
+Average size of each song's learned vector at the best epoch, by how often
+the song appears in training windows (started at ~0.80 for embeddings, ~1.41
+for output rows):
+
+| Times seen | Songs | Embedding SGD / Adam / AdamW | Output row SGD / Adam / AdamW |
+|---|---|---|---|
+| never | 7,502 | 0.006 / 0.000 / 0.101 | 0.022 / 0.048 / 0.324 |
+| 1-10 | 9,412 | 0.082 / 0.071 / 0.599 | 0.093 / 0.066 / 0.435 |
+| 11-100 | 13,868 | 0.208 / 0.150 / 0.735 | 0.228 / 0.130 / 0.571 |
+| over 100 | 2,988 | 0.400 / 0.254 / 0.721 | 0.368 / 0.235 / 0.625 |
+
+22% of the vocab (7,502 songs) never appears in a training window: v1 counts
+song frequency over held-out playlists too, and windows touching a dropped
+song are skipped. The model can never learn these songs.
