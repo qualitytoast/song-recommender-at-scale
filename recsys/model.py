@@ -64,10 +64,13 @@ class SongRecommender(nn.Module):
       input:  a song in the window = song vector + its artist vector + ...
       output: candidate song j's score = h . (output row j + its artist's output vector + ...)
     so songs sharing an artist share what is learned about that artist.
+
+    name_word_count: if set, the playlist name is used too: a learned vector per
+    name word, averaged over the name's words and added at every position.
     """
 
     def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
-                 scale_attention, init, song_features=None):
+                 scale_attention, init, song_features=None, name_word_count=None):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
@@ -96,15 +99,24 @@ class SongRecommender(nn.Module):
                 torch.zeros(count, embed_dim), freeze=False)
             self.output_features[name] = nn.Embedding.from_pretrained(
                 torch.zeros(count, embed_dim), freeze=False)
+        self.name_words = None
+        if name_word_count is not None:
+            # Row 0 is padding: it stays zero and is left out of the average.
+            self.name_words = nn.Embedding.from_pretrained(
+                torch.zeros(name_word_count + 1, embed_dim), freeze=False, padding_idx=0)
 
     def song_feature_ids(self, name):
         return getattr(self, f"song_{name}")
 
-    def forward(self, ids):  # ids: (batch, seq) song IDs
+    def forward(self, ids, names=None):  # ids: (batch, seq) song IDs; names: (batch, width) word IDs
         positions = torch.arange(ids.shape[1], device=ids.device)
         x = self.song_embedding(ids) + self.position_embedding(positions)
         for name in self.feature_names:
             x = x + self.input_features[name](self.song_feature_ids(name)[ids])
+        if self.name_words is not None:
+            real_words = (names != 0).sum(dim=1, keepdim=True).clamp(min=1)  # padding left out
+            name_vector = self.name_words(names).sum(dim=1) / real_words     # (batch, embed_dim)
+            x = x + name_vector[:, None, :]  # same name vector at every position
         x = self.dropout(x)
         for block in self.blocks:
             x = block(x)
@@ -135,18 +147,20 @@ class SongRecommender(nn.Module):
 def build_model(cfg, ds):
     """SongRecommender with the shape and settings from a Config, for Dataset ds."""
     m = cfg.model
-    song_features = {name: ds.song_features[name][0] for name in m.features}
+    song_features = {name: ds.song_features[name][0] for name in m.features if name != "playlist_name"}
+    name_word_count = len(ds.name_words) if "playlist_name" in m.features else None
     return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.context_length, m.num_layers,
-                           m.dropout, m.scale_attention, m.init, song_features)
+                           m.dropout, m.scale_attention, m.init, song_features, name_word_count)
 
 
 @torch.no_grad()
-def predict(model, X, device, batch_size=512):
-    """Logits for every row of X (numpy song IDs) as a numpy array, dropout off.
+def predict(model, X, N, device, batch_size=512):
+    """Logits for every row of X (numpy song IDs, with name word IDs N) as numpy, dropout off.
 
     Runs in chunks: the full held-out logits would be 14,844 x 33,770 floats at once.
     """
     model.eval()
-    chunks = [model(torch.from_numpy(X[i:i + batch_size]).to(device)).cpu()
+    chunks = [model(torch.from_numpy(X[i:i + batch_size]).to(device),
+                    torch.from_numpy(N[i:i + batch_size]).to(device)).cpu()
               for i in range(0, len(X), batch_size)]
     return torch.cat(chunks).numpy()

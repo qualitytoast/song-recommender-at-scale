@@ -75,11 +75,12 @@ def main():
     v1_model, _, _ = checkpoint.load_bundle(str(V1 / "artifacts"))
 
     X = ds.X_test[:256]
-    diff = float(np.abs(v1_model(X).data - predict(model, X, CPU)).max())
+    diff = float(np.abs(v1_model(X).data - predict(model, X, ds.N_test[:len(X)], CPU)).max())
     print(f"max |v1 logits - v2 logits| on {len(X)} held-out windows: {diff:.2e}")
 
-    for name, X, Y in [("validation subset", ds.X_val, ds.Y_val), ("full held-out", ds.X_test, ds.Y_test)]:
-        r = score(lambda x: predict(model, x, CPU), X, Y)
+    for name, X, Y, N in [("validation subset", ds.X_val, ds.Y_val, ds.N_val),
+                          ("full held-out", ds.X_test, ds.Y_test, ds.N_test)]:
+        r = score(lambda x, n: predict(model, x, n, CPU), X, Y, N)
         print(f"v1 weights scored by v2 code, {name:18}: "
               f"NDCG@10 {r['ndcg@10']:.4f}  Hits@10 {r['hits@10']:.3f}")
 

@@ -142,3 +142,28 @@ def test_input_artist_vector_changes_predictions():
 def test_artist_adds_two_tables_of_parameters():
     extra = count_params(featured_model()) - count_params(featured_model(features=False))
     assert extra == 2 * 3 * 4  # input + output table, 3 artists x embed_dim 4
+
+
+# --- playlist name ---
+
+def named_model(seed=0, words=4):
+    torch.manual_seed(seed)
+    return SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.1,
+                           scale_attention=True, init="pytorch", name_word_count=words)
+
+
+def test_zero_init_name_words_are_paired_with_no_name_run():
+    ids, names = torch.tensor([[0, 3, 6]]), torch.tensor([[2, 1, 0]])
+    torch.testing.assert_close(named_model().eval()(ids, names),
+                               named_model(words=None).eval()(ids))
+
+
+def test_name_vector_is_mean_of_real_words_ignoring_padding():
+    model = named_model().eval()
+    with torch.no_grad():
+        model.name_words.weight[1:] = torch.randn(4, 4)
+    ids = torch.tensor([[0, 3, 6]] * 3)
+    out = model(ids, torch.tensor([[3, 0, 0], [3, 3, 0], [0, 0, 0]]))
+    torch.testing.assert_close(out[0], out[1])  # [3] and [3, 3] average to word 3's vector
+    torch.testing.assert_close(out[2], named_model(words=None).eval()(ids[:1])[0])  # no words: no change
+    assert not torch.allclose(out[0], out[2])

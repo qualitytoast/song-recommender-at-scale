@@ -3,11 +3,12 @@ import json
 import numpy as np
 
 from recsys.config import Config, DataConfig, ModelConfig
-from recsys.data import (build_dataset, build_vocab, duration_buckets, load_playlists,
-                         make_windows, song_feature_ids, split_playlists)
+from recsys.data import (build_dataset, build_vocab, build_word_vocab, duration_buckets,
+                         encode_names, load_playlists, make_windows, name_words,
+                         song_feature_ids, split_playlists)
 
 
-def write_slice(folder, name, playlists):
+def write_slice(folder, name, playlists, names=None):
     """Fake MPD slice. A track is a title (URI and artist made from it),
     a (title, uri) pair, or a (title, uri, artist) triple."""
     def track(t):
@@ -15,12 +16,13 @@ def write_slice(folder, name, playlists):
         title, uri, artist = t + (f"spotify:track:{t[0]}", f"artist:{t[0]}")[len(t) - 1:]
         return {"track_name": title, "track_uri": uri, "artist_uri": artist,
                 "album_uri": f"album:{artist}", "duration_ms": 200_000}  # one album per artist
-    body = {"playlists": [{"tracks": [track(t) for t in p]} for p in playlists]}
+    names = names or [f"playlist {i}" for i in range(len(playlists))]
+    body = {"playlists": [{"name": n, "tracks": [track(t) for t in p]} for n, p in zip(names, playlists)]}
     (folder / name).write_text(json.dumps(body))
 
 
 def load(folder, max_playlists=10, song_key="track_name"):
-    return load_playlists(folder, max_playlists, min_playlist_len=4, song_key=song_key)
+    return load_playlists(folder, max_playlists, min_playlist_len=4, song_key=song_key)[:2]
 
 
 # --- load_playlists ---
@@ -98,7 +100,7 @@ def test_vocab_counts_repeats_within_one_playlist():
 
 def test_windows_slide_one_step():
     ids = {"a": 0, "b": 1, "c": 2}
-    X, Y = make_windows([["a", "b", "c", "a"]], ids, context_length=2)
+    X, Y, _ = make_windows([["a", "b", "c", "a"]], ids, context_length=2)
     np.testing.assert_array_equal(X, [[0, 1], [1, 2]])
     np.testing.assert_array_equal(Y, [2, 0])
 
@@ -108,13 +110,13 @@ def test_windows_touching_unknown_song_skipped():
     #   [b, c] -> ?  skip (target)   [c, ?] -> b  skip (input)
     #   [?, b] -> c  skip (input)    [b, c] -> b  keep
     ids = {"b": 0, "c": 1}
-    X, Y = make_windows([["b", "c", "?", "b", "c", "b"]], ids, context_length=2)
+    X, Y, _ = make_windows([["b", "c", "?", "b", "c", "b"]], ids, context_length=2)
     np.testing.assert_array_equal(X, [[0, 1]])
     np.testing.assert_array_equal(Y, [0])
 
 
 def test_playlist_not_longer_than_context_gives_no_windows():
-    X, Y = make_windows([["a", "a"]], {"a": 0}, context_length=2)
+    X, Y, _ = make_windows([["a", "a"]], {"a": 0}, context_length=2)
     assert X.shape == (0, 2) and Y.shape == (0,)
 
 
@@ -211,3 +213,48 @@ def test_held_out_prefix_validation_is_first_held_out_windows(tmp_path):
     write_tiny_mpd(tmp_path)
     ds = build_dataset(tiny_config(tmp_path, "all", "held_out_prefix", 0.0, val_size=2))
     np.testing.assert_array_equal(ds.X_val, ds.X_test[:2])
+
+
+# --- playlist names ---
+
+def test_load_returns_names_of_kept_playlists(tmp_path):
+    write_slice(tmp_path, "mpd.slice.0-1.json", [["a"] * 3, ["b"] * 4], names=["too short", "Gym"])
+    playlists, _, names = load_playlists(tmp_path, 10, min_playlist_len=4, song_key="track_name")
+    assert playlists == [["b"] * 4] and names == ["Gym"]
+
+
+def test_name_words_lowercase_and_split_on_non_letters():
+    assert name_words("Old Country ") == ["old", "country"]
+    assert name_words("90's R&B!!") == ["90", "s", "r", "b"]
+    assert name_words("🔥🔥") == []
+
+
+def test_word_vocab_counts_names_not_repeats():
+    # "rap" is in 1 name (twice), "chill" in 2 names
+    assert build_word_vocab(["rap rap", "chill", "Chill vibes"], min_count=2) == ["chill"]
+
+
+def test_encode_names_pads_with_zero_and_drops_unknown_words():
+    encoded = encode_names(["chill vibes", "rap", "chill"], {"chill": 1, "vibes": 2})
+    np.testing.assert_array_equal(encoded, [[1, 2], [0, 0], [1, 0]])
+
+
+def test_windows_record_their_playlist():
+    _, _, P = make_windows([["a", "b"], ["a", "b", "a", "b"]], {"a": 0, "b": 1}, context_length=2)
+    np.testing.assert_array_equal(P, [1, 1])  # first playlist is too short for a window
+
+
+def test_each_window_gets_its_own_playlists_name(tmp_path):
+    rng = np.random.RandomState(0)
+    playlists = [[f"s{j}" for j in rng.randint(0, 10, size=6)] for _ in range(20)]
+    names = [["chill", "gym", "party"][i % 3] + f" mix" for i in range(20)]
+    write_slice(tmp_path, "mpd.slice.0-19.json", playlists, names)
+    ds = build_dataset(tiny_config(tmp_path, "train", "separate_playlists", 0.1))
+    ids = {t: i for i, t in enumerate(ds.vocab)}
+    for X, Y, N in [(ds.X_train, ds.Y_train, ds.N_train), (ds.X_test, ds.Y_test, ds.N_test)]:
+        for x, y, n in zip(X, Y, N):
+            run = list(x) + [y]  # window + target: 3 consecutive songs in its playlist
+            homes = [k for k, p in enumerate(playlists)
+                     if any([ids.get(t) for t in p[i:i + 3]] == run for i in range(len(p) - 2))]
+            words = {ds.name_words[w - 1] for w in n if w}
+            assert any(words <= set(name_words(names[k])) and words for k in homes)

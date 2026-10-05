@@ -96,6 +96,7 @@ def train(config_path, train_seed):
 
     X_train = torch.from_numpy(ds.X_train).to(device)
     Y_train = torch.from_numpy(ds.Y_train).to(device)
+    N_train = torch.from_numpy(ds.N_train).to(device)
     shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
     n, batch_size = len(X_train), cfg.train.batch_size
     num_params = sum(p.numel() for p in model.parameters())
@@ -112,7 +113,7 @@ def train(config_path, train_seed):
         loss_sum = torch.zeros((), device=device)
         for i in range(0, n, batch_size):
             idx = order[i:i + batch_size]  # last batch may be smaller, like v1
-            loss = nn.functional.cross_entropy(model(X_train[idx]), Y_train[idx])
+            loss = nn.functional.cross_entropy(model(X_train[idx], N_train[idx]), Y_train[idx])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -122,7 +123,7 @@ def train(config_path, train_seed):
         if not math.isfinite(train_loss):
             raise FloatingPointError(f"Training loss became {train_loss} in epoch {epoch}. Training diverged.")
 
-        val_logits = predict(model, ds.X_val, device)
+        val_logits = predict(model, ds.X_val, ds.N_val, device)
         val_loss = nn.functional.cross_entropy(torch.from_numpy(val_logits),
                                                torch.from_numpy(ds.Y_val)).item()
         val_ndcg = ndcg_at_k(val_logits, ds.Y_val, k=10)

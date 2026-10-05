@@ -12,35 +12,39 @@ keep reproducing; configs/v1_fixed.toml switches them off:
 """
 import json
 import os
+import re
 from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
 
 DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buckets
+NAME_WORD_MIN_COUNT = 2  # playlist-name words used in fewer training names are dropped
 
 
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
     """Songs of the first max_playlists playlists, identified by song_key.
 
-    Returns (playlists, tracks): each playlist is a list of song keys, and
-    tracks maps every key to its MPD track record (track_name, artist_uri,
-    album_uri, duration_ms, ...). With song_key "track_name", same-titled songs
-    share one record (the last one read).
+    Returns (playlists, tracks, playlist_names): each playlist is a list of
+    song keys; tracks maps every key to its MPD track record (track_name,
+    artist_uri, album_uri, duration_ms, ...), and with song_key "track_name"
+    same-titled songs share one record (the last one read); playlist_names[i]
+    is playlist i's name.
 
     Files are read in alphabetical order, not numeric: mpd.slice.10000-10999.json
     comes before mpd.slice.2000-2999.json. That is the order v1 read them in.
     """
-    playlists, tracks = [], {}
+    playlists, tracks, playlist_names = [], {}, []
     for file_name in sorted(f for f in os.listdir(folder) if f.endswith(".json")):
         with open(os.path.join(folder, file_name), encoding="utf-8") as f:
             for playlist in json.load(f)["playlists"]:
                 if len(playlist["tracks"]) >= min_playlist_len:
                     playlists.append([t[song_key] for t in playlist["tracks"]])
                     tracks.update((t[song_key], t) for t in playlist["tracks"])
+                    playlist_names.append(playlist["name"])
         if len(playlists) >= max_playlists:
             break
-    return playlists[:max_playlists], tracks
+    return playlists[:max_playlists], tracks, playlist_names[:max_playlists]
 
 
 def build_vocab(playlists, min_freq):
@@ -76,9 +80,10 @@ def make_windows(playlists, track_to_id, context_length):
 
     Windows touching a song outside the vocab (in the input or as the target)
     are skipped, so every kept example is a true run of consecutive songs.
+    Returns (X, Y, P): P[w] is the index (in `playlists`) of window w's playlist.
     """
-    X, Y = [], []
-    for playlist in playlists:
+    X, Y, P = [], [], []
+    for p, playlist in enumerate(playlists):
         ids = [track_to_id.get(t) for t in playlist]
         for i in range(len(ids) - context_length):
             window, target = ids[i:i + context_length], ids[i + context_length]
@@ -86,8 +91,9 @@ def make_windows(playlists, track_to_id, context_length):
                 continue
             X.append(window)
             Y.append(target)
+            P.append(p)
     X = np.array(X, dtype=np.int64).reshape(-1, context_length)  # keeps 2D shape when empty
-    return X, np.array(Y, dtype=np.int64)
+    return X, np.array(Y, dtype=np.int64), np.array(P, dtype=np.int64)
 
 
 def song_feature_ids(vocab, tracks, field):
@@ -113,6 +119,32 @@ def duration_buckets(vocab, tracks, n_buckets):
     return np.searchsorted(cuts, ms, side="right").astype(np.int64), n_buckets
 
 
+def name_words(name):
+    """Lowercased words of a playlist name: "Old Country " -> ["old", "country"]."""
+    return re.findall(r"\w+", name.lower())
+
+
+def build_word_vocab(names, min_count):
+    """Words used in at least min_count of the names, in order of first appearance.
+    Word i gets ID i + 1: ID 0 is padding."""
+    counts = Counter(w for n in names for w in set(name_words(n)))
+    first_seen = dict.fromkeys(w for n in names for w in name_words(n))
+    return [w for w in first_seen if counts[w] >= min_count]
+
+
+def encode_names(names, word_to_id):
+    """(len(names), width) array of word IDs, one row per name, padded with 0.
+
+    Unknown words are dropped, so a name with no known words is all padding.
+    width is the longest name's known-word count (at least 1).
+    """
+    ids = [[word_to_id[w] for w in name_words(n) if w in word_to_id] for n in names]
+    out = np.zeros((len(ids), max(1, max(map(len, ids), default=0))), dtype=np.int64)
+    for row, word_ids in enumerate(ids):
+        out[row, :len(word_ids)] = word_ids
+    return out
+
+
 @dataclass
 class Dataset:
     vocab: list           # vocab[i] is the key (title or URI) of song i
@@ -124,27 +156,45 @@ class Dataset:
     Y_val: np.ndarray
     X_test: np.ndarray    # held-out set the final numbers are reported on
     Y_test: np.ndarray
+    name_words: list      # name_words[i] is the word with ID i + 1 (0 is padding)
+    N_train: np.ndarray   # (n, width) word IDs of each window's playlist name
+    N_val: np.ndarray
+    N_test: np.ndarray
 
 
 def build_dataset(cfg):
     d = cfg.data
-    playlists, tracks = load_playlists(d.folder, d.max_playlists, d.min_playlist_len, d.song_key)
-    train, val, held_out = split_playlists(playlists, d.test_split, d.val_split, cfg.data_seed)
+    playlists, tracks, playlist_names = load_playlists(d.folder, d.max_playlists,
+                                                       d.min_playlist_len, d.song_key)
+    # Split playlist indices, so playlists and their names stay paired. Same shuffle
+    # as splitting the playlists themselves: it only depends on the seed and length.
+    train_idx, val_idx, held_out_idx = split_playlists(list(range(len(playlists))),
+                                                       d.test_split, d.val_split, cfg.data_seed)
+    train, val, held_out = ([playlists[i] for i in idx] for idx in (train_idx, val_idx, held_out_idx))
     vocab = build_vocab(playlists if d.vocab_from == "all" else train, d.min_freq)
     track_to_id = {t: i for i, t in enumerate(vocab)}
-    X_train, Y_train = make_windows(train, track_to_id, d.context_length)
-    X_test, Y_test = make_windows(held_out, track_to_id, d.context_length)
+
+    # Playlist names: word vocab from training names only; each window gets its playlist's words.
+    words = build_word_vocab([playlist_names[i] for i in train_idx], NAME_WORD_MIN_COUNT)
+    encoded = encode_names(playlist_names, {w: i + 1 for i, w in enumerate(words)})
+
+    X_train, Y_train, P_train = make_windows(train, track_to_id, d.context_length)
+    X_test, Y_test, P_test = make_windows(held_out, track_to_id, d.context_length)
+    N_train = encoded[train_idx][P_train]
+    N_test = encoded[held_out_idx][P_test]
     if d.validation == "held_out_prefix":
-        X_val, Y_val = X_test[:d.val_size], Y_test[:d.val_size]
+        X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
     else:
-        X_val, Y_val = make_windows(val, track_to_id, d.context_length)
+        X_val, Y_val, P_val = make_windows(val, track_to_id, d.context_length)
+        N_val = encoded[val_idx][P_val]
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
                      "album": song_feature_ids(vocab, tracks, "album_uri"),
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
                    song_features=song_features,
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
-                   X_test=X_test, Y_test=Y_test)
+                   X_test=X_test, Y_test=Y_test,
+                   name_words=words, N_train=N_train, N_val=N_val, N_test=N_test)
 
 
 if __name__ == "__main__":
