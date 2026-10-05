@@ -10,6 +10,7 @@ definitions (rank = 1 + songs scored strictly higher than the true one).
 | 2026-10-03 | `v1_baseline` | Rebuilt v1 in PyTorch: same data, split, architecture, init, SGD settings, early stopping | same | 0.0373 | 6.3% | 0.0049 / 1.1% | 27 (of 38) | 5.0 min (mps) | `1afdcf8` |
 | 2026-10-03 | `v1_adam` | `v1_baseline` with Adam (lr 1e-3, L2 weight decay 1e-3) instead of SGD (lr 0.05) | same | 0.0339 | 6.6% | 0.0049 / 1.1% | 38 (of 40, hit the cap) | 9.8 min (mps) | `650a7bb` |
 | 2026-10-05 | `v1_adamw` | `v1_adam` with AdamW (decoupled weight decay, wd 0.05) instead of Adam (L2, wd 1e-3) | same | 0.0460 | 6.9% | 0.0049 / 1.1% | 11 (of 30) | 7.2 min (mps) | `be55be7` |
+| 2026-10-05 | `v1_fixed` | `v1_adamw` with all five v1 quirks fixed at once: track URIs, vocab from training playlists only, separate 80/10/10 validation playlists, scaled attention, PyTorch default init | MPD, first 5,000 playlists, 4,000 / 500 / 500: 30,587 songs, 74,115 train / 6,109 val / 7,722 held-out windows | 0.0539 | 7.8% | 0.0068 / 1.5% | 5 (of 30) | 4.3 min (mps) | `815d067` |
 
 ## Notes
 
@@ -95,3 +96,44 @@ for output rows):
 22% of the vocab (7,502 songs) never appears in a training window: v1 counts
 song frequency over held-out playlists too, and windows touching a dropped
 song are skipped. The model can never learn these songs.
+
+**`v1_fixed`: the fixes make the evaluation honest without costing accuracy.**
+
+Its held-out set is different from every earlier row, so its 0.0539 can't be
+compared with them directly. The held-out *playlists* are the same 500, but
+with URIs and a training-only vocab, windows containing a song seen fewer
+than twice in training are skipped, leaving 7,722 of them (all learnable
+songs, so easier: most-popular rises from 0.0049 to 0.0068). Where the
+windows went:
+
+| Data settings | Songs | Train | Val | Held-out |
+|---|---|---|---|---|
+| v1 | 33,770 | 110,333 | 3,000 | 14,844 |
+| + 80/10/10 split | 33,770 | 97,482 | 12,851 | 14,844 |
+| + track URI | 36,636 | 81,737 | 10,448 | 12,473 |
+| + vocab from train (= `v1_fixed`) | 30,587 | 74,115 | 6,109 | 7,722 |
+
+Every song in those 7,722 windows is also in the title-based vocab of the
+earlier runs, and none of the earlier runs trained on the held-out playlists,
+so all runs can be scored on exactly the same windows:
+
+| Run, scored on `v1_fixed`'s 7,722 held-out windows | NDCG@10 | Hits@1 | Hits@10 |
+|---|---|---|---|
+| `v1_baseline` (SGD) | 0.0462 | 2.1% | 7.8% |
+| `v1_adam` | 0.0422 | 1.4% | 8.2% |
+| `v1_adamw` | 0.0544 | 3.3% | 8.4% |
+| `v1_fixed` | 0.0539 | 3.4% | 7.8% |
+
+- `v1_fixed` ties `v1_adamw` while training on 12% fewer playlists (33%
+  fewer windows), with no held-out data used for early stopping and no
+  same-titled songs merged (both of which favour `v1_adamw` here). Five
+  changes were bundled, so the effect of each one is unknown.
+- AdamW's lead over SGD holds on these windows (0.054 vs 0.046).
+- It overfits even faster than `v1_adamw`: best epoch 5, then validation
+  NDCG@10 falls every epoch. `min_epochs = 20` (tuned for SGD's slow start)
+  made it run 24 epochs past its best.
+
+**End of Phase 1.** The PyTorch rebuild matches v1 (same outputs from v1's
+weights; same data, split and metrics), runs ~4x faster, and with AdamW and
+the fixes reaches 0.054 NDCG@10 / 7.8% Hits@10 on an honest held-out set,
+7.9x the most-popular baseline.
