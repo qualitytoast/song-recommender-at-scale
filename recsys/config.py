@@ -8,6 +8,9 @@ import tomllib
 from dataclasses import dataclass
 
 
+FEATURES = ("artist",)  # implemented so far
+
+
 def _check_choice(name, value, choices):
     if value not in choices:
         raise ValueError(f"{name} must be one of {choices}, got {value!r}")
@@ -44,9 +47,12 @@ class ModelConfig:
     dropout: float
     scale_attention: bool  # divide attention scores by sqrt(embed_dim); v1 didn't
     init: str              # starting weights: "v1" or "pytorch" (PyTorch's defaults)
+    features: list         # song features added to the song ID, e.g. ["artist"]
 
     def __post_init__(self):
         _check_choice("init", self.init, ("v1", "pytorch"))
+        for name in self.features:
+            _check_choice("feature", name, FEATURES)
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,12 @@ class Config:
     data: DataConfig
     model: ModelConfig
     train: TrainConfig
+
+    def __post_init__(self):
+        # With track names as song keys, same-titled songs by different artists merge,
+        # so "the song's artist" isn't well defined.
+        if self.model.features and self.data.song_key != "track_uri":
+            raise ValueError("song features need song_key = \"track_uri\"")
 
 
 def load_config(path):

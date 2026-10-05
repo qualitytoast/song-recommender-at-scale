@@ -64,7 +64,7 @@ def main():
     if json.loads((V1 / "artifacts" / "vocab.json").read_text()) != ds.vocab:
         sys.exit("FAIL: v1's saved vocab differs from the one this repo builds")
 
-    model = build_model(cfg, len(ds.vocab))
+    model = build_model(cfg, ds)
     # strict loading: fails if any parameter name or shape doesn't line up
     model.load_state_dict(v1_state_dict(np.load(V1 / "artifacts" / "weights.npz")))
 

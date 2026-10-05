@@ -2,15 +2,18 @@ import json
 
 import numpy as np
 
-from recsys.config import Config, DataConfig
-from recsys.data import build_dataset, build_vocab, load_playlists, make_windows, split_playlists
+from recsys.config import Config, DataConfig, ModelConfig
+from recsys.data import (build_dataset, build_vocab, load_playlists, make_windows,
+                         song_feature_ids, split_playlists)
 
 
 def write_slice(folder, name, playlists):
-    """Fake MPD slice. A track is a title (URI made from it) or a (title, uri) pair."""
+    """Fake MPD slice. A track is a title (URI and artist made from it),
+    a (title, uri) pair, or a (title, uri, artist) triple."""
     def track(t):
-        title, uri = t if isinstance(t, tuple) else (t, f"spotify:track:{t}")
-        return {"track_name": title, "track_uri": uri}
+        t = t if isinstance(t, tuple) else (t,)
+        title, uri, artist = t + (f"spotify:track:{t[0]}", f"artist:{t[0]}")[len(t) - 1:]
+        return {"track_name": title, "track_uri": uri, "artist_uri": artist}
     body = {"playlists": [{"tracks": [track(t) for t in p]} for p in playlists]}
     (folder / name).write_text(json.dumps(body))
 
@@ -48,10 +51,19 @@ def test_track_name_merges_same_titled_songs_and_uri_keeps_them_apart(tmp_path):
     two_homes = [("Home", "uri:1"), ("Home", "uri:2"), "x", "y"]
     write_slice(tmp_path, "mpd.slice.0-1.json", [two_homes])
     by_name, _ = load(tmp_path, song_key="track_name")
-    by_uri, names = load(tmp_path, song_key="track_uri")
+    by_uri, tracks = load(tmp_path, song_key="track_uri")
     assert by_name[0][:2] == ["Home", "Home"]
     assert by_uri[0][:2] == ["uri:1", "uri:2"]
-    assert names["uri:1"] == names["uri:2"] == "Home"
+    assert tracks["uri:1"]["track_name"] == tracks["uri:2"]["track_name"] == "Home"
+
+
+# --- song_feature_ids ---
+
+def test_song_feature_ids_follow_vocab_order_and_share_ids():
+    tracks = {"s1": {"artist_uri": "A"}, "s2": {"artist_uri": "B"}, "s3": {"artist_uri": "A"}}
+    ids, count = song_feature_ids(["s2", "s1", "s3"], tracks, "artist_uri")
+    np.testing.assert_array_equal(ids, [0, 1, 1])  # B first seen -> 0; s1 and s3 share A
+    assert count == 2
 
 
 # --- build_vocab ---
@@ -139,7 +151,9 @@ def tiny_config(folder, vocab_from, validation, val_split, val_size=2):
     data = DataConfig(folder=str(folder), max_playlists=20, min_playlist_len=4, min_freq=2,
                       song_key="track_name", vocab_from=vocab_from, context_length=2,
                       test_split=0.1, validation=validation, val_size=val_size, val_split=val_split)
-    return Config(data_seed=42, train_seeds=[1], data=data, model=None, train=None)
+    model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True,
+                        init="pytorch", features=[])
+    return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
 
 
 def write_tiny_mpd(folder):

@@ -49,7 +49,7 @@ def evaluate(config_path, train_seed):
     if checkpoint["vocab"] != ds.vocab:
         raise ValueError(f"{config_path} builds a different vocab than {run_dir}/best.pt was trained on.")
     device = pick_device()
-    model = build_model(cfg, len(ds.vocab)).to(device)
+    model = build_model(cfg, ds).to(device)
     model.load_state_dict(checkpoint["model"])
     model_fn = lambda xb: predict(model, xb, device)
 

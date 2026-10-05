@@ -93,3 +93,52 @@ def test_pytorch_init_keeps_defaults():
     ffn_in = model.blocks[0].ffn[0]  # uniform in +-1/sqrt(64): std = 1/sqrt(64)/sqrt(3)
     assert abs(ffn_in.weight.std().item() - 1 / 8 / math.sqrt(3)) < 0.005
     assert not torch.all(ffn_in.bias == 0)
+
+
+# --- song features (artist, ...) ---
+
+ARTIST = [0, 0, 1, 2, 2, 2, 1]  # artist of each of 7 songs
+
+
+def featured_model(seed=0, features=True):
+    torch.manual_seed(seed)
+    return SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.1,
+                           scale_attention=True, init="pytorch",
+                           song_features={"artist": ARTIST} if features else None)
+
+
+def test_zero_init_features_are_paired_with_no_feature_run():
+    # Same seed: identical starting weights, and the zero artist vectors add nothing.
+    ids = torch.tensor([[0, 3, 6], [2, 2, 5]])
+    torch.testing.assert_close(featured_model().eval()(ids), featured_model(features=False).eval()(ids))
+    # Same random draws afterwards too (dropout masks, ...)
+    featured_model(); a = torch.rand(3)
+    featured_model(features=False); b = torch.rand(3)
+    torch.testing.assert_close(a, b)
+
+
+def test_output_artist_vector_shifts_only_that_artists_songs_equally():
+    model = featured_model().eval()
+    ids = torch.tensor([[0, 3, 6]])
+    before = model(ids)
+    with torch.no_grad():
+        model.output_features["artist"].weight[2] = torch.tensor([1.0, -2.0, 0.5, 3.0])
+    shift = (model(ids) - before)[0]
+    songs_of_artist_2 = [3, 4, 5]
+    assert torch.all(shift[[0, 1, 2, 6]] == 0)
+    torch.testing.assert_close(shift[songs_of_artist_2], shift[3].expand(3))  # h . v, same for each
+    assert shift[3] != 0
+
+
+def test_input_artist_vector_changes_predictions():
+    model = featured_model().eval()
+    ids = torch.tensor([[0, 3, 6]])
+    before = model(ids)
+    with torch.no_grad():
+        model.input_features["artist"].weight[1] = torch.ones(4)  # artist of song 6
+    assert not torch.allclose(model(ids), before)
+
+
+def test_artist_adds_two_tables_of_parameters():
+    extra = count_params(featured_model()) - count_params(featured_model(features=False))
+    assert extra == 2 * 3 * 4  # input + output table, 3 artists x embed_dim 4

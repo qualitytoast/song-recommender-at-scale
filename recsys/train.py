@@ -86,10 +86,11 @@ def train(config_path, train_seed):
     run_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(config_path, run_dir / "config.toml")
 
+    commit, dirty = git_state()  # at the start: code may be committed while this runs
     torch.manual_seed(train_seed)  # weight init, dropout masks
     device = pick_device()
     ds = build_dataset(cfg)
-    model = build_model(cfg, len(ds.vocab)).to(device)
+    model = build_model(cfg, ds).to(device)
     optimizer = make_optimizer(model.parameters(), cfg.train)
     stopper = EarlyStopping(cfg.train.min_epochs, cfg.train.patience)
 
@@ -147,7 +148,6 @@ def train(config_path, train_seed):
         writer = csv.DictWriter(f, fieldnames=log[0].keys())
         writer.writeheader()
         writer.writerows(log)
-    commit, dirty = git_state()
     summary = {"config": str(config_path), "train_seed": train_seed, "device": str(device),
                "num_params": num_params, "best_epoch": best_epoch,
                "best_val_ndcg": stopper.best, "epochs_run": len(log),

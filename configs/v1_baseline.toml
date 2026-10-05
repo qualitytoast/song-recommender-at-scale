@@ -23,6 +23,7 @@ num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
 scale_attention = false  # v1 quirk: attention scores not divided by sqrt(embed_dim)
 init = "v1"              # v1 starting weights
+features = []            # song features added to the song ID
 
 [train]
 optimizer = "sgd"      # plain SGD, no momentum

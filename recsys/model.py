@@ -59,8 +59,15 @@ class TransformerBlock(nn.Module):
 
 
 class SongRecommender(nn.Module):
+    """song_features: {name: per-song ID array}, e.g. {"artist": ids} where ids[i] is
+    song i's artist. Each feature adds a learned vector per ID on two sides:
+      input:  a song in the window = song vector + its artist vector + ...
+      output: candidate song j's score = h . (output row j + its artist's output vector + ...)
+    so songs sharing an artist share what is learned about that artist.
+    """
+
     def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
-                 scale_attention, init):
+                 scale_attention, init, song_features=None):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
@@ -74,12 +81,41 @@ class SongRecommender(nn.Module):
         # init == "pytorch": keep PyTorch's defaults (embeddings std 1.0; linear
         # weights and biases uniform in +-1/sqrt(inputs))
 
+        # Feature tables come last and start at zero without drawing random numbers:
+        # at step 0 the model computes exactly what it would without features, and a
+        # given seed gets the same starting weights, batch order and dropout masks
+        # with or without them, so runs with and without a feature are paired.
+        self.feature_names = sorted(song_features or {})
+        self.input_features, self.output_features = nn.ModuleDict(), nn.ModuleDict()
+        for name in self.feature_names:
+            ids = torch.as_tensor(song_features[name], dtype=torch.long)
+            # A buffer is saved and moved with the model but not learned.
+            self.register_buffer(f"song_{name}", ids)
+            count = int(ids.max()) + 1
+            self.input_features[name] = nn.Embedding.from_pretrained(
+                torch.zeros(count, embed_dim), freeze=False)
+            self.output_features[name] = nn.Embedding.from_pretrained(
+                torch.zeros(count, embed_dim), freeze=False)
+
+    def song_feature_ids(self, name):
+        return getattr(self, f"song_{name}")
+
     def forward(self, ids):  # ids: (batch, seq) song IDs
         positions = torch.arange(ids.shape[1], device=ids.device)
-        x = self.dropout(self.song_embedding(ids) + self.position_embedding(positions))
+        x = self.song_embedding(ids) + self.position_embedding(positions)
+        for name in self.feature_names:
+            x = x + self.input_features[name](self.song_feature_ids(name)[ids])
+        x = self.dropout(x)
         for block in self.blocks:
             x = block(x)
-        return self.output(x[:, -1, :])  # (batch, vocab_size) logits
+        h = x[:, -1, :]
+        logits = self.output(h)  # (batch, vocab_size): h . output row + bias, per song
+        if self.feature_names:
+            # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
+            candidates = sum(self.output_features[name](self.song_feature_ids(name))
+                             for name in self.feature_names)
+            logits = logits + h @ candidates.T
+        return logits
 
     def _init_like_v1(self):
         """Replace PyTorch's default starting weights with v1's.
@@ -96,11 +132,12 @@ class SongRecommender(nn.Module):
                 nn.init.zeros_(m.bias)
 
 
-def build_model(cfg, vocab_size):
-    """SongRecommender with the shape and settings from a Config."""
+def build_model(cfg, ds):
+    """SongRecommender with the shape and settings from a Config, for Dataset ds."""
     m = cfg.model
-    return SongRecommender(vocab_size, m.embed_dim, cfg.data.context_length, m.num_layers,
-                           m.dropout, m.scale_attention, m.init)
+    song_features = {name: ds.song_features[name][0] for name in m.features}
+    return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.context_length, m.num_layers,
+                           m.dropout, m.scale_attention, m.init, song_features)
 
 
 @torch.no_grad()

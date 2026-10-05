@@ -1,5 +1,5 @@
-# Phase 2 baseline: v1_fixed with min_epochs 10, run with 3 training seeds.
-# Only the seeds and min_epochs differ from v1_fixed.toml.
+# Phase 2, step 1: p2_base + artist.
+# Only the features list differs from p2_base.toml.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
@@ -23,7 +23,7 @@ num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
 scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
 init = "pytorch"         # was "v1": PyTorch's default starting weights
-features = []            # song features added to the song ID
+features = ["artist"]    # was []
 
 [train]
 optimizer = "adamw"    # decoupled weight decay

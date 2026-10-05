@@ -22,6 +22,7 @@ num_layers = 2
 dropout = 0.1
 scale_attention = false
 init = "v1"
+features = []
 
 [train]
 optimizer = "sgd"
@@ -66,4 +67,18 @@ def test_val_split_must_match_validation_mode(tmp_path):
     path = tmp_path / "c.toml"
     path.write_text("data_seed = 42\ntrain_seeds = [1, 2, 3]\n" + DATA.replace("val_split = 0.0", "val_split = 0.1"))
     with pytest.raises(ValueError):  # held_out_prefix with a nonzero val_split
+        load_config(path)
+
+
+def test_unknown_feature_raises(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("data_seed = 42\ntrain_seeds = [1]\n" + DATA.replace("features = []", 'features = ["mood"]'))
+    with pytest.raises(ValueError):
+        load_config(path)
+
+
+def test_features_need_track_uri(tmp_path):
+    path = tmp_path / "c.toml"  # DATA uses song_key = "track_name"
+    path.write_text("data_seed = 42\ntrain_seeds = [1]\n" + DATA.replace("features = []", 'features = ["artist"]'))
+    with pytest.raises(ValueError):
         load_config(path)

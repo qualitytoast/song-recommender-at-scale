@@ -21,23 +21,24 @@ import numpy as np
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
     """Songs of the first max_playlists playlists, identified by song_key.
 
-    Returns (playlists, names): each playlist is a list of song keys, and
-    names maps every key to its track name for display.
+    Returns (playlists, tracks): each playlist is a list of song keys, and
+    tracks maps every key to its MPD track record (track_name, artist_uri,
+    album_uri, duration_ms, ...). With song_key "track_name", same-titled songs
+    share one record (the last one read).
 
     Files are read in alphabetical order, not numeric: mpd.slice.10000-10999.json
     comes before mpd.slice.2000-2999.json. That is the order v1 read them in.
     """
-    playlists, names = [], {}
+    playlists, tracks = [], {}
     for file_name in sorted(f for f in os.listdir(folder) if f.endswith(".json")):
         with open(os.path.join(folder, file_name), encoding="utf-8") as f:
             for playlist in json.load(f)["playlists"]:
-                tracks = playlist["tracks"]
-                if len(tracks) >= min_playlist_len:
-                    playlists.append([t[song_key] for t in tracks])
-                    names.update((t[song_key], t["track_name"]) for t in tracks)
+                if len(playlist["tracks"]) >= min_playlist_len:
+                    playlists.append([t[song_key] for t in playlist["tracks"]])
+                    tracks.update((t[song_key], t) for t in playlist["tracks"])
         if len(playlists) >= max_playlists:
             break
-    return playlists[:max_playlists], names
+    return playlists[:max_playlists], tracks
 
 
 def build_vocab(playlists, min_freq):
@@ -87,10 +88,22 @@ def make_windows(playlists, track_to_id, context_length):
     return X, np.array(Y, dtype=np.int64)
 
 
+def song_feature_ids(vocab, tracks, field):
+    """For each song in the vocab, the ID of its value of `field` (e.g. its artist).
+
+    IDs are numbered in order of first appearance along the vocab. Returns
+    (ids, count): ids[i] is song i's ID, count is how many distinct values.
+    """
+    values = [tracks[key][field] for key in vocab]
+    value_to_id = {v: i for i, v in enumerate(dict.fromkeys(values))}
+    return np.array([value_to_id[v] for v in values], dtype=np.int64), len(value_to_id)
+
+
 @dataclass
 class Dataset:
     vocab: list           # vocab[i] is the key (title or URI) of song i
     names: list           # names[i] is the track name of song i, for display
+    song_features: dict   # {"artist": (ids, count)}: per-song feature IDs, see song_feature_ids
     X_train: np.ndarray   # (n, context_length) song IDs
     Y_train: np.ndarray   # (n,) next-song IDs
     X_val: np.ndarray     # used for early stopping
@@ -101,7 +114,7 @@ class Dataset:
 
 def build_dataset(cfg):
     d = cfg.data
-    playlists, names = load_playlists(d.folder, d.max_playlists, d.min_playlist_len, d.song_key)
+    playlists, tracks = load_playlists(d.folder, d.max_playlists, d.min_playlist_len, d.song_key)
     train, val, held_out = split_playlists(playlists, d.test_split, d.val_split, cfg.data_seed)
     vocab = build_vocab(playlists if d.vocab_from == "all" else train, d.min_freq)
     track_to_id = {t: i for i, t in enumerate(vocab)}
@@ -111,7 +124,9 @@ def build_dataset(cfg):
         X_val, Y_val = X_test[:d.val_size], Y_test[:d.val_size]
     else:
         X_val, Y_val = make_windows(val, track_to_id, d.context_length)
-    return Dataset(vocab=vocab, names=[names[k] for k in vocab],
+    song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri")}
+    return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
+                   song_features=song_features,
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test)
 

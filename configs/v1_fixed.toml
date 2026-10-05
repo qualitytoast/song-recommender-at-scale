@@ -23,6 +23,7 @@ num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
 scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
 init = "pytorch"         # was "v1": PyTorch's default starting weights
+features = []            # song features added to the song ID
 
 [train]
 optimizer = "adamw"    # decoupled weight decay
