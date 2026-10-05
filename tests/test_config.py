@@ -36,34 +36,34 @@ patience = 10
 
 def test_loads_values(tmp_path):
     path = tmp_path / "c.toml"
-    path.write_text("seed = 42\n" + DATA)
+    path.write_text("data_seed = 42\ntrain_seeds = [1, 2, 3]\n" + DATA)
     cfg = load_config(path)
-    assert cfg.seed == 42 and cfg.data.context_length == 10
+    assert cfg.data_seed == 42 and cfg.train_seeds == [1, 2, 3] and cfg.data.context_length == 10
 
 
 def test_misspelled_key_raises(tmp_path):
     path = tmp_path / "c.toml"
-    path.write_text("seed = 42\n" + DATA.replace("min_freq", "min_frq"))
+    path.write_text("data_seed = 42\ntrain_seeds = [1, 2, 3]\n" + DATA.replace("min_freq", "min_frq"))
     with pytest.raises(TypeError):
         load_config(path)
 
 
 def test_missing_key_raises(tmp_path):
     path = tmp_path / "c.toml"
-    path.write_text(DATA)  # no seed
+    path.write_text(DATA)  # no seeds
     with pytest.raises(TypeError):
         load_config(path)
 
 
 def test_invalid_choice_raises(tmp_path):
     path = tmp_path / "c.toml"
-    path.write_text("seed = 42\n" + DATA.replace('"track_name"', '"track-uri"'))
+    path.write_text("data_seed = 42\ntrain_seeds = [1, 2, 3]\n" + DATA.replace('"track_name"', '"track-uri"'))
     with pytest.raises(ValueError):
         load_config(path)
 
 
 def test_val_split_must_match_validation_mode(tmp_path):
     path = tmp_path / "c.toml"
-    path.write_text("seed = 42\n" + DATA.replace("val_split = 0.0", "val_split = 0.1"))
+    path.write_text("data_seed = 42\ntrain_seeds = [1, 2, 3]\n" + DATA.replace("val_split = 0.0", "val_split = 0.1"))
     with pytest.raises(ValueError):  # held_out_prefix with a nonzero val_split
         load_config(path)

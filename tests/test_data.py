@@ -139,7 +139,7 @@ def tiny_config(folder, vocab_from, validation, val_split, val_size=2):
     data = DataConfig(folder=str(folder), max_playlists=20, min_playlist_len=4, min_freq=2,
                       song_key="track_name", vocab_from=vocab_from, context_length=2,
                       test_split=0.1, validation=validation, val_size=val_size, val_split=val_split)
-    return Config(seed=42, data=data, model=None, train=None)
+    return Config(data_seed=42, train_seeds=[1], data=data, model=None, train=None)
 
 
 def write_tiny_mpd(folder):

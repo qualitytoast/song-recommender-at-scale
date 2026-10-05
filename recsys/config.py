@@ -62,7 +62,8 @@ class TrainConfig:
 
 @dataclass(frozen=True)
 class Config:
-    seed: int
+    data_seed: int         # shuffles playlists into train / validation / held-out
+    train_seeds: list      # one training run per seed: starting weights, batch order, dropout
     data: DataConfig
     model: ModelConfig
     train: TrainConfig

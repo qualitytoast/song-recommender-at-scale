@@ -1,9 +1,10 @@
 """Train SongRecommender with v1's loop: mini-batch SGD, early stopping on
 validation NDCG@10, keep the best epoch.
 
-    python -m recsys.train --config configs/v1_baseline.toml
+    python -m recsys.train --config configs/p2_base.toml            # every seed in train_seeds
+    python -m recsys.train --config configs/p2_base.toml --seed 1   # one seed
 
-Writes runs/<config name>/:
+Writes runs/<config name>/seed<train seed>/:
     best.pt       weights of the best epoch, plus the vocab and config
     log.csv       one row per epoch
     summary.json  best epoch, training time, git commit, ...
@@ -75,13 +76,17 @@ def git_state():
     return commit, dirty
 
 
-def train(config_path):
+def run_dir_for(config_path, train_seed):
+    return Path("runs") / Path(config_path).stem / f"seed{train_seed}"
+
+
+def train(config_path, train_seed):
     cfg = load_config(config_path)
-    run_dir = Path("runs") / Path(config_path).stem
+    run_dir = run_dir_for(config_path, train_seed)
     run_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(config_path, run_dir / "config.toml")
 
-    torch.manual_seed(cfg.seed)  # weight init, dropout masks
+    torch.manual_seed(train_seed)  # weight init, dropout masks
     device = pick_device()
     ds = build_dataset(cfg)
     model = build_model(cfg, len(ds.vocab)).to(device)
@@ -90,10 +95,11 @@ def train(config_path):
 
     X_train = torch.from_numpy(ds.X_train).to(device)
     Y_train = torch.from_numpy(ds.Y_train).to(device)
-    shuffle_gen = torch.Generator().manual_seed(cfg.seed)  # batch order
+    shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
     n, batch_size = len(X_train), cfg.train.batch_size
-    print(f"device {device} | {len(ds.vocab):,} songs | {n:,} train | {len(ds.X_val):,} val | "
-          f"{sum(p.numel() for p in model.parameters()):,} params")
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train | "
+          f"{len(ds.X_val):,} val | {num_params:,} params")
 
     log, best_epoch, start = [], None, time.perf_counter()
     for epoch in range(cfg.train.epochs):
@@ -142,7 +148,8 @@ def train(config_path):
         writer.writeheader()
         writer.writerows(log)
     commit, dirty = git_state()
-    summary = {"config": str(config_path), "device": str(device), "best_epoch": best_epoch,
+    summary = {"config": str(config_path), "train_seed": train_seed, "device": str(device),
+               "num_params": num_params, "best_epoch": best_epoch,
                "best_val_ndcg": stopper.best, "epochs_run": len(log),
                "train_seconds": round(train_seconds, 1), "git_commit": commit, "git_dirty": dirty}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -153,4 +160,7 @@ def train(config_path):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Train SongRecommender.")
     ap.add_argument("--config", required=True)
-    train(ap.parse_args().config)
+    ap.add_argument("--seed", type=int, help="train only this seed (default: every seed in train_seeds)")
+    args = ap.parse_args()
+    for seed in [args.seed] if args.seed is not None else load_config(args.config).train_seeds:
+        train(args.config, seed)

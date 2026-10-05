@@ -1,7 +1,8 @@
 # Phase 1: reproduce v1 (transformer-song-recommender) in PyTorch.
 # Values match v1's config.py so results stay comparable.
 
-seed = 42
+data_seed = 42           # playlist split
+train_seeds = [42]       # one run per seed: starting weights, batch order, dropout
 
 [data]
 folder = "data/mpd"

@@ -102,7 +102,7 @@ class Dataset:
 def build_dataset(cfg):
     d = cfg.data
     playlists, names = load_playlists(d.folder, d.max_playlists, d.min_playlist_len, d.song_key)
-    train, val, held_out = split_playlists(playlists, d.test_split, d.val_split, cfg.seed)
+    train, val, held_out = split_playlists(playlists, d.test_split, d.val_split, cfg.data_seed)
     vocab = build_vocab(playlists if d.vocab_from == "all" else train, d.min_freq)
     track_to_id = {t: i for i, t in enumerate(vocab)}
     X_train, Y_train = make_windows(train, track_to_id, d.context_length)

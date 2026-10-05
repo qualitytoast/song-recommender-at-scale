@@ -1,8 +1,8 @@
-# Phase 1, final run: v1_adamw with all five v1 quirks fixed at once.
-# Differences from v1_adamw.toml are marked "was".
+# Phase 2 baseline: v1_fixed with min_epochs 10, run with 3 training seeds.
+# Only the seeds and min_epochs differ from v1_fixed.toml.
 
-data_seed = 42           # playlist split
-train_seeds = [42]       # one run per seed: starting weights, batch order, dropout
+data_seed = 42           # playlist split, same as every Phase 1 run
+train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
 
 [data]
 folder = "data/mpd"
@@ -30,5 +30,5 @@ lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
 epochs = 40
-min_epochs = 20
+min_epochs = 10       # was 20: best epochs are now ~5
 patience = 10

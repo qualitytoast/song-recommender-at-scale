@@ -1,14 +1,14 @@
 """Score a trained run on the held-out set, next to the most-popular baseline.
 
-    python -m recsys.evaluate --config configs/v1_baseline.toml
+    python -m recsys.evaluate --config configs/p2_base.toml            # every seed in train_seeds
+    python -m recsys.evaluate --config configs/p2_base.toml --seed 1   # one seed
 
-Rebuilds the dataset from the config (same seed, same split), loads
-runs/<config name>/best.pt, prints the results and saves them to
-runs/<config name>/eval.json.
+Rebuilds the dataset from the config (same data seed, same split), loads
+runs/<config name>/seed<train seed>/best.pt, prints the results and saves
+them to eval.json in the same folder.
 """
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.metrics import gains_at_k, hits_at_k
 from recsys.model import build_model, predict
-from recsys.train import pick_device
+from recsys.train import pick_device, run_dir_for
 
 KS = (1, 5, 10)
 CHUNK = 512  # full held-out logits would be 14,844 x 33,770 floats; score in chunks
@@ -38,9 +38,9 @@ def score(logits_fn, X, Y):
     return result
 
 
-def evaluate(config_path):
+def evaluate(config_path, train_seed):
     cfg = load_config(config_path)
-    run_dir = Path("runs") / Path(config_path).stem
+    run_dir = run_dir_for(config_path, train_seed)
     ds = build_dataset(cfg)
 
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
@@ -87,4 +87,7 @@ def evaluate(config_path):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Evaluate a trained run on the held-out set.")
     ap.add_argument("--config", required=True)
-    evaluate(ap.parse_args().config)
+    ap.add_argument("--seed", type=int, help="evaluate only this seed (default: every seed in train_seeds)")
+    args = ap.parse_args()
+    for seed in [args.seed] if args.seed is not None else load_config(args.config).train_seeds:
+        evaluate(args.config, seed)
