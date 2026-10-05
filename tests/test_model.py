@@ -22,17 +22,17 @@ def expected_params(V, E, C, L):
 
 
 def test_param_count_matches_hand_count():
-    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.0)
+    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.0, scale_attention=False, init="v1")
     assert count_params(model) == expected_params(7, 4, 3, 2)
 
 
 def test_param_count_matches_v1():
-    model = SongRecommender(vocab_size=33770, embed_dim=64, context_length=10, num_layers=2, dropout=0.1)
+    model = SongRecommender(vocab_size=33770, embed_dim=64, context_length=10, num_layers=2, dropout=0.1, scale_attention=False, init="v1")
     assert count_params(model) == 4_448_618
 
 
 def test_output_shape():
-    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.0)
+    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.0, scale_attention=False, init="v1")
     ids = torch.tensor([[0, 1, 2], [3, 4, 5]])
     assert model(ids).shape == (2, 7)
 
@@ -41,7 +41,7 @@ def test_attention_is_unscaled_like_v1():
     # With Q, K, V all set to the identity, attention on x = [[1, 0], [0, 1]] gives
     # weights = softmax(x @ x.T) = softmax([[1, 0], [0, 1]]), row 0 = [e, 1] / (e + 1).
     # Scaling by 1/sqrt(2) would give a different answer.
-    attn = SelfAttention(embed_dim=2)
+    attn = SelfAttention(embed_dim=2, scale=False)
     with torch.no_grad():
         for layer in (attn.query, attn.key, attn.value):
             layer.weight.copy_(torch.eye(2))
@@ -53,7 +53,7 @@ def test_attention_is_unscaled_like_v1():
 
 def test_init_matches_v1():
     torch.manual_seed(0)
-    model = SongRecommender(vocab_size=5000, embed_dim=64, context_length=10, num_layers=2, dropout=0.1)
+    model = SongRecommender(vocab_size=5000, embed_dim=64, context_length=10, num_layers=2, dropout=0.1, scale_attention=False, init="v1")
     assert abs(model.song_embedding.weight.std().item() - 0.1) < 0.005
     ffn_in = model.blocks[0].ffn[0]  # 64 -> 256
     assert abs(ffn_in.weight.std().item() - math.sqrt(2 / 64)) < 0.01
@@ -64,9 +64,32 @@ def test_init_matches_v1():
 
 def test_dropout_only_in_train_mode():
     torch.manual_seed(0)
-    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.5)
+    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.5, scale_attention=False, init="v1")
     ids = torch.tensor([[0, 1, 2]])
     model.eval()
     torch.testing.assert_close(model(ids), model(ids))
     model.train()
     assert not torch.equal(model(ids), model(ids))
+
+
+def test_scaled_attention_divides_by_sqrt_embed_dim():
+    # Same setup as the unscaled test: scores [[1, 0], [0, 1]] become [[1, 0], [0, 1]] / sqrt(2),
+    # so row 0 of the weights is [e^(1/sqrt 2), 1] / (e^(1/sqrt 2) + 1).
+    attn = SelfAttention(embed_dim=2, scale=True)
+    with torch.no_grad():
+        for layer in (attn.query, attn.key, attn.value):
+            layer.weight.copy_(torch.eye(2))
+            layer.bias.zero_()
+    out = attn(torch.tensor([[[1.0, 0.0], [0.0, 1.0]]]))
+    a = math.exp(1 / math.sqrt(2))
+    torch.testing.assert_close(out[0, 0], torch.tensor([a / (a + 1), 1 / (a + 1)]))
+
+
+def test_pytorch_init_keeps_defaults():
+    torch.manual_seed(0)
+    model = SongRecommender(vocab_size=5000, embed_dim=64, context_length=10, num_layers=2,
+                            dropout=0.1, scale_attention=True, init="pytorch")
+    assert abs(model.song_embedding.weight.std().item() - 1.0) < 0.05  # N(0, 1)
+    ffn_in = model.blocks[0].ffn[0]  # uniform in +-1/sqrt(64): std = 1/sqrt(64)/sqrt(3)
+    assert abs(ffn_in.weight.std().item() - 1 / 8 / math.sqrt(3)) < 0.005
+    assert not torch.all(ffn_in.bias == 0)

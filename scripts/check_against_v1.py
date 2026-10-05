@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 from recsys.config import load_config  # noqa: E402
 from recsys.data import build_dataset  # noqa: E402
 from recsys.evaluate import score  # noqa: E402
-from recsys.model import SongRecommender, predict  # noqa: E402
+from recsys.model import build_model, predict  # noqa: E402
 
 CPU = torch.device("cpu")
 
@@ -64,8 +64,7 @@ def main():
     if json.loads((V1 / "artifacts" / "vocab.json").read_text()) != ds.vocab:
         sys.exit("FAIL: v1's saved vocab differs from the one this repo builds")
 
-    model = SongRecommender(len(ds.vocab), cfg.model.embed_dim, cfg.data.context_length,
-                            cfg.model.num_layers, cfg.model.dropout)
+    model = build_model(cfg, len(ds.vocab))
     # strict loading: fails if any parameter name or shape doesn't line up
     model.load_state_dict(v1_state_dict(np.load(V1 / "artifacts" / "weights.npz")))
 

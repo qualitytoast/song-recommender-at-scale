@@ -17,7 +17,7 @@ from recsys.baselines import popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.metrics import gains_at_k, hits_at_k
-from recsys.model import SongRecommender, predict
+from recsys.model import build_model, predict
 from recsys.train import pick_device
 
 KS = (1, 5, 10)
@@ -49,22 +49,24 @@ def evaluate(config_path):
     if checkpoint["vocab"] != ds.vocab:
         raise ValueError(f"{config_path} builds a different vocab than {run_dir}/best.pt was trained on.")
     device = pick_device()
-    model = SongRecommender(len(ds.vocab), cfg.model.embed_dim, cfg.data.context_length,
-                            cfg.model.num_layers, cfg.model.dropout).to(device)
+    model = build_model(cfg, len(ds.vocab)).to(device)
     model.load_state_dict(checkpoint["model"])
     model_fn = lambda xb: predict(model, xb, device)
 
     pop, counts = popularity_scores(ds.Y_train, len(ds.vocab))  # training targets only
     pop_fn = lambda xb: np.broadcast_to(pop, (len(xb), len(pop)))
 
-    n_val = len(ds.X_val)  # the validation subset is the first n_val held-out rows
-    results = {
-        "best_epoch": checkpoint["epoch"],
-        "validation subset": score(model_fn, ds.X_val, ds.Y_val),
-        "held-out minus validation": score(model_fn, ds.X_test[n_val:], ds.Y_test[n_val:]),
-        "full held-out": score(model_fn, ds.X_test, ds.Y_test),
-        "most-popular (full held-out)": score(pop_fn, ds.X_test, ds.Y_test),
-    }
+    results = {"best_epoch": checkpoint["epoch"]}
+    if cfg.data.validation == "held_out_prefix":
+        # v1 style: validation is the first n_val held-out windows, so also report
+        # the held-out windows early stopping never saw
+        n_val = len(ds.X_val)
+        results["validation subset"] = score(model_fn, ds.X_val, ds.Y_val)
+        results["held-out minus validation"] = score(model_fn, ds.X_test[n_val:], ds.Y_test[n_val:])
+    else:
+        results["validation"] = score(model_fn, ds.X_val, ds.Y_val)  # separate playlists
+    results["full held-out"] = score(model_fn, ds.X_test, ds.Y_test)
+    results["most-popular (full held-out)"] = score(pop_fn, ds.X_test, ds.Y_test)
 
     print(f"\n{run_dir}/best.pt (epoch {checkpoint['epoch']})")
     print(f"{'':30}{'n':>8}{'NDCG@10':>10}{'hits@1':>9}{'hits@5':>9}{'hits@10':>9}")
@@ -74,7 +76,7 @@ def evaluate(config_path):
                   + "".join(f"{r[f'hits@{k}']:>9.3f}" for k in KS))
     top = np.argsort(-pop)[:3]
     print("\nmost common next songs in training: "
-          + ", ".join(f"{ds.vocab[i]} ({counts[i]}x)" for i in top))
+          + ", ".join(f"{ds.names[i]} ({counts[i]}x)" for i in top))
     model_ndcg = results["full held-out"]["ndcg@10"]
     pop_ndcg = results["most-popular (full held-out)"]["ndcg@10"]
     print(f"model / most-popular NDCG@10: {model_ndcg / pop_ndcg:.1f}x")

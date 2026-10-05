@@ -25,7 +25,7 @@ from torch import nn
 from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.metrics import ndcg_at_k
-from recsys.model import SongRecommender, predict
+from recsys.model import build_model, predict
 
 
 def pick_device():
@@ -84,8 +84,7 @@ def train(config_path):
     torch.manual_seed(cfg.seed)  # weight init, dropout masks
     device = pick_device()
     ds = build_dataset(cfg)
-    model = SongRecommender(len(ds.vocab), cfg.model.embed_dim, cfg.data.context_length,
-                            cfg.model.num_layers, cfg.model.dropout).to(device)
+    model = build_model(cfg, len(ds.vocab)).to(device)
     optimizer = make_optimizer(model.parameters(), cfg.train)
     stopper = EarlyStopping(cfg.train.min_epochs, cfg.train.patience)
 

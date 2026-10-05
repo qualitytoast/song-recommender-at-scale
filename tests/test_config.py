@@ -8,14 +8,20 @@ folder = "data/mpd"
 max_playlists = 5000
 min_playlist_len = 4
 min_freq = 2
+song_key = "track_name"
+vocab_from = "all"
 context_length = 10
 test_split = 0.1
 val_size = 3000
+validation = "held_out_prefix"
+val_split = 0.0
 
 [model]
 embed_dim = 64
 num_layers = 2
 dropout = 0.1
+scale_attention = false
+init = "v1"
 
 [train]
 optimizer = "sgd"
@@ -46,4 +52,18 @@ def test_missing_key_raises(tmp_path):
     path = tmp_path / "c.toml"
     path.write_text(DATA)  # no seed
     with pytest.raises(TypeError):
+        load_config(path)
+
+
+def test_invalid_choice_raises(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("seed = 42\n" + DATA.replace('"track_name"', '"track-uri"'))
+    with pytest.raises(ValueError):
+        load_config(path)
+
+
+def test_val_split_must_match_validation_mode(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("seed = 42\n" + DATA.replace("val_split = 0.0", "val_split = 0.1"))
+    with pytest.raises(ValueError):  # held_out_prefix with a nonzero val_split
         load_config(path)

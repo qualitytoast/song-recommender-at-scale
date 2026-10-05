@@ -3,10 +3,11 @@
 Song IDs -> embeddings + position embeddings -> stacked Transformer blocks ->
 last position's vector -> a score for every song in the catalog.
 
-Matches v1's model.py layer for layer, including two things PyTorch would do
-differently by default:
-  - attention scores are NOT divided by sqrt(embed_dim) (v1 quirk, see SelfAttention)
-  - weights start from v1's init, not PyTorch's (see _init_like_v1)
+Matches v1's model.py layer for layer. Two v1 behaviours are settings, so
+v1-matching runs keep reproducing:
+  - scale_attention=False: attention scores are NOT divided by sqrt(embed_dim)
+    (v1 quirk, see SelfAttention)
+  - init="v1": weights start from v1's init, not PyTorch's (see _init_like_v1)
 """
 import math
 
@@ -17,8 +18,9 @@ from torch import nn
 class SelfAttention(nn.Module):
     """Single-head attention: each song pulls in a weighted blend of the others."""
 
-    def __init__(self, embed_dim):
+    def __init__(self, embed_dim, scale):
         super().__init__()
+        self.scale = scale
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
         self.value = nn.Linear(embed_dim, embed_dim)
@@ -27,8 +29,11 @@ class SelfAttention(nn.Module):
         q, k, v = self.query(x), self.key(x), self.value(x)
         # scores[b, i, j] = how relevant song j is to song i
         scores = q @ k.transpose(-2, -1)
-        # v1 quirk: no division by sqrt(embed_dim). v1 computed the scaled scores
-        # but passed the unscaled ones to softmax, so its attention was unscaled.
+        # Scores are sums of embed_dim products, so they grow with embed_dim;
+        # dividing by sqrt(embed_dim) keeps softmax from saturating. v1 computed
+        # the scaled scores but passed the unscaled ones to softmax (scale=False).
+        if self.scale:
+            scores = scores / math.sqrt(q.shape[-1])
         weights = scores.softmax(dim=-1)
         return weights @ v
 
@@ -36,9 +41,9 @@ class SelfAttention(nn.Module):
 class TransformerBlock(nn.Module):
     """Attention -> add & norm -> feed-forward -> add & norm (post-LN, like v1)."""
 
-    def __init__(self, embed_dim, dropout):
+    def __init__(self, embed_dim, dropout, scale_attention):
         super().__init__()
-        self.attention = SelfAttention(embed_dim)
+        self.attention = SelfAttention(embed_dim, scale_attention)
         self.norm1 = nn.LayerNorm(embed_dim)
         self.ffn = nn.Sequential(
             nn.Linear(embed_dim, 4 * embed_dim),
@@ -54,15 +59,20 @@ class TransformerBlock(nn.Module):
 
 
 class SongRecommender(nn.Module):
-    def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout):
+    def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
+                 scale_attention, init):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
         self.dropout = nn.Dropout(dropout)
-        self.blocks = nn.ModuleList(TransformerBlock(embed_dim, dropout) for _ in range(num_layers))
+        self.blocks = nn.ModuleList(TransformerBlock(embed_dim, dropout, scale_attention)
+                                    for _ in range(num_layers))
         # v1's "matchmaker": scores the final vector against every song (own weights, with bias)
         self.output = nn.Linear(embed_dim, vocab_size)
-        self._init_like_v1()
+        if init == "v1":
+            self._init_like_v1()
+        # init == "pytorch": keep PyTorch's defaults (embeddings std 1.0; linear
+        # weights and biases uniform in +-1/sqrt(inputs))
 
     def forward(self, ids):  # ids: (batch, seq) song IDs
         positions = torch.arange(ids.shape[1], device=ids.device)
@@ -84,6 +94,13 @@ class SongRecommender(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, std=math.sqrt(2.0 / m.in_features))
                 nn.init.zeros_(m.bias)
+
+
+def build_model(cfg, vocab_size):
+    """SongRecommender with the shape and settings from a Config."""
+    m = cfg.model
+    return SongRecommender(vocab_size, m.embed_dim, cfg.data.context_length, m.num_layers,
+                           m.dropout, m.scale_attention, m.init)
 
 
 @torch.no_grad()
