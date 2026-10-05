@@ -150,6 +150,7 @@ change only counts if it is clearly larger than the seed spread.
 | Config | Seeds | NDCG@10 mean (min–max) | Change vs previous | Hits@10 | Hits@1 | Best epochs | Params | Min / seed |
 |---|---|---|---|---|---|---|---|---|
 | `p2_base` | 3 | 0.0556 (0.0548–0.0570) | — | 8.3% (8.1%–8.6%) | 3.4% (3.4%–3.4%) | 5, 7, 8 | 4,038,011 | 3.1 |
+| `p2_artist` | 3 | 0.0657 (0.0646–0.0680) | +0.0101 | 10.6% (10.5%–10.9%) | 3.5% (3.3%–3.8%) | 3, 4, 4 | 4,999,035 | 4.0 |
 
 Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
 
@@ -157,3 +158,13 @@ Runs (table made with `python -m recsys.summarize <configs>`):
 - `p2_base` (2026-10-05, `3910bde`): `v1_fixed` with `min_epochs` 20 -> 10 and
   3 training seeds. Seed spread 0.0022 NDCG@10; `v1_fixed` (seed 42, 0.0539)
   sits just below it, so seed-to-seed noise is about +-0.002.
+- `p2_artist` (2026-10-05, `2081525`): + artist (7,508 artists; an input and
+  an output vector each, starting at zero; +961,024 params). Clear gain: every
+  seed improves over the same seed without artist (0.0548 -> 0.0680, 0.0570 ->
+  0.0646, 0.0550 -> 0.0647), about 5x the seed noise. The gain is in getting
+  the right song into the top 10 (Hits@10 8.3% -> 10.6%), not to #1 (Hits@1
+  3.4% -> 3.5%): artist tells the model which neighbourhood of songs comes
+  next, less which exact song. It also learns faster (validation NDCG@10 at
+  epoch 2 is 0.049-0.056 vs 0.019-0.029) and peaks earlier (epoch 3-4), then
+  overfits as before. ~30% slower per epoch: every batch builds all 30,587
+  candidates' artist vectors.
