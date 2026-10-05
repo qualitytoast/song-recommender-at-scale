@@ -17,6 +17,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buckets
+
 
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
     """Songs of the first max_playlists playlists, identified by song_key.
@@ -99,6 +101,18 @@ def song_feature_ids(vocab, tracks, field):
     return np.array([value_to_id[v] for v in values], dtype=np.int64), len(value_to_id)
 
 
+def duration_buckets(vocab, tracks, n_buckets):
+    """Each vocab song's length bucket, 0 (shortest) to n_buckets - 1 (longest).
+
+    Cut points are quantiles of the vocab songs' durations, so each bucket holds
+    about 1/n_buckets of the songs (here ~2:50, 3:10, ... 5:04 for 10 buckets).
+    Returns (ids, count) like song_feature_ids.
+    """
+    ms = np.array([tracks[key]["duration_ms"] for key in vocab], dtype=np.float64)
+    cuts = np.quantile(ms, np.linspace(0, 1, n_buckets + 1)[1:-1])
+    return np.searchsorted(cuts, ms, side="right").astype(np.int64), n_buckets
+
+
 @dataclass
 class Dataset:
     vocab: list           # vocab[i] is the key (title or URI) of song i
@@ -125,7 +139,8 @@ def build_dataset(cfg):
     else:
         X_val, Y_val = make_windows(val, track_to_id, d.context_length)
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
-                     "album": song_feature_ids(vocab, tracks, "album_uri")}
+                     "album": song_feature_ids(vocab, tracks, "album_uri"),
+                     "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
                    song_features=song_features,
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,

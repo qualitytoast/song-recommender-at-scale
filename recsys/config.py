@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass
 
 
-FEATURES = ("artist", "album")  # implemented so far
+FEATURES = ("artist", "album", "duration")  # implemented so far
 
 
 def _check_choice(name, value, choices):

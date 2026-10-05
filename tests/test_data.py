@@ -3,8 +3,8 @@ import json
 import numpy as np
 
 from recsys.config import Config, DataConfig, ModelConfig
-from recsys.data import (build_dataset, build_vocab, load_playlists, make_windows,
-                         song_feature_ids, split_playlists)
+from recsys.data import (build_dataset, build_vocab, duration_buckets, load_playlists,
+                         make_windows, song_feature_ids, split_playlists)
 
 
 def write_slice(folder, name, playlists):
@@ -14,7 +14,7 @@ def write_slice(folder, name, playlists):
         t = t if isinstance(t, tuple) else (t,)
         title, uri, artist = t + (f"spotify:track:{t[0]}", f"artist:{t[0]}")[len(t) - 1:]
         return {"track_name": title, "track_uri": uri, "artist_uri": artist,
-                "album_uri": f"album:{artist}"}  # one album per artist
+                "album_uri": f"album:{artist}", "duration_ms": 200_000}  # one album per artist
     body = {"playlists": [{"tracks": [track(t) for t in p]} for p in playlists]}
     (folder / name).write_text(json.dumps(body))
 
@@ -65,6 +65,17 @@ def test_song_feature_ids_follow_vocab_order_and_share_ids():
     ids, count = song_feature_ids(["s2", "s1", "s3"], tracks, "artist_uri")
     np.testing.assert_array_equal(ids, [0, 1, 1])  # B first seen -> 0; s1 and s3 share A
     assert count == 2
+
+
+def test_duration_buckets_split_songs_into_equal_groups():
+    tracks = {f"s{i}": {"duration_ms": ms} for i, ms in enumerate([400, 100, 300, 200])}
+    vocab = ["s0", "s1", "s2", "s3"]
+    # 2 buckets: cut at the median (250) -> short = {100, 200}, long = {300, 400}
+    ids, count = duration_buckets(vocab, tracks, 2)
+    np.testing.assert_array_equal(ids, [1, 0, 1, 0])
+    assert count == 2
+    # 4 buckets: cuts at 175, 250, 325 -> one song each, in order of length
+    np.testing.assert_array_equal(duration_buckets(vocab, tracks, 4)[0], [3, 0, 2, 1])
 
 
 # --- build_vocab ---
