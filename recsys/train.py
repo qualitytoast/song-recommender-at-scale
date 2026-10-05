@@ -39,6 +39,9 @@ def make_optimizer(params, t):
     if t.optimizer == "adam":
         # weight_decay is added to the gradient (L2), the same rule as SGD above, not AdamW
         return torch.optim.Adam(params, lr=t.lr, weight_decay=t.weight_decay)
+    if t.optimizer == "adamw":
+        # weight_decay applied separately: every weight shrinks by lr * weight_decay per step
+        return torch.optim.AdamW(params, lr=t.lr, weight_decay=t.weight_decay)
     raise ValueError(f"unknown optimizer {t.optimizer!r}")
 
 
