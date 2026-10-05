@@ -151,6 +151,7 @@ change only counts if it is clearly larger than the seed spread.
 |---|---|---|---|---|---|---|---|---|
 | `p2_base` | 3 | 0.0556 (0.0548–0.0570) | — | 8.3% (8.1%–8.6%) | 3.4% (3.4%–3.4%) | 5, 7, 8 | 4,038,011 | 3.1 |
 | `p2_artist` | 3 | 0.0657 (0.0646–0.0680) | +0.0101 | 10.6% (10.5%–10.9%) | 3.5% (3.3%–3.8%) | 3, 4, 4 | 4,999,035 | 4.0 |
+| `p2_album` | 3 | 0.0671 (0.0657–0.0697) | +0.0013 | 10.9% (10.7%–11.3%) | 3.5% (3.4%–3.6%) | 3, 4, 4 | 7,110,139 | 4.7 |
 
 Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
 
@@ -168,3 +169,12 @@ Runs (table made with `python -m recsys.summarize <configs>`):
   epoch 2 is 0.049-0.056 vs 0.019-0.029) and peaks earlier (epoch 3-4), then
   overfits as before. ~30% slower per epoch: every batch builds all 30,587
   candidates' artist vectors.
+- `p2_album` (2026-10-05, `11eb612`): + album (16,493 albums; +2,111,104
+  params, the most of any feature). Marginal gain: each seed is up by a
+  similar small amount over the same seed with artist only (+0.0017, +0.0012,
+  +0.0010 on held-out), but best validation NDCG@10 barely moves (0.0632 ->
+  0.0635, 0.0599 -> 0.0600, 0.0602 -> 0.0598). Most of what album says,
+  artist already said: albums mostly sit inside one artist. It learns faster
+  still (epoch-1 validation 0.037-0.048 vs 0.023-0.034) and overfits faster
+  (epoch-4 training loss ~4.8 vs ~5.2, validation declines sooner after the
+  peak), as expected from adding 2.1M per-album parameters.
