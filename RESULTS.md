@@ -153,6 +153,7 @@ change only counts if it is clearly larger than the seed spread.
 | `p2_artist` | 3 | 0.0657 (0.0646–0.0680) | +0.0101 | 10.6% (10.5%–10.9%) | 3.5% (3.3%–3.8%) | 3, 4, 4 | 4,999,035 | 4.0 |
 | `p2_album` | 3 | 0.0671 (0.0657–0.0697) | +0.0013 | 10.9% (10.7%–11.3%) | 3.5% (3.4%–3.6%) | 3, 4, 4 | 7,110,139 | 4.7 |
 | `p2_duration` | 3 | 0.0674 (0.0667–0.0685) | +0.0003 | 11.0% (10.9%–11.2%) | 3.5% (3.3%–3.7%) | 3, 3, 4 | 7,111,419 | 5.1 |
+| `p2_name` | 3 | 0.0669 (0.0652–0.0685) | -0.0004 | 10.9% (10.5%–11.2%) | 3.5% (3.3%–3.7%) | 3, 3, 4 | 7,149,499 | 5.3 |
 
 Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
 
@@ -185,3 +186,30 @@ Runs (table made with `python -m recsys.summarize <configs>`):
   seed goes down and two go up (-0.0012, +0.0010, +0.0010), well inside seed
   noise. A song's length says little about what comes next once artist and
   album are known.
+- `p2_name` (2026-10-05, `10846ba`): + playlist name: words used in at least
+  2 training playlist names (594 words, e.g. "wedding", "gym", "rap",
+  "summer"), averaged into one vector added at every position; 80% of windows
+  have at least one known word (+38,080 params). No gain: against the same
+  seed with duration, 0.0000, +0.0002, -0.0015. The model does use the name
+  (its word vectors end up larger than its artist vectors, 0.70 vs 0.55), but
+  what it learns doesn't transfer: hiding the names from the trained model
+  *raises* held-out NDCG@10 on every seed (0.0685 -> 0.0694, 0.0670 -> 0.0680,
+  0.0652 -> 0.0664). Likely cause: with 4,000 training playlists, many name
+  words belong to only a few playlists, so a name works like a playlist ID
+  the model memorizes songs against. Ten songs of context already say most of
+  what a name like "rap" would.
+
+**Phase 2, steps 1-4 summary.** What each feature added, on top of the ones
+before it (3 seeds each; seed noise about +-0.002):
+
+| Feature | NDCG@10 change | Verdict |
+|---|---|---|
+| artist | +0.0101 (0.0556 -> 0.0657) | clear gain, every seed |
+| album | +0.0013 | marginal: every seed up a little on held-out, validation flat |
+| duration | +0.0003 | none |
+| playlist name | -0.0004 | none; learned but doesn't generalize (see above) |
+
+Artist accounts for nearly all of the 0.0556 -> 0.0669 gain. Album, duration
+and name together add about +0.001 and 2.15M parameters. Every run still
+peaks by epoch 3-4 and then overfits; none of the features changes that.
+Genre (step 5) is still to come.
