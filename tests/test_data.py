@@ -13,7 +13,8 @@ def write_slice(folder, name, playlists):
     def track(t):
         t = t if isinstance(t, tuple) else (t,)
         title, uri, artist = t + (f"spotify:track:{t[0]}", f"artist:{t[0]}")[len(t) - 1:]
-        return {"track_name": title, "track_uri": uri, "artist_uri": artist}
+        return {"track_name": title, "track_uri": uri, "artist_uri": artist,
+                "album_uri": f"album:{artist}"}  # one album per artist
     body = {"playlists": [{"tracks": [track(t) for t in p]} for p in playlists]}
     (folder / name).write_text(json.dumps(body))
 
@@ -180,6 +181,19 @@ def test_separate_validation_comes_from_its_own_playlists(tmp_path):
     ids = {t: i for i, t in enumerate(ds.vocab)}
     np.testing.assert_array_equal(ds.X_val, make_windows(val, ids, 2)[0])
     np.testing.assert_array_equal(ds.X_test, make_windows(held_out, ids, 2)[0])
+
+
+def test_song_features_map_each_vocab_song_to_its_artist_and_album(tmp_path):
+    write_tiny_mpd(tmp_path)
+    ds = build_dataset(tiny_config(tmp_path, "train", "separate_playlists", 0.1))
+    _, tracks = load(tmp_path, max_playlists=20)
+    for field, name in [("artist_uri", "artist"), ("album_uri", "album")]:
+        ids, count = ds.song_features[name]
+        assert len(ids) == len(ds.vocab) and count == len({tracks[k][field] for k in ds.vocab})
+        for i in range(len(ds.vocab)):  # same ID <=> same value
+            for j in range(len(ds.vocab)):
+                same_value = tracks[ds.vocab[i]][field] == tracks[ds.vocab[j]][field]
+                assert (ids[i] == ids[j]) == same_value
 
 
 def test_held_out_prefix_validation_is_first_held_out_windows(tmp_path):

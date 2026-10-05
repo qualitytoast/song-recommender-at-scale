@@ -103,7 +103,7 @@ def song_feature_ids(vocab, tracks, field):
 class Dataset:
     vocab: list           # vocab[i] is the key (title or URI) of song i
     names: list           # names[i] is the track name of song i, for display
-    song_features: dict   # {"artist": (ids, count)}: per-song feature IDs, see song_feature_ids
+    song_features: dict   # {"artist": (ids, count), ...}: per-song feature IDs, see song_feature_ids
     X_train: np.ndarray   # (n, context_length) song IDs
     Y_train: np.ndarray   # (n,) next-song IDs
     X_val: np.ndarray     # used for early stopping
@@ -124,7 +124,8 @@ def build_dataset(cfg):
         X_val, Y_val = X_test[:d.val_size], Y_test[:d.val_size]
     else:
         X_val, Y_val = make_windows(val, track_to_id, d.context_length)
-    song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri")}
+    song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
+                     "album": song_feature_ids(vocab, tracks, "album_uri")}
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
                    song_features=song_features,
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
