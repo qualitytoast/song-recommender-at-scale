@@ -154,6 +154,7 @@ change only counts if it is clearly larger than the seed spread.
 | `p2_album` | 3 | 0.0671 (0.0657–0.0697) | +0.0013 | 10.9% (10.7%–11.3%) | 3.5% (3.4%–3.6%) | 3, 4, 4 | 7,110,139 | 4.7 |
 | `p2_duration` | 3 | 0.0674 (0.0667–0.0685) | +0.0003 | 11.0% (10.9%–11.2%) | 3.5% (3.3%–3.7%) | 3, 3, 4 | 7,111,419 | 5.1 |
 | `p2_name` | 3 | 0.0669 (0.0652–0.0685) | -0.0004 | 10.9% (10.5%–11.2%) | 3.5% (3.3%–3.7%) | 3, 3, 4 | 7,149,499 | 5.3 |
+| `p2_genre` | 3 | 0.0692 (0.0669–0.0715) | +0.0022 | 11.6% (11.4%–11.8%) | 3.4% (3.1%–3.7%) | 3, 3, 2 | 7,202,491 | 9.7 |
 
 Most-popular baseline on the same held-out windows: NDCG@10 0.0068, Hits@10 1.5%.
 
@@ -213,3 +214,37 @@ Artist accounts for nearly all of the 0.0556 -> 0.0669 gain. Album, duration
 and name together add about +0.001 and 2.15M parameters. Every run still
 peaks by epoch 3-4 and then overfits; none of the features changes that.
 Genre (step 5) is still to come.
+- `p2_genre` (2026-10-06, `072b0c4`): + genre, from MusicBrainz (genre and tag
+  data CC BY-NC-SA, credit MusicBrainz). Genres listed for at least 5 vocab
+  artists (413 of 781), then each artist's top 5 by votes; a song's genre
+  vector is the average over its artist's genres, on the input and output
+  side, starting at zero; 14.9% of songs have no genre (+52,992 params).
+  Small but consistent gain: against the same seed with playlist name,
+  held-out NDCG@10 +0.0030, -0.0001, +0.0039; validation NDCG@10 up on every
+  seed (+0.0023, +0.0022, +0.0019) and Hits@10 up on every seed (11.1% ->
+  11.8%, 11.2% -> 11.4%, 10.5% -> 11.7%). The model leans on genre heavily:
+  hiding every song's genres from the trained model roughly halves held-out
+  NDCG@10 (0.0715 -> 0.0373, 0.0669 -> 0.0349, 0.0691 -> 0.0376). That shows how
+  much the trained model depends on genre, not how much genre adds (the
+  training-time comparison above does that). Cost: ~21 s per epoch vs ~16 s,
+  from averaging genre vectors for all 30,587 candidates every batch (seed 1
+  ran at ~38 s per epoch, most likely other load on the machine).
+
+**Phase 2 final: what each feature added**, on top of the ones before it
+(3 paired seeds each; seed-to-seed noise about +-0.002):
+
+| Feature added | NDCG@10 | Change | Hits@10 | Verdict |
+|---|---|---|---|---|
+| (none, `p2_base`) | 0.0556 | — | 8.3% | |
+| artist | 0.0657 | **+0.0101** | 10.6% | clear gain, every seed |
+| album | 0.0671 | +0.0013 | 10.9% | marginal: held-out up a little on every seed, validation flat |
+| duration | 0.0674 | +0.0003 | 11.0% | none |
+| playlist name | 0.0669 | -0.0004 | 10.9% | none; learned but doesn't generalize |
+| genre | 0.0692 | **+0.0022** | 11.6% | small, consistent gain: validation and Hits@10 up on every seed |
+
+All five features together: 0.0556 -> 0.0692 NDCG@10 (+24%), Hits@10 8.3% ->
+11.6%, 10.2x the most-popular baseline, for +3.16M parameters (+78%). Artist
+and genre, the two features shared across many songs, give nearly all of it;
+both mostly help get the right song into the top 10 rather than to #1 (Hits@1
+stays at 3.4-3.5%). Every run still peaks by epoch 2-4 and then overfits;
+no feature changed that, which points to more training data as the next lever.
