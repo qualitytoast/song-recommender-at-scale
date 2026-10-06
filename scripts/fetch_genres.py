@@ -17,7 +17,14 @@ Requests, per batch of up to 100 artists:
   1. one URL lookup with every artist's Spotify URL (inc=artist-rels), which
      maps Spotify artists to MusicBrainz artist IDs (MBIDs); unmatched URLs are
      left out of the response
-  2. one artist lookup per matched MBID (inc=genres)
+  2. one artist *search* for all matched MBIDs at once (arid:<id> OR arid:<id> ...)
+Search returns every user tag, not just genres, so an artist's genres are its
+tags that are on MusicBrainz's official genre list with positive votes. That
+reproduces the per-artist lookup with inc=genres exactly (checked on 127
+artists, 2026-10-06). The genre list itself (~2,200 names) is fetched once and
+saved next to the output. An MBID missing from the search index falls back to
+a per-artist lookup.
+
 MusicBrainz allows one request per second per IP and answers 503 when that is
 exceeded, so requests are spaced 1 second apart and 503s are retried with
 increasing waits.
@@ -43,7 +50,9 @@ from recsys.data import build_dataset  # noqa: E402
 API = "https://musicbrainz.org/ws/2/"
 USER_AGENT = "song-recommender-at-scale/0.1 ( nathan.m.hung@gmail.com )"  # MusicBrainz requires contact info
 OUT = ROOT / "data" / "genres" / "musicbrainz_artists.jsonl"
+GENRE_LIST = ROOT / "data" / "genres" / "musicbrainz_genre_names.json"
 BATCH = 100        # most Spotify URLs MusicBrainz accepts in one URL lookup
+SEARCH_BATCH = 100  # most results one search returns
 GAP_SECONDS = 1.0  # wait between requests
 RETRIES = 6        # on 503 or a network error, wait 2, 4, 8, ... 64 seconds and try again
 
@@ -106,9 +115,10 @@ def merge_genres(genre_lists):
     return [{"name": n, "count": c} for n, c in sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
-def read_rows(path=OUT):
-    """Every complete line of the output file. A line cut off by the program being
-    killed mid-write is skipped, so that artist is simply fetched again."""
+def read_rows(path=None):
+    """Every complete line of the output file (default OUT). A line cut off by the
+    program being killed mid-write is skipped, so that artist is simply fetched again."""
+    path = path or OUT  # looked up at call time, so tests can point OUT elsewhere
     if not path.exists():
         return []
     rows = []
@@ -121,13 +131,52 @@ def read_rows(path=OUT):
     return rows
 
 
+def official_genres():
+    """Names of every MusicBrainz genre. Fetched once (100 per request), then read from GENRE_LIST."""
+    if GENRE_LIST.exists():
+        return set(json.loads(GENRE_LIST.read_text()))
+    names, total = [], None
+    while total is None or len(names) < total:
+        page = get("genre/all", {"limit": 100, "offset": len(names)})
+        total = page["genre-count"]
+        names += [g["name"] for g in page["genres"]]
+    GENRE_LIST.parent.mkdir(parents=True, exist_ok=True)
+    GENRE_LIST.write_text(json.dumps(sorted(names)))
+    return set(names)
+
+
+def genres_from_tags(tags, genre_names):
+    """An artist's genres: its tags that are official genre names with positive votes, most votes first."""
+    return merge_genres([[t for t in tags if t["name"] in genre_names and t["count"] > 0]])
+
+
+def search_genres(mbids, genre_names):
+    """{mbid: genres} for up to SEARCH_BATCH MBIDs, in one search request."""
+    found = get("artist", {"query": " OR ".join(f"arid:{m}" for m in mbids), "limit": SEARCH_BATCH})
+    return {a["id"]: genres_from_tags(a.get("tags", []), genre_names) for a in (found or {}).get("artists", [])}
+
+
+def genres_by_mbid(mbids, genre_names):
+    """{mbid: genres} for any number of MBIDs: searched in groups; any the search
+    index doesn't return are looked up one at a time with inc=genres."""
+    out = {}
+    for i in range(0, len(mbids), SEARCH_BATCH):
+        out |= search_genres(mbids[i:i + SEARCH_BATCH], genre_names)
+    for mbid in mbids:
+        if mbid not in out:
+            artist = get(f"artist/{mbid}", {"inc": "genres"})
+            out[mbid] = merge_genres([artist.get("genres", [])]) if artist else []
+    return out
+
+
 def done_artists():
     return {r["artist_uri"] for r in read_rows()}
 
 
-def open_for_append(path=OUT):
-    """Open the output file for appending, first ending any cut-off last line,
-    so the next line written starts on a line of its own."""
+def open_for_append(path=None):
+    """Open the output file (default OUT) for appending, first ending any cut-off
+    last line, so the next line written starts on a line of its own."""
+    path = path or OUT  # looked up at call time, so tests can point OUT elsewhere
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
         with open(path, "a", encoding="utf-8") as f:
@@ -135,20 +184,20 @@ def open_for_append(path=OUT):
     return open(path, "a", encoding="utf-8")
 
 
-def fetch(artists):
-    """artists: [(uri, name)]. Appends one line per artist to OUT as each finishes."""
+def fetch(artists, genre_names):
+    """artists: [(uri, name)]. Appends one line per artist to OUT after each batch of BATCH."""
     with open_for_append() as out:
         for start in range(0, len(artists), BATCH):
             batch = artists[start:start + BATCH]
             matches = mbids_by_spotify_id(get("url", {"resource": [spotify_url(u) for u, _ in batch],
                                                       "inc": "artist-rels"}))
+            batch_mbids = list(dict.fromkeys(m for ids in matches.values() for m in ids))
+            genres = genres_by_mbid(batch_mbids, genre_names)
             for uri, name in batch:
                 mbids = matches.get(uri.rsplit(":", 1)[-1], [])
-                lookups = [get(f"artist/{mbid}", {"inc": "genres"}) for mbid in mbids]
-                genres = merge_genres([a.get("genres", []) for a in lookups if a])
-                out.write(json.dumps({"artist_uri": uri, "artist_name": name,
-                                      "mbids": mbids, "genres": genres}) + "\n")
-                out.flush()
+                out.write(json.dumps({"artist_uri": uri, "artist_name": name, "mbids": mbids,
+                                      "genres": merge_genres([genres[m] for m in mbids])}) + "\n")
+            out.flush()
             print(f"{start + len(batch):,}/{len(artists):,} artists done", flush=True)
 
 
@@ -179,7 +228,7 @@ if __name__ == "__main__":
         todo = random.Random(args.sample_seed).sample(todo, min(args.sample, len(todo)))
     print(f"{len(ds.artist_uris):,} artists in the vocab, {len(done):,} already done, fetching {len(todo):,}")
     try:
-        fetch(todo)
+        fetch(todo, official_genres())
     except KeyboardInterrupt:  # Ctrl-C: every finished artist is already saved
         print(f"\nStopped. {len(done_artists()):,} of {len(ds.artist_uris):,} artists saved; "
               f"run the same command again to continue.")
