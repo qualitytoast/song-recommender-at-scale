@@ -150,6 +150,8 @@ class Dataset:
     vocab: list           # vocab[i] is the key (title or URI) of song i
     names: list           # names[i] is the track name of song i, for display
     song_features: dict   # {"artist": (ids, count), ...}: per-song feature IDs, see song_feature_ids
+    artist_uris: list     # artist_uris[a] is the Spotify URI of artist ID a
+    artist_names: list    # artist_names[a] is its name, for display
     X_train: np.ndarray   # (n, context_length) song IDs
     Y_train: np.ndarray   # (n,) next-song IDs
     X_val: np.ndarray     # used for early stopping
@@ -190,8 +192,11 @@ def build_dataset(cfg):
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
                      "album": song_feature_ids(vocab, tracks, "album_uri"),
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
+    artist_uris = list(dict.fromkeys(tracks[k]["artist_uri"] for k in vocab))  # same order as artist IDs
+    artist_name = {tracks[k]["artist_uri"]: tracks[k]["artist_name"] for k in vocab}
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
-                   song_features=song_features,
+                   song_features=song_features, artist_uris=artist_uris,
+                   artist_names=[artist_name[u] for u in artist_uris],
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test,
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test)

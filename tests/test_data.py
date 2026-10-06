@@ -14,7 +14,7 @@ def write_slice(folder, name, playlists, names=None):
     def track(t):
         t = t if isinstance(t, tuple) else (t,)
         title, uri, artist = t + (f"spotify:track:{t[0]}", f"artist:{t[0]}")[len(t) - 1:]
-        return {"track_name": title, "track_uri": uri, "artist_uri": artist,
+        return {"track_name": title, "track_uri": uri, "artist_uri": artist, "artist_name": artist,
                 "album_uri": f"album:{artist}", "duration_ms": 200_000}  # one album per artist
     names = names or [f"playlist {i}" for i in range(len(playlists))]
     body = {"playlists": [{"name": n, "tracks": [track(t) for t in p]} for n, p in zip(names, playlists)]}
