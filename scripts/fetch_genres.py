@@ -23,6 +23,7 @@ exceeded, so requests are spaced 1 second apart and 503s are retried with
 increasing waits.
 """
 import argparse
+import http.client
 import json
 import random
 import ssl
@@ -44,11 +45,16 @@ USER_AGENT = "song-recommender-at-scale/0.1 ( nathan.m.hung@gmail.com )"  # Musi
 OUT = ROOT / "data" / "genres" / "musicbrainz_artists.jsonl"
 BATCH = 100        # most Spotify URLs MusicBrainz accepts in one URL lookup
 GAP_SECONDS = 1.0  # wait between requests
-RETRIES = 6        # on 503 or a network error, wait 2, 4, 8, ... seconds and try again
+RETRIES = 6        # on 503 or a network error, wait 2, 4, 8, ... 64 seconds and try again
 
 # python.org's macOS Python ships without trusted certificates; use the system's bundle.
 SSL_CONTEXT = ssl.create_default_context(cafile="/etc/ssl/cert.pem")
 _last_request_end = 0.0
+
+# Connection problems worth retrying. URLError covers failures while connecting; a
+# timeout or dropped connection while waiting for the reply (e.g. after the laptop
+# wakes from sleep) raises one of the others instead.
+NETWORK_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException)
 
 
 def get(path, params):
@@ -67,10 +73,10 @@ def get(path, params):
             if e.code != 503 or attempt == RETRIES:
                 raise
             reason = "503 (rate limited)"
-        except urllib.error.URLError as e:
+        except NETWORK_ERRORS as e:
             if attempt == RETRIES:
                 raise
-            reason = f"network error ({e.reason})"
+            reason = f"network error ({e!r})"
         finally:
             _last_request_end = time.monotonic()
         wait = 2 ** (attempt + 1)
@@ -100,16 +106,38 @@ def merge_genres(genre_lists):
     return [{"name": n, "count": c} for n, c in sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
+def read_rows(path=OUT):
+    """Every complete line of the output file. A line cut off by the program being
+    killed mid-write is skipped, so that artist is simply fetched again."""
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            if line.strip():
+                print(f"  skipping an incomplete line in {path.name}; that artist will be fetched again")
+    return rows
+
+
 def done_artists():
-    if not OUT.exists():
-        return set()
-    return {json.loads(line)["artist_uri"] for line in OUT.read_text().splitlines() if line.strip()}
+    return {r["artist_uri"] for r in read_rows()}
+
+
+def open_for_append(path=OUT):
+    """Open the output file for appending, first ending any cut-off last line,
+    so the next line written starts on a line of its own."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\n")
+    return open(path, "a", encoding="utf-8")
 
 
 def fetch(artists):
     """artists: [(uri, name)]. Appends one line per artist to OUT as each finishes."""
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUT, "a", encoding="utf-8") as out:
+    with open_for_append() as out:
         for start in range(0, len(artists), BATCH):
             batch = artists[start:start + BATCH]
             matches = mbids_by_spotify_id(get("url", {"resource": [spotify_url(u) for u, _ in batch],
@@ -126,8 +154,7 @@ def fetch(artists):
 
 def report(uris):
     """Match and genre coverage for the given artists, from OUT."""
-    rows = [json.loads(line) for line in OUT.read_text().splitlines() if line.strip()]
-    rows = [r for r in rows if r["artist_uri"] in uris]
+    rows = [r for r in read_rows() if r["artist_uri"] in uris]
     matched = [r for r in rows if r["mbids"]]
     with_genre = [r for r in matched if r["genres"]]
     counts = sorted(len(r["genres"]) for r in with_genre)
@@ -151,5 +178,10 @@ if __name__ == "__main__":
     if args.sample:
         todo = random.Random(args.sample_seed).sample(todo, min(args.sample, len(todo)))
     print(f"{len(ds.artist_uris):,} artists in the vocab, {len(done):,} already done, fetching {len(todo):,}")
-    fetch(todo)
+    try:
+        fetch(todo)
+    except KeyboardInterrupt:  # Ctrl-C: every finished artist is already saved
+        print(f"\nStopped. {len(done_artists()):,} of {len(ds.artist_uris):,} artists saved; "
+              f"run the same command again to continue.")
+        sys.exit(130)
     report({u for u, _ in todo})
