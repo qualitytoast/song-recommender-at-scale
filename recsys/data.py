@@ -20,6 +20,8 @@ import numpy as np
 
 DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buckets
 NAME_WORD_MIN_COUNT = 2  # playlist-name words used in fewer training names are dropped
+GENRE_MIN_ARTISTS = 5    # genres listed for fewer vocab artists are dropped
+GENRES_PER_ARTIST = 5    # an artist keeps at most this many genres (most votes first)
 
 
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
@@ -142,6 +144,36 @@ def encode_names(names, word_to_id):
     out = np.zeros((len(ids), max(1, max(map(len, ids), default=0))), dtype=np.int64)
     for row, word_ids in enumerate(ids):
         out[row, :len(word_ids)] = word_ids
+    return out
+
+
+def load_artist_genres(path):
+    """{artist_uri: [genre names, most votes first]} from a genres JSONL file
+    (written by scripts/fetch_genres.py or scripts/genres_from_dump.py).
+    Ties in votes are in alphabetical order, as the scripts write them."""
+    with open(path, encoding="utf-8") as f:
+        rows = [json.loads(line) for line in f if line.strip()]
+    return {r["artist_uri"]: [g["name"] for g in r["genres"]] for r in rows}
+
+
+def build_genre_vocab(artist_genres, artist_uris, min_artists):
+    """Genres listed for at least min_artists of the given artists, most widely
+    used first (ties alphabetical). Genre i gets ID i + 1: ID 0 is padding."""
+    counts = Counter(g for uri in artist_uris for g in artist_genres.get(uri, []))
+    return sorted((g for g, n in counts.items() if n >= min_artists), key=lambda g: (-counts[g], g))
+
+
+def artist_genre_ids(artist_genres, artist_uris, genre_to_id, per_artist):
+    """(len(artist_uris), per_artist) array of genre IDs per artist, padded with 0.
+
+    Rare genres (not in genre_to_id) are dropped first, then each artist keeps
+    its per_artist most-voted remaining genres, so a common genre is never
+    crowded out by rare ones. Artists with no genres left are all padding.
+    """
+    out = np.zeros((len(artist_uris), per_artist), dtype=np.int64)
+    for row, uri in enumerate(artist_uris):
+        kept = [genre_to_id[g] for g in artist_genres.get(uri, []) if g in genre_to_id][:per_artist]
+        out[row, :len(kept)] = kept
     return out
 
 

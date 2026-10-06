@@ -3,9 +3,10 @@ import json
 import numpy as np
 
 from recsys.config import Config, DataConfig, ModelConfig
-from recsys.data import (build_dataset, build_vocab, build_word_vocab, duration_buckets,
-                         encode_names, load_playlists, make_windows, name_words,
-                         song_feature_ids, split_playlists)
+from recsys.data import (artist_genre_ids, build_dataset, build_genre_vocab, build_vocab,
+                         build_word_vocab, duration_buckets, encode_names, load_artist_genres,
+                         load_playlists, make_windows, name_words, song_feature_ids,
+                         split_playlists)
 
 
 def write_slice(folder, name, playlists, names=None):
@@ -258,3 +259,39 @@ def test_each_window_gets_its_own_playlists_name(tmp_path):
                      if any([ids.get(t) for t in p[i:i + 3]] == run for i in range(len(p) - 2))]
             words = {ds.name_words[w - 1] for w in n if w}
             assert any(words <= set(name_words(names[k])) and words for k in homes)
+
+
+# --- genres ---
+
+ARTIST_GENRES = {  # most votes first, as the fetch scripts write them
+    "A": ["rare", "rock", "pop", "indie"],
+    "B": ["rock", "pop"],
+    "C": ["rock", "folk"],
+    "D": ["rare2"],
+    # "E" was never matched
+}
+
+
+def test_genre_vocab_keeps_genres_used_by_enough_artists_most_used_first():
+    # rock: 3 artists, pop: 2, everything else: 1
+    assert build_genre_vocab(ARTIST_GENRES, ["A", "B", "C", "D", "E"], min_artists=2) == ["rock", "pop"]
+
+
+def test_genre_vocab_only_counts_the_given_artists():
+    assert build_genre_vocab(ARTIST_GENRES, ["A", "B"], min_artists=2) == ["pop", "rock"]  # tie: alphabetical
+
+
+def test_rare_genres_dropped_before_the_cap():
+    ids = artist_genre_ids(ARTIST_GENRES, ["A", "B", "C", "D", "E"], {"rock": 1, "pop": 2, "indie": 3},
+                           per_artist=2)
+    # A: "rare" is dropped first, so A keeps rock and pop (capping first would keep only rock).
+    # D lost its only genre to the cutoff and E was never matched: both all padding.
+    np.testing.assert_array_equal(ids, [[1, 2], [1, 2], [1, 0], [0, 0], [0, 0]])
+
+
+def test_load_artist_genres_keeps_vote_order(tmp_path):
+    path = tmp_path / "g.jsonl"
+    path.write_text('{"artist_uri": "A", "artist_name": "a", "mbids": ["m"], '
+                    '"genres": [{"name": "rock", "count": 5}, {"name": "pop", "count": 2}]}\n'
+                    '{"artist_uri": "E", "artist_name": "e", "mbids": [], "genres": []}\n')
+    assert load_artist_genres(path) == {"A": ["rock", "pop"], "E": []}
