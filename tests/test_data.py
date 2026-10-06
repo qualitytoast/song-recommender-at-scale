@@ -162,12 +162,12 @@ def test_split_does_not_modify_input():
 
 # --- build_dataset: how the settings are wired together ---
 
-def tiny_config(folder, vocab_from, validation, val_split, val_size=2):
+def tiny_config(folder, vocab_from, validation, val_split, val_size=2, song_key="track_name", features=()):
     data = DataConfig(folder=str(folder), max_playlists=20, min_playlist_len=4, min_freq=2,
-                      song_key="track_name", vocab_from=vocab_from, context_length=2,
+                      song_key=song_key, vocab_from=vocab_from, context_length=2,
                       test_split=0.1, validation=validation, val_size=val_size, val_split=val_split)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True,
-                        init="pytorch", features=[])
+                        init="pytorch", features=list(features))
     return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
 
 
@@ -295,3 +295,24 @@ def test_load_artist_genres_keeps_vote_order(tmp_path):
                     '"genres": [{"name": "rock", "count": 5}, {"name": "pop", "count": 2}]}\n'
                     '{"artist_uri": "E", "artist_name": "e", "mbids": [], "genres": []}\n')
     assert load_artist_genres(path) == {"A": ["rock", "pop"], "E": []}
+
+
+def test_each_song_gets_its_artists_genres(tmp_path, monkeypatch):
+    write_tiny_mpd(tmp_path)  # songs s0..s9, artist of sJ is "artist:sJ"
+    # Every artist is "rock"; artists of s0-s5 are also "pop" (6 artists); s0's also "rare" (1 artist).
+    genres_file = tmp_path / "genres.jsonl"
+    with open(genres_file, "w") as f:
+        for j in range(10):
+            names = (["rare"] if j == 0 else []) + (["pop"] if j < 6 else []) + ["rock"]
+            f.write(json.dumps({"artist_uri": f"artist:s{j}", "artist_name": f"s{j}", "mbids": ["m"],
+                                "genres": [{"name": n, "count": 1} for n in names]}) + "\n")
+    monkeypatch.setattr("recsys.data.GENRES_FILE", str(genres_file))
+    ds = build_dataset(tiny_config(tmp_path, "train", "separate_playlists", 0.1,
+                                   song_key="track_uri", features=["genre"]))
+    vocab_artists = {f"artist:{k.rsplit(':', 1)[-1]}" for k in ds.vocab}
+    expected_vocab = ["rock", "pop"] if sum(a in vocab_artists for a in [f"artist:s{j}" for j in range(6)]) >= 5 else ["rock"]
+    assert ds.genre_names == expected_vocab  # "rare" (1 artist) never makes it
+    for song, row in zip(ds.vocab, ds.song_genres):
+        j = int(song.rsplit("s", 1)[-1])
+        wanted = [g for g in (["pop"] if j < 6 else []) + ["rock"] if g in ds.genre_names]
+        assert [ds.genre_names[i - 1] for i in row if i] == wanted

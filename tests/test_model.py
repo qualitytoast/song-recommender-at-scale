@@ -167,3 +167,45 @@ def test_name_vector_is_mean_of_real_words_ignoring_padding():
     torch.testing.assert_close(out[0], out[1])  # [3] and [3, 3] average to word 3's vector
     torch.testing.assert_close(out[2], named_model(words=None).eval()(ids[:1])[0])  # no words: no change
     assert not torch.allclose(out[0], out[2])
+
+
+# --- genre ---
+
+SONG_GENRES = [[1, 2], [1, 0], [2, 0], [0, 0], [1, 2], [2, 0], [1, 0]]  # 7 songs, genres 1-2, 0 = padding
+
+
+def genre_model(seed=0, genres=True):
+    torch.manual_seed(seed)
+    return SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.1,
+                           scale_attention=True, init="pytorch", song_genres=SONG_GENRES if genres else None)
+
+
+def test_zero_init_genres_are_paired_with_no_genre_run():
+    ids = torch.tensor([[0, 3, 6]])
+    torch.testing.assert_close(genre_model().eval()(ids), genre_model(genres=False).eval()(ids))
+    genre_model(); a = torch.rand(3)
+    genre_model(genres=False); b = torch.rand(3)
+    torch.testing.assert_close(a, b)
+
+
+def test_output_genre_vectors_are_averaged_per_song():
+    model = genre_model().eval()
+    ids = torch.tensor([[0, 3, 6]])
+    before = model(ids)
+    with torch.no_grad():
+        model.output_genres.weight[1] = torch.tensor([1.0, 0.0, 0.0, 0.0])
+        model.output_genres.weight[2] = torch.tensor([0.0, 2.0, 0.0, 0.0])
+    shift = (model(ids) - before)[0]
+    h_dot = {1: shift[1], 2: shift[2]}  # songs with only genre 1 / only genre 2
+    torch.testing.assert_close(shift[0], (h_dot[1] + h_dot[2]) / 2)  # genres [1, 2]: the average
+    torch.testing.assert_close(shift[6], h_dot[1])                   # songs sharing a genre move together
+    assert shift[3] == 0                                             # no genres: unaffected
+
+
+def test_input_genre_vector_changes_predictions():
+    model = genre_model().eval()
+    ids = torch.tensor([[0, 3, 6]])
+    before = model(ids)
+    with torch.no_grad():
+        model.input_genres.weight[1] = torch.ones(4)
+    assert not torch.allclose(model(ids), before)

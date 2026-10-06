@@ -22,6 +22,7 @@ DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buc
 NAME_WORD_MIN_COUNT = 2  # playlist-name words used in fewer training names are dropped
 GENRE_MIN_ARTISTS = 5    # genres listed for fewer vocab artists are dropped
 GENRES_PER_ARTIST = 5    # an artist keeps at most this many genres (most votes first)
+GENRES_FILE = "data/genres/musicbrainz_artists.jsonl"  # from scripts/fetch_genres.py or genres_from_dump.py
 
 
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
@@ -194,6 +195,8 @@ class Dataset:
     N_train: np.ndarray   # (n, width) word IDs of each window's playlist name
     N_val: np.ndarray
     N_test: np.ndarray
+    genre_names: list = None      # genre_names[i] is the genre with ID i + 1 (0 is padding)
+    song_genres: np.ndarray = None  # (vocab_size, GENRES_PER_ARTIST) genre IDs of each song's artist
 
 
 def build_dataset(cfg):
@@ -226,12 +229,26 @@ def build_dataset(cfg):
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
     artist_uris = list(dict.fromkeys(tracks[k]["artist_uri"] for k in vocab))  # same order as artist IDs
     artist_name = {tracks[k]["artist_uri"]: tracks[k]["artist_name"] for k in vocab}
+
+    # Genres (only when used: needs the fetched genres file). Each song gets its artist's genres.
+    genre_names = song_genres = None
+    if "genre" in cfg.model.features:
+        artist_genres = load_artist_genres(GENRES_FILE)
+        missing = [u for u in artist_uris if u not in artist_genres]
+        if missing:
+            raise ValueError(f"{len(missing):,} vocab artists are missing from {GENRES_FILE}; fetch them first")
+        genre_names = build_genre_vocab(artist_genres, artist_uris, GENRE_MIN_ARTISTS)
+        per_artist = artist_genre_ids(artist_genres, artist_uris,
+                                      {g: i + 1 for i, g in enumerate(genre_names)}, GENRES_PER_ARTIST)
+        song_genres = per_artist[song_features["artist"][0]]
+
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
                    song_features=song_features, artist_uris=artist_uris,
                    artist_names=[artist_name[u] for u in artist_uris],
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test,
-                   name_words=words, N_train=N_train, N_val=N_val, N_test=N_test)
+                   name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
+                   genre_names=genre_names, song_genres=song_genres)
 
 
 if __name__ == "__main__":

@@ -67,10 +67,16 @@ class SongRecommender(nn.Module):
 
     name_word_count: if set, the playlist name is used too: a learned vector per
     name word, averaged over the name's words and added at every position.
+
+    song_genres: if set, (vocab_size, k) genre IDs of each song's artist (0 = padding).
+    Each genre gets a learned input and output vector; a song's genre vector is the
+    average over its genres, used on both sides like the song features. A song
+    whose artist has no genres gets a zero genre vector.
     """
 
     def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
-                 scale_attention, init, song_features=None, name_word_count=None):
+                 scale_attention, init, song_features=None, name_word_count=None,
+                 song_genres=None):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
@@ -104,29 +110,47 @@ class SongRecommender(nn.Module):
             # Row 0 is padding: it stays zero and is left out of the average.
             self.name_words = nn.Embedding.from_pretrained(
                 torch.zeros(name_word_count + 1, embed_dim), freeze=False, padding_idx=0)
+        self.input_genres = self.output_genres = None
+        if song_genres is not None:
+            genres = torch.as_tensor(song_genres, dtype=torch.long)
+            self.register_buffer("song_genres", genres)
+            count = int(genres.max()) + 1  # including padding row 0
+            self.input_genres = nn.Embedding.from_pretrained(
+                torch.zeros(count, embed_dim), freeze=False, padding_idx=0)
+            self.output_genres = nn.Embedding.from_pretrained(
+                torch.zeros(count, embed_dim), freeze=False, padding_idx=0)
 
     def song_feature_ids(self, name):
         return getattr(self, f"song_{name}")
+
+    @staticmethod
+    def mean_vector(table, ids):
+        """Average of table's vectors for ids along the last axis, leaving out padding (ID 0).
+        All padding gives a zero vector. ids (..., k) -> (..., embed_dim)."""
+        real = (ids != 0).sum(dim=-1, keepdim=True).clamp(min=1)
+        return table(ids).sum(dim=-2) / real
 
     def forward(self, ids, names=None):  # ids: (batch, seq) song IDs; names: (batch, width) word IDs
         positions = torch.arange(ids.shape[1], device=ids.device)
         x = self.song_embedding(ids) + self.position_embedding(positions)
         for name in self.feature_names:
             x = x + self.input_features[name](self.song_feature_ids(name)[ids])
+        if self.input_genres is not None:
+            x = x + self.mean_vector(self.input_genres, self.song_genres[ids])  # (batch, seq, embed_dim)
         if self.name_words is not None:
-            real_words = (names != 0).sum(dim=1, keepdim=True).clamp(min=1)  # padding left out
-            name_vector = self.name_words(names).sum(dim=1) / real_words     # (batch, embed_dim)
+            name_vector = self.mean_vector(self.name_words, names)  # (batch, embed_dim)
             x = x + name_vector[:, None, :]  # same name vector at every position
         x = self.dropout(x)
         for block in self.blocks:
             x = block(x)
         h = x[:, -1, :]
         logits = self.output(h)  # (batch, vocab_size): h . output row + bias, per song
-        if self.feature_names:
-            # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
-            candidates = sum(self.output_features[name](self.song_feature_ids(name))
-                             for name in self.feature_names)
-            logits = logits + h @ candidates.T
+        # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
+        candidates = [self.output_features[name](self.song_feature_ids(name)) for name in self.feature_names]
+        if self.output_genres is not None:
+            candidates.append(self.mean_vector(self.output_genres, self.song_genres))
+        if candidates:
+            logits = logits + h @ sum(candidates).T
         return logits
 
     def _init_like_v1(self):
@@ -147,10 +171,13 @@ class SongRecommender(nn.Module):
 def build_model(cfg, ds):
     """SongRecommender with the shape and settings from a Config, for Dataset ds."""
     m = cfg.model
-    song_features = {name: ds.song_features[name][0] for name in m.features if name != "playlist_name"}
+    song_features = {name: ds.song_features[name][0] for name in m.features
+                     if name not in ("playlist_name", "genre")}
     name_word_count = len(ds.name_words) if "playlist_name" in m.features else None
+    song_genres = ds.song_genres if "genre" in m.features else None
     return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.context_length, m.num_layers,
-                           m.dropout, m.scale_attention, m.init, song_features, name_word_count)
+                           m.dropout, m.scale_attention, m.init, song_features, name_word_count,
+                           song_genres)
 
 
 @torch.no_grad()
