@@ -338,6 +338,8 @@ still rank the full catalog. Tested at 5,000 playlists first, against
 |---|---|---|---|---|---|---|---|
 | `p2_causal` (full softmax) | 3 | 0.0739 (0.0736–0.0744) | — | 12.1% (12.0%–12.2%) | 3.8% (3.8%–3.8%) | 5, 5, 4 | 5.2 |
 | `p3_sampled` (1,024 random negatives) | 3 | 0.0623 (0.0608–0.0639) | -0.0116 | 10.4% (10.2%–10.5%) | 3.1% (2.9%–3.3%) | 5, 3, 3 | 3.6 |
+| `p3_neg8k` (8,192 uniform negatives) | 3 | 0.0706 (0.0703–0.0707) | -0.0033 | 11.6% (11.4%–11.8%) | 3.6% (3.5%–3.8%) | 5, 4, 4 | 6.2 |
+| `p3_popneg` (1,024 popularity-weighted negatives) | 3 | 0.0661 (0.0641–0.0675) | -0.0078 | 10.9% (10.9%–11.1%) | 3.3% (3.2%–3.4%) | 3, 5, 4 | 3.4 |
 
 - `p3_sampled` (2026-10-07, `e2e0597`): each batch's 320 predictions are
   scored against 1,344 candidates (its target slots + 1,024 uniformly random
@@ -354,3 +356,14 @@ still rank the full catalog. Tested at 5,000 playlists first, against
   size depends on the data; the GPU then had to report back to the CPU every
   step, and it ran slower than the full softmax (46 vs 28 ms per step). The
   fixed-size version runs at 11 ms per step.
+- `p3_neg8k` (2026-10-07, `81ea651`): 8,192 uniform random negatives instead
+  of 1,024. Better than `p3_sampled` on every seed: held-out NDCG@10 +0.0082,
+  +0.0067, +0.0099; validation +0.0101, +0.0077, +0.0087. Closes 72% of the
+  gap to the full softmax (-0.0033 left). ~18 ms per step vs 11; at this
+  catalog size about the cost of the full softmax, but it stays constant as
+  the catalog grows.
+- `p3_popneg` (2026-10-07, `81ea651`): 1,024 negatives drawn in proportion to
+  (how often the song is a training target)^0.75 instead of uniformly, with
+  logQ computed from those probabilities. Better than `p3_sampled` on every
+  seed: held-out +0.0020, +0.0035, +0.0060; validation +0.0038, +0.0060,
+  +0.0038. Smaller gain than 8x the negatives, at no extra cost.
