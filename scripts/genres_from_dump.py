@@ -8,6 +8,7 @@ plus <out>.meta.json recording which dump was used.
 
     python scripts/genres_from_dump.py                        # stream the latest dump
     python scripts/genres_from_dump.py --file artist.tar.xz   # use a downloaded copy
+    python scripts/genres_from_dump.py --store data/mpd_store # every artist in the MPD store
 
 How it works: artist.tar.xz (~1.7 GB compressed, ~18 GB of JSON) holds one
 artist per line, in the same format the API returns, including the artist's
@@ -39,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 
 from recsys.config import load_config  # noqa: E402
 from recsys.data import build_dataset  # noqa: E402
+from recsys.mpd_store import load_store  # noqa: E402
 from scripts.fetch_genres import SSL_CONTEXT, USER_AGENT, merge_genres  # noqa: E402
 
 DUMPS = "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps/"
@@ -117,13 +119,18 @@ def write_output(artists, found, out, meta):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="MusicBrainz genres for the vocab's artists, from the JSON dump.")
     ap.add_argument("--config", default=str(ROOT / "configs" / "p2_name.toml"))
+    ap.add_argument("--store", help="look up every artist in this MPD store instead of one config's vocab")
     ap.add_argument("--file", help="a downloaded artist.tar.xz (default: stream the latest dump)")
     ap.add_argument("--dump", help="dump folder to stream, e.g. 20261003-001001 (default: latest)")
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
 
-    ds = build_dataset(load_config(args.config))
-    artists = list(zip(ds.artist_uris, ds.artist_names))
+    if args.store:
+        store = load_store(args.store)
+        artists = list(zip(store.artist_uris, store.artist_names))
+    else:
+        ds = build_dataset(load_config(args.config))
+        artists = list(zip(ds.artist_uris, ds.artist_names))
     wanted = {uri.rsplit(":", 1)[-1] for uri, _ in artists}
     start = time.monotonic()
     if args.file:
