@@ -36,6 +36,8 @@ augment_mask = 0.0
 augment_crop = 0
 augment_reorder = 0.0
 objective = "last_position"
+softmax = "full"
+sampled_negatives = 0
 """
 
 

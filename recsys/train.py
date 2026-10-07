@@ -27,6 +27,7 @@ from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.augment import augment_plan, ignored_targets
 from recsys.metrics import ndcg_at_k
+from recsys.sampled import candidate_set, log_q, sampled_softmax_loss
 from recsys.model import build_model, predict
 
 
@@ -105,6 +106,11 @@ def train(config_path, train_seed):
     shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
     augment_gen = torch.Generator().manual_seed(train_seed + 1_000_000)  # augmentation draws
     n, batch_size = len(X_train), cfg.train.batch_size
+    vocab_size, sampled = len(ds.vocab), t.softmax == "sampled"
+    if sampled:  # how often each song is a training target, for the logQ correction
+        counts = torch.bincount(Y_train[Y_train != -100], minlength=vocab_size).float()
+        target_freq = counts / counts.sum()
+        negative_gen = torch.Generator().manual_seed(train_seed + 2_000_000)  # random candidates
     num_params = sum(p.numel() for p in model.parameters())
     print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train "
           f"{'chunks' if every_position else 'windows'} ({n_targets:,} targets) | "
@@ -129,10 +135,16 @@ def train(config_path, train_seed):
                 X, hidden = X.gather(1, reorder.to(device)), hidden.to(device)
                 if every_position:
                     Y = Y.masked_fill(ignored_targets(hidden, mid_shuffle.to(device)), -100)
-            logits = model(X, N_train[idx], hidden, all_positions=every_position)
-            # Mean over this batch's real targets; -100 marks chunk padding.
-            loss = nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), Y.reshape(-1),
-                                               ignore_index=-100)
+            if sampled:  # score only this batch's candidates (recsys/sampled.py)
+                candidates, real = candidate_set(Y, t.sampled_negatives, vocab_size, negative_gen)
+                logits = model(X, N_train[idx], hidden, all_positions=every_position, candidates=candidates)
+                correction = log_q(candidates, (Y != -100).sum(), target_freq, t.sampled_negatives, vocab_size)
+                loss = sampled_softmax_loss(logits, Y, candidates, real, correction)
+            else:
+                logits = model(X, N_train[idx], hidden, all_positions=every_position)
+                # Mean over this batch's real targets; -100 marks chunk padding.
+                loss = nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), Y.reshape(-1),
+                                                   ignore_index=-100)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

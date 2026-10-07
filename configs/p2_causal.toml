@@ -37,3 +37,5 @@ augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0
 augment_reorder = 0.0
 objective = "every_position"  # was "last_position": predict the next song at every position
+softmax = "full"          # training scores every song
+sampled_negatives = 0

@@ -139,12 +139,13 @@ class SongRecommender(nn.Module):
         real = (ids != 0).sum(dim=-1, keepdim=True).clamp(min=1)
         return table(ids).sum(dim=-2) / real
 
-    def forward(self, ids, names=None, hidden=None, all_positions=False):
+    def forward(self, ids, names=None, hidden=None, all_positions=False, candidates=None):
         """ids: (batch, seq) song IDs; names: (batch, width) name word IDs;
         hidden: optional (batch, seq) bool from augmentation, True where a song is
         hidden: its song vector is replaced by mask_vector and its features are dropped.
         Returns (batch, vocab) next-song scores from the last position, or with
-        all_positions (batch, seq, vocab) scores from every position."""
+        all_positions (batch, seq, vocab) scores from every position. With
+        candidates (1-D song IDs), only those songs are scored: (..., len(candidates))."""
         positions = torch.arange(ids.shape[1], device=ids.device)
         song = self.song_embedding(ids)
         features = torch.zeros_like(song)
@@ -163,6 +164,13 @@ class SongRecommender(nn.Module):
         for block in self.blocks:
             x = block(x)
         h = x if all_positions else x[:, -1, :]
+        if candidates is not None:  # sampled softmax: score only these songs
+            vectors = self.output.weight[candidates]
+            for name in self.feature_names:
+                vectors = vectors + self.output_features[name](self.song_feature_ids(name)[candidates])
+            if self.output_genres is not None:
+                vectors = vectors + self.mean_vector(self.output_genres, self.song_genres[candidates])
+            return h @ vectors.T + self.output.bias[candidates]
         logits = self.output(h)  # h . output row + bias, per song
         # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
         candidates = [self.output_features[name](self.song_feature_ids(name)) for name in self.feature_names]

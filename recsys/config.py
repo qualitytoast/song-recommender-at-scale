@@ -70,9 +70,13 @@ class TrainConfig:
     objective: str         # "last_position": one window -> its next song;
                            # "every_position": chunks of songs, the next song predicted at
                            # every position, with causal attention (see recsys.data.make_chunks)
+    softmax: str           # "full": training scores every song; "sampled": only the batch's
+                           # true next songs plus sampled_negatives random ones (see recsys.sampled)
+    sampled_negatives: int # random songs added to each batch's candidates (sampled softmax)
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
+        _check_choice("softmax", self.softmax, ("full", "sampled"))
 
     @property
     def augmenting(self):

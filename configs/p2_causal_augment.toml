@@ -37,3 +37,5 @@ augment_mask = 0.2       # was 0: each training song hidden with 20% chance
 augment_crop = 0         # off: causal training already sees every context length, and on short chunks crop hid whole chunks (48% of targets lost vs 19%)
 augment_reorder = 0.5    # was 0: half the chunks get a run of 3-5 songs shuffled
 objective = "every_position"  # was "last_position": predict the next song at every position
+softmax = "full"          # training scores every song
+sampled_negatives = 0
