@@ -400,3 +400,21 @@ bigger (more songs to rank against) and the held-out windows differ.
   159,081 windows against all 166,627 songs, chunked on the GPU.
 - Genres (dump, cutoff 5): 613 genres; 12,304 of 30,204 artists (40.7%) have
   genres, covering 90.1% of training targets; 25.7% of songs have none.
+
+**Retrieval recall@K (step 4)**: how often the true next song is in the
+retriever's top K, the most a second-stage ranker reranking those K could
+find. Full held-out windows, exact search over the whole catalog.
+
+| Config | Songs | top 10 | top 100 | top 500 | top 1,000 | top 2,000 | top 5,000 |
+|---|---|---|---|---|---|---|---|
+| `p3_neg8k_pop` seed 1 (5,000 playlists) | 30,587 | 11.6% | 34.2% | 61.3% | 72.5% | 82.3% | 91.8% |
+| `p3_50k` seeds 1 / 2 (50,000 playlists) | 166,627 | 17.4% | 42.9% | 66.5% / 66.3% | 75.4% / 75.2% | 82.7% / 82.6% | 89.8% / 89.7% |
+| most-popular (50,000 playlists) | 166,627 | 0.7% | 5.2% | 17.1% | 27.2% | 40.1% | 59.2% |
+
+- Top-500 recall rises with more data (61% -> 66%) despite a 5.4x bigger
+  catalog. Building top-500 shortlists for all 159,081 held-out windows takes
+  91 s (0.57 ms per window, exact scores + top-k on the GPU).
+- Misses aren't mainly rare songs. By how often the true song is a training
+  target: never (0.0% of windows), 1-5 times (5.9%, 27% in the top 500),
+  6-50 (25.6%, 50%), 51-500 (53.7%, 73%), over 500 (14.7%, 87%). Only 13% of
+  the windows the top 500 misses have a true song seen 5 times or fewer.
