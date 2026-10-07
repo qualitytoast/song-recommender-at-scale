@@ -465,6 +465,7 @@ reports back. With every row used it equals AdamW exactly (tested).
 | `p3_50k` (AdamW) | 0.1062 | 17.4% | 5.4% | 66.5% | 82.7% | 3.75 epochs | 39.5 min |
 | `p3_50k_lazy` (lazy AdamW) | **0.1130** | 17.6% | **6.4%** | 65.6% | 82.1% | 6.0 epochs | **23.7 min** |
 | `p3_50k_lazy_b128` (lazy AdamW, 128 chunks per batch) | **0.1199** | **18.3%** | **7.0%** | 65.9% | 82.3% | 6.0 epochs | **15.7 min** |
+| `p3_50k_lazy_b128_lr2` (128 chunks, learning rate 2e-3) | **0.1213** | **18.6%** | **7.0%** | 66.3% | 82.4% | 6.0 epochs | 16.0 min |
 
 - `p3_50k_lazy` (2026-10-07, `d1009b0`): +6.4% NDCG@10 and +1.0 point Hits@1,
   in 60% of the time (2.6x faster per epoch: ~43 s vs ~114 s per quarter
@@ -486,6 +487,13 @@ reports back. With every row used it equals AdamW exactly (tested).
   peak still comes at 6 epochs. The likely reason quality rose: each step's
   predictions also compete against the batch's other ~1,280 real next songs
   (in-batch negatives), harder wrong answers than random songs. One seed.
-- `p3_50k_lazy_b128_lr2` (128 chunks, learning rate 2e-3): stopped at check 12
-  (3.25 epochs) by choice, no result. It was learning faster early (validation
-  NDCG@10 0.1131 at check 12 vs 0.1084 for `p3_50k_lazy_b128`).
+- `p3_50k_lazy_b128_lr2` (2026-10-07, `cacb3bd`): 128 chunks and twice the
+  learning rate (2e-3; x sqrt(4) for 4x the batch). A first run was stopped at
+  check 12 by choice; this is a fresh rerun. Held-out NDCG@10 +0.0014 (+1.2%)
+  over `p3_50k_lazy_b128`, Hits@10 +0.3 points, top-500 recall +0.4. It climbs
+  faster early (validation NDCG@10 0.0610 vs 0.0438 after 1 epoch) but peaks at
+  the same check (23, 6.0 epochs) and takes the same time (16.0 min), so the
+  higher rate doesn't shorten training. One seed; a small gain.
+- In both 128-chunk runs the best checks fall at epoch ends (checks 23 and 27
+  are the top two in each): validation NDCG@10 dips at the start of each epoch,
+  when the model starts revisiting the same playlists, and recovers by its end.
