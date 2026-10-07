@@ -317,3 +317,40 @@ on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
 raised the peak. Augmentation, on windows or on chunks, slows memorization
 but doesn't raise the peak, and on chunks it lowers it. `p2_causal` (0.0739
 NDCG@10, 12.1% Hits@10, 3.8% Hits@1, 10.9x most-popular) is the best setup.
+
+# Phase 3: scaling up
+
+**Data.** `recsys/mpd_store.py` reads the 1,000 MPD JSON slices (31 GB) once
+and writes a compact store (`data/mpd_store/`, 502 MB): 1,000,000 playlists,
+66,346,428 track entries, 2,262,292 unique tracks, 295,860 artists, 734,684
+albums; no track URI has conflicting metadata. Build: 3.6 min, 3.3 GB peak
+memory. Datasets built from the store are identical, field for field, to those
+built from the JSON (`v1_baseline`, `p2_causal`, `p2_genre` checked).
+
+**Sampled softmax** (`recsys/sampled.py`). A million-song catalog can't be
+scored in full for every training prediction, so each batch scores its
+predictions against its own target slots plus random songs, with a logQ
+correction for how often each song lands in that set. Validation and held-out
+still rank the full catalog. Tested at 5,000 playlists first, against
+`p2_causal`:
+
+| Config | Seeds | NDCG@10 mean (min–max) | Change vs `p2_causal` | Hits@10 | Hits@1 | Best epochs | Min / seed |
+|---|---|---|---|---|---|---|---|
+| `p2_causal` (full softmax) | 3 | 0.0739 (0.0736–0.0744) | — | 12.1% (12.0%–12.2%) | 3.8% (3.8%–3.8%) | 5, 5, 4 | 5.2 |
+| `p3_sampled` (1,024 random negatives) | 3 | 0.0623 (0.0608–0.0639) | -0.0116 | 10.4% (10.2%–10.5%) | 3.1% (2.9%–3.3%) | 5, 3, 3 | 3.6 |
+
+- `p3_sampled` (2026-10-07, `e2e0597`): each batch's 320 predictions are
+  scored against 1,344 candidates (its target slots + 1,024 uniformly random
+  songs) instead of 30,587. 16% worse on NDCG@10, on every seed (-0.0114,
+  -0.0105, -0.0129); ~1.5x faster per epoch (10-11 s vs 15-16 s). The logQ
+  correction isn't the problem: both models' top-10 picks have the same
+  popularity profile (median 28 vs 30 training targets; 27% vs 28% from the 1%
+  most popular songs). Validation loss is nearly unchanged (best 7.53 vs 7.49)
+  while top-of-list ranking drops: most uniformly random negatives are songs
+  the model would never rank highly anyway, so it rarely trains against the
+  hard look-alikes that compete for the top 10. Training losses logged for
+  this run are over the candidate set, not comparable to full-softmax runs.
+- A first version de-duplicated the candidates (`torch.unique`), whose output
+  size depends on the data; the GPU then had to report back to the CPU every
+  step, and it ran slower than the full softmax (46 vs 28 ms per step). The
+  fixed-size version runs at 11 ms per step.
