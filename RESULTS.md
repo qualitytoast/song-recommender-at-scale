@@ -418,3 +418,35 @@ find. Full held-out windows, exact search over the whole catalog.
   target: never (0.0% of windows), 1-5 times (5.9%, 27% in the top 500),
   6-50 (25.6%, 50%), 51-500 (53.7%, 73%), over 500 (14.7%, 87%). Only 13% of
   the windows the top 500 misses have a true song seen 5 times or fewer.
+
+**Two-stage ranking (step 5).** The part-A retriever (`p3_50k_partA`: `p3_50k`
+trained on 80% of the training playlists, 32,000) builds each window's top-500
+shortlist; the ranker (`r_50k`, `recsys/ranker.py`) rescores the 500 by reading
+each candidate together with the 10 context songs (the retriever's layers and
+weights, plus a candidate marker and position; context songs see only earlier
+context songs, each candidate sees the context and itself). Its score is the
+retriever's score plus a learned correction that starts at zero, so before
+training it reproduces the retriever exactly (check 0 = the retriever's
+validation score). It's trained on windows from the other 20% of training
+playlists (8,000 playlists, 302,495 windows), which the retriever never saw:
+their top-500 recall is 59.0%, close to held-out's 62.2%, so its training
+shortlists look like the ones it meets on new playlists. Each training example:
+the true song + 31 songs sampled from its shortlist; lr 1e-4 (fine-tuning).
+
+| Held-out (159,081 windows, 166,627 songs) | Seeds | NDCG@10 mean (min–max) | Hits@10 | Hits@1 | Top 500 | Min / seed |
+|---|---|---|---|---|---|---|
+| `p3_50k` retriever (40,000 playlists) | 2 | 0.1060 (0.1059–0.1062) | 17.4% | 5.4% | 66.4% | 40.6 |
+| `p3_50k_partA` retriever alone (32,000 playlists) | 2 | 0.1020 (0.1012–0.1027) | 16.4% | 5.4% | 62.2% | 36.6 |
+| **`p3_50k_partA` + `r_50k` ranker (top 500)** | 2 | **0.1146 (0.1142–0.1149)** | **18.2%** | **6.1%** | 62.2% | 36.6 + 7.5 |
+| most-popular | — | 0.0034 | 0.7% | 0.1% | 17.2% | — |
+
+- `r_50k` (2026-10-07, `01c1322`): reranking adds +0.0126 NDCG@10 (+12.3%) over
+  the retriever it reranks, on both seeds (+0.0130, +0.0122), with the same
+  shortlist; Hits@10 +1.8 points, Hits@1 +0.7. It also beats `p3_50k`, which
+  trained on 25% more playlists, by +8.1%. The ranker peaks after one pass over
+  its 302,495 windows (check 5 of 11, both seeds; validation NDCG@10 0.1061 ->
+  0.1202 and 0.1080 -> 0.1226) and then declines: it overfits its 8,000
+  playlists after one epoch.
+- Cost: shortlists for part B ~170 s, training ~7.5 min per seed, reranking
+  all 159,081 held-out windows x 500 candidates ~100 s.
+- This was the last 2-seed run; new runs use 1 seed.
