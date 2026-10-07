@@ -262,6 +262,7 @@ on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
 |---|---|---|---|---|---|---|---|---|
 | `p2_genre` | 3 | 0.0692 (0.0669–0.0715) | — | 11.6% (11.4%–11.8%) | 3.4% (3.1%–3.7%) | 3, 3, 2 | 7,202,491 | 9.7 |
 | `p2_augment` | 3 | 0.0689 (0.0686–0.0693) | -0.0002 | 11.6% (11.3%–11.7%) | 3.4% (3.3%–3.5%) | 4, 5, 5 | 7,202,555 | 12.0 |
+| `p2_causal` | 3 | 0.0739 (0.0736–0.0744) | **+0.0047** | 12.1% (12.0%–12.2%) | 3.8% (3.8%–3.8%) | 5, 5, 4 | 7,202,491 | 5.2 |
 
 - `p2_augment` (2026-10-06, `f424206`): training windows only are altered
   (`recsys/augment.py`): with 50% chance a run of 3-5 songs is shuffled, the
@@ -276,3 +277,21 @@ on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
   stopping already caught `p2_genre` before memorization took over, so slowing
   memorization doesn't help by itself; and hiding ~40% of songs makes training
   windows unlike evaluation windows, which may cost some of what it gains.
+- `p2_causal` (2026-10-06, `2796b29`): instead of one target per 10-song
+  window, training playlists are cut into chunks of up to 11 songs
+  (`recsys.data.make_chunks`) and the next song is predicted at every position,
+  with causal attention (each position sees only earlier songs). Each
+  transition is trained once per epoch, as before. Evaluation is unchanged
+  (same held-out windows, scored from the last position). Clear gain: every
+  seed improves on held-out NDCG@10 (+0.0021, +0.0075, +0.0046) and validation
+  NDCG@10 (+0.0025, +0.0062, +0.0063); Hits@1 moves for the first time in
+  Phase 2 (3.4% -> 3.8%, all three seeds 3.8%); the seed spread is the
+  narrowest yet (0.0008); 10.9x most-popular. Also faster: ~15 s per epoch,
+  5.2 min per seed. It still peaks at epoch 4-5 and overfits after, but more
+  slowly (validation NDCG@10 0.055-0.057 at epoch 15 vs 0.042-0.046 at epoch 11).
+  Two things changed together, so the gain can't be split between them:
+  (1) the training method, and (2) the training data: chunks include
+  transitions the window rule skipped (short playlists, songs next to
+  out-of-vocab songs), 172,048 targets vs 74,115, but only 10,102 of them have
+  a full 10-song context, vs all 74,115 windows. A control that trains chunks
+  only on the window targets would separate them.
