@@ -88,9 +88,9 @@ def test_features_need_track_uri(tmp_path):
         load_config(path)
 
 
-def test_every_position_with_augmentation_raises(tmp_path):
+def test_every_position_with_augmentation_loads(tmp_path):
     path = tmp_path / "c.toml"
     path.write_text("data_seed = 42\ntrain_seeds = [1]\n" + DATA.replace('"last_position"', '"every_position"')
                     .replace("augment_mask = 0.0", "augment_mask = 0.2"))
-    with pytest.raises(ValueError):
-        load_config(path)
+    cfg = load_config(path)
+    assert cfg.train.objective == "every_position" and cfg.train.augmenting

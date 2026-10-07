@@ -73,8 +73,6 @@ class TrainConfig:
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
-        if self.objective == "every_position" and self.augmenting:
-            raise ValueError("augmentation is only implemented for the last_position objective")
 
     @property
     def augmenting(self):

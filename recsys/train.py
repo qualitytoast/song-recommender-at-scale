@@ -25,7 +25,7 @@ from torch import nn
 
 from recsys.config import load_config
 from recsys.data import build_dataset
-from recsys.augment import augment_plan
+from recsys.augment import augment_plan, ignored_targets
 from recsys.metrics import ndcg_at_k
 from recsys.model import build_model, predict
 
@@ -120,12 +120,15 @@ def train(config_path, train_seed):
         loss_sum = torch.zeros((), device=device)
         for i in range(0, n, batch_size):
             idx = order[i:i + batch_size]  # last batch may be smaller, like v1
-            X, hidden = X_train[idx], None
+            X, Y, hidden = X_train[idx], Y_train[idx], None
             if t.augmenting:
-                reorder, hidden = augment_plan(len(idx), X.shape[1], augment_gen,
-                                               t.augment_mask, t.augment_crop, t.augment_reorder)
+                lengths = (Y != -100).sum(dim=1) if every_position else None  # real songs per chunk
+                reorder, hidden, mid_shuffle = augment_plan(len(idx), X.shape[1], augment_gen, t.augment_mask,
+                                                            t.augment_crop, t.augment_reorder, lengths)
                 X, hidden = X.gather(1, reorder.to(device)), hidden.to(device)
-            logits, Y = model(X, N_train[idx], hidden, all_positions=every_position), Y_train[idx]
+                if every_position:
+                    Y = Y.masked_fill(ignored_targets(hidden, mid_shuffle.to(device)), -100)
+            logits = model(X, N_train[idx], hidden, all_positions=every_position)
             # Mean over this batch's real targets; -100 marks chunk padding.
             loss = nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), Y.reshape(-1),
                                                ignore_index=-100)
