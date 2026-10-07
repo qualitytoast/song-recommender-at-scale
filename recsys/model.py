@@ -26,7 +26,9 @@ class SelfAttention(nn.Module):
         self.key = nn.Linear(embed_dim, embed_dim)
         self.value = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, x):  # x: (batch, seq, embed_dim)
+    def forward(self, x, blocked=None):
+        """x: (batch, seq, embed_dim). blocked: optional (seq, seq) bool, True where
+        position i may not look at position j, on top of the causal rule."""
         q, k, v = self.query(x), self.key(x), self.value(x)
         # scores[b, i, j] = how relevant song j is to song i
         scores = q @ k.transpose(-2, -1)
@@ -41,6 +43,8 @@ class SelfAttention(nn.Module):
             n = scores.shape[-1]
             later = torch.triu(torch.ones(n, n, dtype=torch.bool, device=scores.device), diagonal=1)
             scores = scores.masked_fill(later, float("-inf"))
+        if blocked is not None:
+            scores = scores.masked_fill(blocked, float("-inf"))
         weights = scores.softmax(dim=-1)
         return weights @ v
 
@@ -60,8 +64,8 @@ class TransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        x = self.norm1(x + self.dropout(self.attention(x)))
+    def forward(self, x, blocked=None):
+        x = self.norm1(x + self.dropout(self.attention(x, blocked)))
         return self.norm2(x + self.dropout(self.ffn(x)))
 
 
@@ -129,6 +133,20 @@ class SongRecommender(nn.Module):
         # Learned stand-in for songs hidden by training-time augmentation (recsys/augment.py).
         self.mask_vector = nn.Parameter(torch.zeros(embed_dim)) if mask_token else None
 
+    def embed_songs(self, ids, hidden=None):
+        """Input vectors for song IDs (any shape): song vector + feature vectors.
+        Hidden songs (augmentation) become mask_vector with their features dropped."""
+        song = self.song_embedding(ids)
+        features = torch.zeros_like(song)
+        for name in self.feature_names:
+            features = features + self.input_features[name](self.song_feature_ids(name)[ids])
+        if self.input_genres is not None:
+            features = features + self.mean_vector(self.input_genres, self.song_genres[ids])
+        if hidden is not None:
+            song = torch.where(hidden[..., None], self.mask_vector, song)
+            features = features * ~hidden[..., None]
+        return song + features
+
     def song_feature_ids(self, name):
         return getattr(self, f"song_{name}")
 
@@ -147,16 +165,7 @@ class SongRecommender(nn.Module):
         all_positions (batch, seq, vocab) scores from every position. With
         candidates (1-D song IDs), only those songs are scored: (..., len(candidates))."""
         positions = torch.arange(ids.shape[1], device=ids.device)
-        song = self.song_embedding(ids)
-        features = torch.zeros_like(song)
-        for name in self.feature_names:
-            features = features + self.input_features[name](self.song_feature_ids(name)[ids])
-        if self.input_genres is not None:
-            features = features + self.mean_vector(self.input_genres, self.song_genres[ids])
-        if hidden is not None:
-            song = torch.where(hidden[..., None], self.mask_vector, song)
-            features = features * ~hidden[..., None]
-        x = song + features + self.position_embedding(positions)
+        x = self.embed_songs(ids, hidden) + self.position_embedding(positions)
         if self.name_words is not None:
             name_vector = self.mean_vector(self.name_words, names)  # (batch, embed_dim)
             x = x + name_vector[:, None, :]  # same name vector at every position
