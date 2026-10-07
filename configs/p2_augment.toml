@@ -1,5 +1,5 @@
-# Phase 2, step 2: p2_artist + album.
-# Only the features list differs from p2_artist.toml.
+# Overfitting experiment 1: p2_genre + training-window augmentation (recsys/augment.py).
+# Only the augment_* settings differ from p2_genre.toml.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
@@ -23,7 +23,7 @@ num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
 scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
 init = "pytorch"         # was "v1": PyTorch's default starting weights
-features = ["artist", "album"]  # was ["artist"]
+features = ["artist", "album", "duration", "playlist_name", "genre"]  # was without "genre"
 
 [train]
 optimizer = "adamw"    # decoupled weight decay
@@ -33,6 +33,6 @@ batch_size = 32
 epochs = 40
 min_epochs = 10       # was 20: best epochs are now ~5
 patience = 10
-augment_mask = 0.0      # training-window augmentation off
-augment_crop = 0
-augment_reorder = 0.0
+augment_mask = 0.2       # was 0: each training song hidden with 20% chance
+augment_crop = 5         # was 0: hide the first 0-5 songs
+augment_reorder = 0.5    # was 0: half the windows get a run of 3-5 songs shuffled

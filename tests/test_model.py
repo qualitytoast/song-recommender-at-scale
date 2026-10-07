@@ -209,3 +209,30 @@ def test_input_genre_vector_changes_predictions():
     with torch.no_grad():
         model.input_genres.weight[1] = torch.ones(4)
     assert not torch.allclose(model(ids), before)
+
+
+# --- augmentation: hidden songs ---
+
+def masked_model(seed=0):
+    torch.manual_seed(seed)
+    return SongRecommender(vocab_size=7, embed_dim=4, context_length=3, num_layers=2, dropout=0.0,
+                           scale_attention=True, init="pytorch", song_features={"artist": ARTIST},
+                           song_genres=SONG_GENRES, mask_token=True)
+
+
+def test_hidden_song_and_its_features_have_no_effect():
+    model = masked_model().eval()
+    with torch.no_grad():  # give the features real values, so hiding them is a real test
+        model.input_features["artist"].weight.normal_()
+        model.input_genres.weight[1:].normal_()
+    hidden = torch.tensor([[False, True, False]])
+    a = model(torch.tensor([[0, 3, 6]]), hidden=hidden)
+    b = model(torch.tensor([[0, 5, 6]]), hidden=hidden)  # different song (other artist, genre) in the hidden slot
+    torch.testing.assert_close(a, b)
+    assert not torch.allclose(model(torch.tensor([[0, 3, 6]])), model(torch.tensor([[0, 5, 6]])))  # visible: it matters
+
+
+def test_nothing_hidden_equals_no_hidden_argument():
+    model = masked_model().eval()
+    ids = torch.tensor([[0, 3, 6]])
+    torch.testing.assert_close(model(ids, hidden=torch.zeros(1, 3, dtype=torch.bool)), model(ids))

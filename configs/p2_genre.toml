@@ -33,3 +33,6 @@ batch_size = 32
 epochs = 40
 min_epochs = 10       # was 20: best epochs are now ~5
 patience = 10
+augment_mask = 0.0      # training-window augmentation off
+augment_crop = 0
+augment_reorder = 0.0

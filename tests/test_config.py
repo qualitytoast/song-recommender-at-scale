@@ -32,6 +32,9 @@ batch_size = 32
 epochs = 40
 min_epochs = 20
 patience = 10
+augment_mask = 0.0
+augment_crop = 0
+augment_reorder = 0.0
 """
 
 

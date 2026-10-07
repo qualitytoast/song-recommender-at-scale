@@ -64,6 +64,13 @@ class TrainConfig:
     epochs: int            # maximum epochs
     min_epochs: int        # early-stopping patience only counts from this epoch on
     patience: int          # stop after this many counted epochs without a new best NDCG@10
+    augment_mask: float    # training windows: chance each song is hidden (see recsys/augment.py)
+    augment_crop: int      # training windows: hide the first 0..augment_crop songs
+    augment_reorder: float # training windows: chance a run of 3-5 songs is shuffled
+
+    @property
+    def augmenting(self):
+        return self.augment_mask > 0 or self.augment_crop > 0 or self.augment_reorder > 0
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,7 @@ from torch import nn
 
 from recsys.config import load_config
 from recsys.data import build_dataset
+from recsys.augment import augment_plan
 from recsys.metrics import ndcg_at_k
 from recsys.model import build_model, predict
 
@@ -98,6 +99,8 @@ def train(config_path, train_seed):
     Y_train = torch.from_numpy(ds.Y_train).to(device)
     N_train = torch.from_numpy(ds.N_train).to(device)
     shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
+    augment_gen = torch.Generator().manual_seed(train_seed + 1_000_000)  # augmentation draws
+    t = cfg.train
     n, batch_size = len(X_train), cfg.train.batch_size
     num_params = sum(p.numel() for p in model.parameters())
     print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train | "
@@ -113,7 +116,12 @@ def train(config_path, train_seed):
         loss_sum = torch.zeros((), device=device)
         for i in range(0, n, batch_size):
             idx = order[i:i + batch_size]  # last batch may be smaller, like v1
-            loss = nn.functional.cross_entropy(model(X_train[idx], N_train[idx]), Y_train[idx])
+            X, hidden = X_train[idx], None
+            if t.augmenting:
+                reorder, hidden = augment_plan(len(idx), X.shape[1], augment_gen,
+                                               t.augment_mask, t.augment_crop, t.augment_reorder)
+                X, hidden = X.gather(1, reorder.to(device)), hidden.to(device)
+            loss = nn.functional.cross_entropy(model(X, N_train[idx], hidden), Y_train[idx])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
