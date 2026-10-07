@@ -33,16 +33,21 @@ def random_probs(target_freq, power):
     return weights / weights.sum()
 
 
-def candidate_set(Y, n_random, vocab_size, generator, probs=None):
-    """(candidates, real): every target slot of Y, flattened (padding slots hold song 0),
-    then n_random random songs (uniform, or drawn from probs); real marks the columns
-    that aren't padding. Random draws come from `generator` (CPU), so they don't
-    disturb other random streams."""
-    slots = Y.reshape(-1)
+def draw_random_songs(n_random, vocab_size, generator, probs=None):
+    """n_random songs, uniform or drawn from probs, on the CPU from `generator`, so they
+    don't disturb other random streams (and the CPU knows which songs a batch uses)."""
     if probs is None:
-        random_songs = torch.randint(0, vocab_size, (n_random,), generator=generator)
-    else:
-        random_songs = torch.multinomial(probs, n_random, replacement=True, generator=generator)
+        return torch.randint(0, vocab_size, (n_random,), generator=generator)
+    return torch.multinomial(probs, n_random, replacement=True, generator=generator)
+
+
+def candidate_set(Y, n_random, vocab_size, generator, probs=None, random_songs=None):
+    """(candidates, real): every target slot of Y, flattened (padding slots hold song 0),
+    then n_random random songs (uniform, or drawn from probs; or random_songs if given,
+    from draw_random_songs); real marks the columns that aren't padding."""
+    slots = Y.reshape(-1)
+    if random_songs is None:
+        random_songs = draw_random_songs(n_random, vocab_size, generator, probs)
     random_songs = random_songs.to(Y.device)
     candidates = torch.cat([slots.clamp(min=0), random_songs])
     real = torch.cat([slots != -100, torch.ones(n_random, dtype=torch.bool, device=Y.device)])

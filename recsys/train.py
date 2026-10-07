@@ -20,6 +20,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -27,7 +28,8 @@ from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.augment import augment_plan, ignored_targets
 from recsys.metrics import gains_from_ranks
-from recsys.sampled import candidate_set, log_q, random_probs, sampled_softmax_loss
+from recsys.lazy_adam import LazyAdamW, used_rows
+from recsys.sampled import candidate_set, draw_random_songs, log_q, random_probs, sampled_softmax_loss
 from recsys.model import build_model, rank_and_loss
 
 
@@ -113,7 +115,13 @@ def train(config_path, train_seed):
     device = pick_device()
     ds = build_dataset(cfg)
     model = build_model(cfg, ds).to(device)
-    optimizer = make_optimizer(model.parameters(), cfg.train)
+    lazy = cfg.train.optimizer == "lazy_adamw"
+    if lazy:  # AdamW on only the table rows each batch uses (recsys/lazy_adam.py)
+        assert cfg.train.objective == "every_position" and cfg.train.softmax == "sampled" \
+            and not cfg.train.augmenting, "lazy_adamw is implemented for the p3 training setup"
+        optimizer = LazyAdamW(model, cfg.train.lr, cfg.train.weight_decay)
+    else:
+        optimizer = make_optimizer(model.parameters(), cfg.train)
     stopper = EarlyStopping(cfg.train.min_checks, cfg.train.patience)
 
     t = cfg.train
@@ -121,6 +129,8 @@ def train(config_path, train_seed):
     # Training examples: windows (one target each) or chunks (a target at every position).
     X_train, Y_train, N_train = ((ds.Xc_train, ds.Yc_train, ds.Nc_train) if every_position
                                  else (ds.X_train, ds.Y_train, ds.N_train))
+    X_cpu, Y_cpu, N_cpu = X_train, Y_train, N_train  # numpy copies: the CPU works out which rows a batch uses
+    song_features = {name: ds.song_features[name][0] for name in model.feature_names}
     X_train, Y_train, N_train = (torch.from_numpy(a).to(device) for a in (X_train, Y_train, N_train))
     # Real targets per training example, on the CPU: counting a batch's targets for the
     # validation schedule then needs no GPU -> CPU wait. Counted before augmentation,
@@ -199,7 +209,9 @@ def train(config_path, train_seed):
                 if every_position:
                     Y = Y.masked_fill(ignored_targets(hidden, mid_shuffle.to(device)), -100)
             if sampled:  # score only this batch's candidates (recsys/sampled.py)
-                candidates, real = candidate_set(Y, t.sampled_negatives, vocab_size, negative_gen, draw_probs)
+                random_songs = draw_random_songs(t.sampled_negatives, vocab_size, negative_gen, draw_probs)
+                candidates, real = candidate_set(Y, t.sampled_negatives, vocab_size, negative_gen, draw_probs,
+                                                 random_songs)
                 logits = model(X, N_train[idx], hidden, all_positions=every_position, candidates=candidates)
                 correction = log_q(candidates, (Y != -100).sum(), target_freq, t.sampled_negatives, probs)
                 loss = sampled_softmax_loss(logits, Y, candidates, real, correction)
@@ -210,7 +222,13 @@ def train(config_path, train_seed):
                                                    ignore_index=-100)
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            if lazy:
+                idx_cpu = order_cpu[i:i + batch_size].numpy()
+                candidates_cpu = np.concatenate([np.clip(Y_cpu[idx_cpu].ravel(), 0, None), random_songs.numpy()])
+                optimizer.step(used_rows(X_cpu[idx_cpu], candidates_cpu, N_cpu[idx_cpu], song_features,
+                                         ds.song_genres if model.input_genres is not None else None, device))
+            else:
+                optimizer.step()
             loss_sum += loss.detach() * (Y != -100).sum()
             targets_used += (Y != -100).sum()
             if schedule.add(int(example_targets[order_cpu[i:i + batch_size]].sum())):

@@ -26,8 +26,10 @@ sys.path.insert(0, str(ROOT))
 
 from recsys.config import load_config  # noqa: E402
 from recsys.data import build_dataset  # noqa: E402
+from recsys.lazy_adam import LazyAdamW, used_rows  # noqa: E402
 from recsys.model import build_model  # noqa: E402
-from recsys.sampled import candidate_set, log_q, random_probs, sampled_softmax_loss  # noqa: E402
+from recsys.sampled import (candidate_set, draw_random_songs, log_q, random_probs,  # noqa: E402
+                            sampled_softmax_loss)
 from recsys.train import make_optimizer, pick_device  # noqa: E402
 
 
@@ -56,7 +58,9 @@ def main():
     device = pick_device()
     torch.manual_seed(1)
     model = build_model(cfg, ds).to(device)
-    optimizer = make_optimizer(model.parameters(), t)
+    lazy = t.optimizer == "lazy_adamw"
+    optimizer = LazyAdamW(model, t.lr, t.weight_decay) if lazy else make_optimizer(model.parameters(), t)
+    song_features = {name: ds.song_features[name][0] for name in model.feature_names}
     X, Y, N = (torch.from_numpy(a).to(device) for a in (ds.Xc_train, ds.Yc_train, ds.Nc_train))
     V, B = len(ds.vocab), t.batch_size
     counts = torch.bincount(Y[Y != -100], minlength=V).float()
@@ -64,7 +68,8 @@ def main():
     probs = random_probs(target_freq, t.negative_power)
     draw = None if t.negative_power == 0 else probs.cpu()
     gen = torch.Generator().manual_seed(0)
-    order = torch.randperm(len(X), generator=torch.Generator().manual_seed(1)).to(device)
+    order_cpu = torch.randperm(len(X), generator=torch.Generator().manual_seed(1))
+    order = order_cpu.to(device)
 
     table_params = [p for n, p in model.named_parameters() if per_id_table(n, p, V)]
     shared_params = [p for n, p in model.named_parameters() if not per_id_table(n, p, V)]
@@ -83,9 +88,11 @@ def main():
                 timings[name] = timings.get(name, 0.0) + now - clock[0]
                 clock[0] = now
         model.train()
-        idx = order[(i * B) % len(X):(i * B) % len(X) + B]
+        start_row = (i * B) % len(X)
+        idx = order[start_row:start_row + B]
         xb, yb, nb = X[idx], Y[idx], N[idx]
-        candidates, real = candidate_set(yb, t.sampled_negatives, V, gen, draw)
+        random_songs = draw_random_songs(t.sampled_negatives, V, gen, draw)
+        candidates, real = candidate_set(yb, t.sampled_negatives, V, gen, draw, random_songs)
         correction = log_q(candidates, (yb != -100).sum(), target_freq, t.sampled_negatives, probs)
         mark("batch + candidate sampling")
         logits = model(xb, nb, all_positions=True, candidates=candidates)
@@ -95,8 +102,14 @@ def main():
         optimizer.zero_grad()
         loss.backward()
         mark("backward")
-        optimizer.step()
-        mark("optimizer step (AdamW)")
+        if lazy:
+            idx_cpu = order_cpu[start_row:start_row + B].numpy()
+            cand_cpu = np.concatenate([np.clip(ds.Yc_train[idx_cpu].ravel(), 0, None), random_songs.numpy()])
+            optimizer.step(used_rows(ds.Xc_train[idx_cpu], cand_cpu, ds.Nc_train[idx_cpu], song_features,
+                                     ds.song_genres if model.input_genres is not None else None, device))
+        else:
+            optimizer.step()
+        mark(f"optimizer step ({t.optimizer})")
         return loss
 
     for i in range(20):  # warm up
@@ -119,9 +132,9 @@ def main():
     for name, seconds in timings.items():
         print(f"   {name:28}{seconds / args.steps * 1000:7.1f} ms  {seconds / total:6.1%}")
 
-    # The optimizer step split by parameter group (timed separately, same AdamW settings).
+    # Regular AdamW's cost split by parameter group, for reference (timed separately).
     for label, params in [("per-ID tables", table_params), ("shared layers", shared_params)]:
-        opt = make_optimizer(params, t)
+        opt = torch.optim.AdamW(params, lr=t.lr, weight_decay=t.weight_decay)
         for p in params:
             p.grad = torch.zeros_like(p)
         for _ in range(10):
