@@ -340,6 +340,7 @@ still rank the full catalog. Tested at 5,000 playlists first, against
 | `p3_sampled` (1,024 random negatives) | 3 | 0.0623 (0.0608–0.0639) | -0.0116 | 10.4% (10.2%–10.5%) | 3.1% (2.9%–3.3%) | 5, 3, 3 | 3.6 |
 | `p3_neg8k` (8,192 uniform negatives) | 3 | 0.0706 (0.0703–0.0707) | -0.0033 | 11.6% (11.4%–11.8%) | 3.6% (3.5%–3.8%) | 5, 4, 4 | 6.2 |
 | `p3_popneg` (1,024 popularity-weighted negatives) | 3 | 0.0661 (0.0641–0.0675) | -0.0078 | 10.9% (10.9%–11.1%) | 3.3% (3.2%–3.4%) | 3, 5, 4 | 3.4 |
+| `p3_neg8k_pop` (8,192 popularity-weighted negatives) | 3 | 0.0728 (0.0702–0.0747) | -0.0011 | 12.0% (11.6%–12.2%) | 3.7% (3.7%–3.8%) | 4, 5, 4 | 5.9 |
 
 - `p3_sampled` (2026-10-07, `e2e0597`): each batch's 320 predictions are
   scored against 1,344 candidates (its target slots + 1,024 uniformly random
@@ -367,3 +368,8 @@ still rank the full catalog. Tested at 5,000 playlists first, against
   logQ computed from those probabilities. Better than `p3_sampled` on every
   seed: held-out +0.0020, +0.0035, +0.0060; validation +0.0038, +0.0060,
   +0.0038. Smaller gain than 8x the negatives, at no extra cost.
+- `p3_neg8k_pop` (2026-10-07, `83717df`): both fixes, 8,192 negatives drawn by
+  (target frequency)^0.75. Closes 90% of the gap to the full softmax (0.0728
+  vs 0.0739). Against `p3_neg8k` alone the extra gain is uncertain: held-out
+  NDCG@10 -0.0001, +0.0028, +0.0040, validation -0.0003, +0.0023, -0.0004.
+  At no extra cost over `p3_neg8k`, it's the sampling setup to scale with.
