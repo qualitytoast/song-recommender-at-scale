@@ -1,5 +1,5 @@
 # Overfitting experiment 3: p2_causal + training augmentation (the p2_augment settings).
-# Only the augment_* settings differ from p2_causal.toml (same values as p2_augment).
+# Only augment_mask and augment_reorder differ from p2_causal.toml (as in p2_augment; crop stays off).
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
@@ -34,6 +34,6 @@ epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2
 min_epochs = 10       # was 20: best epochs are now ~5
 patience = 10
 augment_mask = 0.2       # was 0: each training song hidden with 20% chance
-augment_crop = 5         # was 0: hide the first 0-5 songs
+augment_crop = 0         # off: causal training already sees every context length, and on short chunks crop hid whole chunks (48% of targets lost vs 19%)
 augment_reorder = 0.5    # was 0: half the chunks get a run of 3-5 songs shuffled
 objective = "every_position"  # was "last_position": predict the next song at every position
