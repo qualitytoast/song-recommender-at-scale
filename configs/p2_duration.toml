@@ -15,6 +15,7 @@ context_length = 10    # predict the 11th song from the previous 10
 test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
 validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
+genres_file = "data/genres/musicbrainz_artists.jsonl"  # genres fetched for the 5,000-playlist artists
 val_size = 0             # was 3000; unused with separate_playlists
 
 [model]

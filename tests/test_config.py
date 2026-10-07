@@ -15,6 +15,7 @@ test_split = 0.1
 val_size = 3000
 validation = "held_out_prefix"
 val_split = 0.0
+genres_file = "data/genres/x.jsonl"
 
 [model]
 embed_dim = 64

@@ -24,7 +24,6 @@ DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buc
 NAME_WORD_MIN_COUNT = 2  # playlist-name words used in fewer training names are dropped
 GENRE_MIN_ARTISTS = 5    # genres listed for fewer vocab artists are dropped
 GENRES_PER_ARTIST = 5    # an artist keeps at most this many genres (most votes first)
-GENRES_FILE = "data/genres/musicbrainz_artists.jsonl"  # from scripts/fetch_genres.py or genres_from_dump.py
 
 
 def load_playlists(folder, max_playlists, min_playlist_len, song_key):
@@ -153,7 +152,12 @@ def duration_buckets(vocab, tracks, n_buckets):
     about 1/n_buckets of the songs (here ~2:50, 3:10, ... 5:04 for 10 buckets).
     Returns (ids, count) like song_feature_ids.
     """
-    ms = np.array([tracks[key]["duration_ms"] for key in vocab], dtype=np.float64)
+    return buckets_from_durations([tracks[key]["duration_ms"] for key in vocab], n_buckets)
+
+
+def buckets_from_durations(durations_ms, n_buckets):
+    """duration_buckets for an array of durations (one per vocab song)."""
+    ms = np.asarray(durations_ms, dtype=np.float64)
     cuts = np.quantile(ms, np.linspace(0, 1, n_buckets + 1)[1:-1])
     return np.searchsorted(cuts, ms, side="right").astype(np.int64), n_buckets
 
@@ -240,6 +244,8 @@ class Dataset:
 
 def build_dataset(cfg):
     d = cfg.data
+    if is_store(d.folder) and d.song_key == "track_uri":
+        return build_dataset_from_store(cfg)  # integer arrays all the way; same result
     if is_store(d.folder):  # compact store from recsys.mpd_store, else raw MPD JSON slices
         playlists, tracks, playlist_names = playlists_from_store(load_store(d.folder), d.max_playlists,
                                                                  d.min_playlist_len, d.song_key)
@@ -277,20 +283,138 @@ def build_dataset(cfg):
     # Genres (only when used: needs the fetched genres file). Each song gets its artist's genres.
     genre_names = song_genres = None
     if "genre" in cfg.model.features:
-        artist_genres = load_artist_genres(GENRES_FILE)
-        missing = [u for u in artist_uris if u not in artist_genres]
-        if missing:
-            raise ValueError(f"{len(missing):,} vocab artists are missing from {GENRES_FILE}; fetch them first")
-        genre_names = build_genre_vocab(artist_genres, artist_uris, GENRE_MIN_ARTISTS)
-        per_artist = artist_genre_ids(artist_genres, artist_uris,
-                                      {g: i + 1 for i, g in enumerate(genre_names)}, GENRES_PER_ARTIST)
-        song_genres = per_artist[song_features["artist"][0]]
+        genre_names, song_genres = song_genre_ids(d.genres_file, artist_uris, song_features["artist"][0])
 
     return Dataset(vocab=vocab, names=[tracks[k]["track_name"] for k in vocab],
                    song_features=song_features, artist_uris=artist_uris,
                    artist_names=[artist_name[u] for u in artist_uris],
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test,
+                   name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
+                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
+                   genre_names=genre_names, song_genres=song_genres)
+
+
+def song_genre_ids(genres_file, artist_uris, song_artist):
+    """(genre_names, song_genres): the genre vocabulary and each song's artist's genre IDs."""
+    artist_genres = load_artist_genres(genres_file)
+    missing = [u for u in artist_uris if u not in artist_genres]
+    if missing:
+        raise ValueError(f"{len(missing):,} vocab artists are missing from {genres_file}; fetch them first")
+    genre_names = build_genre_vocab(artist_genres, artist_uris, GENRE_MIN_ARTISTS)
+    per_artist = artist_genre_ids(artist_genres, artist_uris,
+                                  {g: i + 1 for i, g in enumerate(genre_names)}, GENRES_PER_ARTIST)
+    return genre_names, per_artist[song_artist]
+
+
+# --- the same dataset, built from a store's integer arrays (scales to the full MPD) ---
+
+def first_appearance_ids(values):
+    """(unique values in order of first appearance, each value's index in that order):
+    the array version of dict.fromkeys, as used for vocab, artist and album IDs."""
+    unique, first, inverse = np.unique(values, return_index=True, return_inverse=True)
+    order = np.argsort(first, kind="stable")
+    position = np.empty(len(order), dtype=np.int64)
+    position[order] = np.arange(len(order))
+    return unique[order], position[inverse.reshape(-1)]
+
+
+def concat_playlists(store, playlist_ids):
+    """(track IDs of the given store playlists, concatenated; start offset of each, plus the end)."""
+    starts, ends = store.playlist_offsets[playlist_ids], store.playlist_offsets[np.asarray(playlist_ids) + 1]
+    lengths = ends - starts
+    offsets = np.concatenate([[0], np.cumsum(lengths)])
+    positions = np.repeat(starts - offsets[:-1], lengths) + np.arange(offsets[-1])
+    return np.asarray(store.playlist_tracks[positions], dtype=np.int64), offsets
+
+
+def windows_from_arrays(songs, offsets, context_length):
+    """make_windows for concatenated vocab IDs (-1 = outside the vocab) with playlist offsets."""
+    L, n = context_length, len(songs)
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    end = offsets[1:][playlist]
+    unknown_before = np.concatenate([[0], np.cumsum(songs < 0)])  # unknown songs before each position
+    start = np.arange(n)
+    start = start[start + L < end]  # room for L inputs and a target in the same playlist
+    start = start[unknown_before[start + L + 1] - unknown_before[start] == 0]
+    X = songs[start[:, None] + np.arange(L)].reshape(-1, L)
+    return X, songs[start + L], playlist[start]
+
+
+def chunks_from_arrays(songs, offsets, context_length):
+    """make_chunks for concatenated vocab IDs (-1 = outside the vocab) with playlist offsets."""
+    L, n = context_length, len(songs)
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    pos = np.arange(n - 1)
+    # A transition (song at g -> song at g + 1) is usable if both are vocab songs of one playlist.
+    usable = (songs[:-1] >= 0) & (songs[1:] >= 0) & (playlist[:-1] == playlist[1:])
+    g = pos[usable]
+    run_start = np.ones(len(g), dtype=bool)
+    run_start[1:] = g[1:] != g[:-1] + 1  # a run of consecutive transitions breaks at a gap
+    run = np.cumsum(run_start) - 1
+    k = np.arange(len(g)) - np.flatnonzero(run_start)[run]  # transition's index within its run
+    run_length = np.bincount(run)
+    chunk_offset = np.concatenate([[0], np.cumsum((run_length + L - 1) // L)])
+    chunk = chunk_offset[run] + k // L
+    n_chunks = int(chunk_offset[-1])
+    inputs = np.zeros((n_chunks, L), dtype=np.int64)
+    targets = np.full((n_chunks, L), -100, dtype=np.int64)
+    inputs[chunk, k % L] = songs[g]
+    targets[chunk, k % L] = songs[g + 1]
+    chunk_playlist = np.zeros(n_chunks, dtype=np.int64)
+    chunk_playlist[chunk] = playlist[g]
+    return inputs, targets, chunk_playlist
+
+
+def build_dataset_from_store(cfg):
+    """build_dataset for a store with track-URI song keys, without per-track Python objects.
+    Gives the same Dataset as reading the same playlists from the JSON slices."""
+    d = cfg.data
+    store = load_store(d.folder)
+    lengths = np.diff(store.playlist_offsets)
+    kept = np.flatnonzero(lengths >= d.min_playlist_len)[:d.max_playlists]
+    train_idx, val_idx, held_out_idx = (np.array(i, dtype=np.int64) for i in split_playlists(
+        list(range(len(kept))), d.test_split, d.val_split, cfg.data_seed))
+
+    counted, _ = concat_playlists(store, kept if d.vocab_from == "all" else kept[train_idx])
+    counts = np.bincount(counted, minlength=len(store.track_uris))
+    in_order, _ = first_appearance_ids(counted)
+    vocab_tracks = in_order[counts[in_order] >= d.min_freq]  # store track ID of each vocab song
+    to_vocab = np.full(len(store.track_uris), -1, dtype=np.int64)
+    to_vocab[vocab_tracks] = np.arange(len(vocab_tracks))
+
+    names_kept = [store.playlist_names[i] for i in kept]
+    words = build_word_vocab([names_kept[i] for i in train_idx], NAME_WORD_MIN_COUNT)
+    encoded = encode_names(names_kept, {w: i + 1 for i, w in enumerate(words)})
+
+    def split_arrays(idx):
+        tracks, offsets = concat_playlists(store, kept[idx])
+        return to_vocab[tracks], offsets
+    train_songs, train_offsets = split_arrays(train_idx)
+    test_songs, test_offsets = split_arrays(held_out_idx)
+    X_train, Y_train, P_train = windows_from_arrays(train_songs, train_offsets, d.context_length)
+    Xc_train, Yc_train, Pc_train = chunks_from_arrays(train_songs, train_offsets, d.context_length)
+    X_test, Y_test, P_test = windows_from_arrays(test_songs, test_offsets, d.context_length)
+    N_train, N_test = encoded[train_idx][P_train], encoded[held_out_idx][P_test]
+    if d.validation == "held_out_prefix":
+        X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
+    else:
+        X_val, Y_val, P_val = windows_from_arrays(*split_arrays(val_idx), d.context_length)
+        N_val = encoded[val_idx][P_val]
+
+    artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
+    albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])
+    song_features = {"artist": (song_artist, len(artists)), "album": (song_album, len(albums)),
+                     "duration": buckets_from_durations(store.track_duration_ms[vocab_tracks], DURATION_BUCKETS)}
+    artist_uris = [store.artist_uris[a] for a in artists]
+    genre_names = song_genres = None
+    if "genre" in cfg.model.features:
+        genre_names, song_genres = song_genre_ids(d.genres_file, artist_uris, song_artist)
+    return Dataset(vocab=[store.track_uris[j] for j in vocab_tracks],
+                   names=[store.track_names[j] for j in vocab_tracks],
+                   song_features=song_features, artist_uris=artist_uris,
+                   artist_names=[store.artist_names[a] for a in artists],
+                   X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val, X_test=X_test, Y_test=Y_test,
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
                    Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
                    genre_names=genre_names, song_genres=song_genres)
