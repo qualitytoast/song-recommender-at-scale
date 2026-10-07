@@ -373,3 +373,30 @@ still rank the full catalog. Tested at 5,000 playlists first, against
   vs 0.0739). Against `p3_neg8k` alone the extra gain is uncertain: held-out
   NDCG@10 -0.0001, +0.0028, +0.0040, validation -0.0003, +0.0023, -0.0004.
   At no extra cost over `p3_neg8k`, it's the sampling setup to scale with.
+
+**Scaling, stage 1: 50,000 playlists** (`p3_neg8k_pop` setup, read from the
+store; genres from the MusicBrainz dump for all MPD artists). 40,000 / 5,000 /
+5,000 playlists: 166,627 songs, 30,204 artists, 2,288,549 training targets,
+validation sample of 20,000 windows (of 156,681), 159,081 held-out windows.
+Not directly comparable with the 5,000-playlist rows: the catalog is 5.4x
+bigger (more songs to rank against) and the held-out windows differ.
+
+| Config | Seeds | NDCG@10 mean (min–max) | Hits@10 | Hits@1 | Most-popular NDCG@10 / Hits@10 | Best checks (epochs) | Min / seed |
+|---|---|---|---|---|---|---|---|
+| `p3_neg8k_pop` (5,000 playlists, 30,587 songs) | 3 | 0.0728 (0.0702–0.0747) | 12.0% | 3.7% | 0.0068 / 1.5% | 4, 5, 4 (5-6) | 5.9 |
+| `p3_50k` (50,000 playlists, 166,627 songs) | 2 | **0.1060** (0.1059–0.1062) | **17.4%** | **5.4%** | 0.0034 / 0.7% | 14, 14 (3.75) | 40.6 |
+
+- `p3_50k` (2026-10-07, `35cb591`): 10x the playlists. NDCG@10 +46% despite a
+  5.4x bigger catalog; 31x the most-popular baseline (10.7x at 5,000). The two
+  seeds agree to 0.0003.
+- Overfitting is much milder. Validation NDCG@10 climbs for ~2.25 epochs,
+  then plateaus around 0.105-0.110 until the best check at 3.75 epochs; it
+  stopped at 5 epochs. Validation loss bottoms around 7.24 and then drifts up
+  only slightly (to ~7.3-7.45), where at 5,000 playlists it climbed past 10.
+  It ticks up in the first quarter of each new epoch (checks 8, 12, 16), when
+  the model starts seeing the same playlists again.
+- Pacing: ~114 s of training + ~5.5 s of validation per check (validation
+  ~4.6% of run time); ~40 min per seed. The held-out evaluation scores all
+  159,081 windows against all 166,627 songs, chunked on the GPU.
+- Genres (dump, cutoff 5): 613 genres; 12,304 of 30,204 artists (40.7%) have
+  genres, covering 90.1% of training targets; 25.7% of songs have none.
