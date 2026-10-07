@@ -31,7 +31,8 @@ lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
 epochs = 40
-min_epochs = 20
+eval_every_targets = 74115  # one epoch's training targets at 5,000 playlists
+min_checks = 20
 patience = 10
 augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0

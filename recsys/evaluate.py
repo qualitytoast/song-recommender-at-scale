@@ -57,7 +57,9 @@ def evaluate(config_path, train_seed):
     pop, counts = popularity_scores(ds.Y_train, len(ds.vocab))  # training targets only
     pop_fn = lambda xb, nb: np.broadcast_to(pop, (len(xb), len(pop)))
 
-    results = {"best_epoch": checkpoint["epoch"]}
+    # Older checkpoints (validated once per epoch) store "epoch" instead of "check".
+    best_check = checkpoint.get("check", checkpoint.get("epoch"))
+    results = {"best_check": best_check}
     if cfg.data.validation == "held_out_prefix":
         # v1 style: validation is the first n_val held-out windows, so also report
         # the held-out windows early stopping never saw
@@ -70,7 +72,7 @@ def evaluate(config_path, train_seed):
     results["full held-out"] = score(model_fn, ds.X_test, ds.Y_test, ds.N_test)
     results["most-popular (full held-out)"] = score(pop_fn, ds.X_test, ds.Y_test, ds.N_test)
 
-    print(f"\n{run_dir}/best.pt (epoch {checkpoint['epoch']})")
+    print(f"\n{run_dir}/best.pt (check {best_check})")
     print(f"{'':30}{'n':>8}{'NDCG@10':>10}{'hits@1':>9}{'hits@5':>9}{'hits@10':>9}")
     for name, r in results.items():
         if isinstance(r, dict):

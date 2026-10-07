@@ -27,7 +27,8 @@ def load_seed_results(config_path):
         results.append({"ndcg": held_out["full held-out"]["ndcg@10"],
                         "hits10": held_out["full held-out"]["hits@10"],
                         "hits1": held_out["full held-out"]["hits@1"],
-                        "best_epoch": summary["best_epoch"],
+                        # runs before validation checks recorded best_epoch (one check per epoch)
+                        "best_epoch": summary.get("best_check", summary.get("best_epoch")),
                         "minutes": summary["train_seconds"] / 60,
                         "params": summary.get("num_params")})
     return results, held_out["most-popular (full held-out)"]
@@ -43,7 +44,7 @@ def table(rows):
     four_dp = lambda x: f"{x:.4f}"
     pct = lambda x: f"{100 * x:.1f}%"
     lines = ["| Config | Seeds | NDCG@10 mean (min–max) | Change vs previous | Hits@10 | Hits@1 "
-             "| Best epochs | Params | Min / seed |",
+             "| Best checks | Params | Min / seed |",
              "|---|---|---|---|---|---|---|---|---|"]
     previous = None
     for name, results in rows:

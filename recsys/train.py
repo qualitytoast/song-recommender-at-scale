@@ -49,25 +49,45 @@ def make_optimizer(params, t):
 
 
 class EarlyStopping:
-    """v1's rule. A new best score resets the counter. An epoch without one only
-    counts once epoch >= min_epochs (NDCG is noisy early). Stop at `patience` counts.
+    """v1's rule, counted in validation checks. A new best score resets the counter.
+    A check without one only counts once check >= min_checks (NDCG is noisy early).
+    Stop at `patience` counts.
     """
 
-    def __init__(self, min_epochs, patience):
-        self.min_epochs = min_epochs
+    def __init__(self, min_checks, patience):
+        self.min_checks = min_checks
         self.patience = patience
         self.best = -1.0
-        self.bad_epochs = 0
+        self.bad_checks = 0
 
-    def update(self, epoch, score):
-        """Record one epoch's score. Returns (improved, should_stop)."""
+    def update(self, check, score):
+        """Record one validation check's score. Returns (improved, should_stop)."""
         if score > self.best:
             self.best = score
-            self.bad_epochs = 0
+            self.bad_checks = 0
             return True, False
-        if epoch >= self.min_epochs:
-            self.bad_epochs += 1
-        return False, self.bad_epochs >= self.patience
+        if check >= self.min_checks:
+            self.bad_checks += 1
+        return False, self.bad_checks >= self.patience
+
+
+class EvalSchedule:
+    """When to validate: each time the count of training targets passes another
+    multiple of `every`. Set every to one epoch's targets to validate at each
+    epoch's end. If one batch passes several multiples, that's one check."""
+
+    def __init__(self, every):
+        self.every = every
+        self.seen = 0
+        self.next = every
+
+    def add(self, n_targets):
+        """Count a batch's training targets; True if a validation check is due now."""
+        self.seen += n_targets
+        if self.seen < self.next:
+            return False
+        self.next = (self.seen // self.every + 1) * self.every
+        return True
 
 
 def git_state():
@@ -94,7 +114,7 @@ def train(config_path, train_seed):
     ds = build_dataset(cfg)
     model = build_model(cfg, ds).to(device)
     optimizer = make_optimizer(model.parameters(), cfg.train)
-    stopper = EarlyStopping(cfg.train.min_epochs, cfg.train.patience)
+    stopper = EarlyStopping(cfg.train.min_checks, cfg.train.patience)
 
     t = cfg.train
     every_position = t.objective == "every_position"
@@ -102,7 +122,11 @@ def train(config_path, train_seed):
     X_train, Y_train, N_train = ((ds.Xc_train, ds.Yc_train, ds.Nc_train) if every_position
                                  else (ds.X_train, ds.Y_train, ds.N_train))
     X_train, Y_train, N_train = (torch.from_numpy(a).to(device) for a in (X_train, Y_train, N_train))
-    n_targets = int((Y_train != -100).sum())
+    # Real targets per training example, on the CPU: counting a batch's targets for the
+    # validation schedule then needs no GPU -> CPU wait. Counted before augmentation,
+    # so one epoch is the same number of targets with or without it.
+    example_targets = (Y_train != -100).reshape(len(Y_train), -1).sum(dim=1).cpu()
+    n_targets = int(example_targets.sum())
     shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
     augment_gen = torch.Generator().manual_seed(train_seed + 1_000_000)  # augmentation draws
     n, batch_size = len(X_train), cfg.train.batch_size
@@ -118,15 +142,53 @@ def train(config_path, train_seed):
           f"{'chunks' if every_position else 'windows'} ({n_targets:,} targets) | "
           f"{len(ds.X_val):,} val | {num_params:,} params")
 
-    log, best_epoch, start = [], None, time.perf_counter()
+    schedule = EvalSchedule(t.eval_every_targets)
+    log, best_check, start = [], None, time.perf_counter()
+    # Training loss since the last check, summed on the device: calling .item()
+    # every batch would make the CPU wait for the GPU each step.
+    loss_sum = torch.zeros((), device=device)
+    targets_used = torch.zeros((), device=device)  # augmentation can leave chunk targets out
+    interval_start = time.perf_counter()
+
+    def validate():
+        """One validation check: log it, save the model if it's the best so far.
+        Returns True if early stopping says to stop."""
+        nonlocal loss_sum, targets_used, interval_start, best_check
+        check, epochs = len(log), schedule.seen / n_targets
+        train_loss = loss_sum.item() / max(targets_used.item(), 1)
+        # v1 checked every batch; once per check avoids a GPU wait every step.
+        if not math.isfinite(train_loss):
+            raise FloatingPointError(f"Training loss became {train_loss} by check {check}. Training diverged.")
+        train_seconds = time.perf_counter() - interval_start
+        val_start = time.perf_counter()
+        val_logits = predict(model, ds.X_val, ds.N_val, device)
+        val_loss = nn.functional.cross_entropy(torch.from_numpy(val_logits),
+                                               torch.from_numpy(ds.Y_val)).item()
+        val_ndcg = ndcg_at_k(val_logits, ds.Y_val, k=10)
+        val_seconds = time.perf_counter() - val_start
+        improved, stop = stopper.update(check, val_ndcg)
+        if improved:
+            best_check = check
+            torch.save({"model": model.state_dict(), "vocab": ds.vocab, "config": asdict(cfg),
+                        "check": check, "epochs": epochs, "val_ndcg": val_ndcg}, run_dir / "best.pt")
+        log.append({"check": check, "epochs": round(epochs, 4), "targets": schedule.seen,
+                    "train_loss": train_loss, "val_loss": val_loss, "val_ndcg": val_ndcg,
+                    "train_seconds": round(train_seconds, 2), "val_seconds": round(val_seconds, 2)})
+        note = "  *best" if improved else (
+            f"  no improvement {stopper.bad_checks}/{stopper.patience}" if check >= stopper.min_checks else "")
+        print(f"check {check:3d} | epoch {epochs:5.2f} | train loss {train_loss:.4f} | val loss {val_loss:.4f} | "
+              f"val NDCG@10 {val_ndcg:.4f} | train {train_seconds:.1f}s + val {val_seconds:.1f}s{note}", flush=True)
+        loss_sum.zero_()
+        targets_used.zero_()
+        model.train()  # back to training mode (predict switched dropout off)
+        interval_start = time.perf_counter()
+        return stop
+
+    stop = False
     for epoch in range(cfg.train.epochs):
-        epoch_start = time.perf_counter()
         model.train()  # dropout on
-        order = torch.randperm(n, generator=shuffle_gen).to(device)
-        # Summed on the device: calling .item() every batch would make the CPU
-        # wait for the GPU each step.
-        loss_sum = torch.zeros((), device=device)
-        targets_used = torch.zeros((), device=device)  # augmentation can leave chunk targets out
+        order_cpu = torch.randperm(n, generator=shuffle_gen)
+        order = order_cpu.to(device)
         for i in range(0, n, batch_size):
             idx = order[i:i + batch_size]  # last batch may be smaller, like v1
             X, Y, hidden = X_train[idx], Y_train[idx], None
@@ -152,44 +214,32 @@ def train(config_path, train_seed):
             optimizer.step()
             loss_sum += loss.detach() * (Y != -100).sum()
             targets_used += (Y != -100).sum()
-        train_loss = loss_sum.item() / targets_used.item()
-        # v1 checked every batch; once per epoch avoids the per-step wait above.
-        if not math.isfinite(train_loss):
-            raise FloatingPointError(f"Training loss became {train_loss} in epoch {epoch}. Training diverged.")
-
-        val_logits = predict(model, ds.X_val, ds.N_val, device)
-        val_loss = nn.functional.cross_entropy(torch.from_numpy(val_logits),
-                                               torch.from_numpy(ds.Y_val)).item()
-        val_ndcg = ndcg_at_k(val_logits, ds.Y_val, k=10)
-        improved, stop = stopper.update(epoch, val_ndcg)
-        if improved:
-            best_epoch = epoch
-            torch.save({"model": model.state_dict(), "vocab": ds.vocab, "config": asdict(cfg),
-                        "epoch": epoch, "val_ndcg": val_ndcg}, run_dir / "best.pt")
-
-        seconds = time.perf_counter() - epoch_start
-        log.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss,
-                    "val_ndcg": val_ndcg, "seconds": seconds})
-        note = "  *best" if improved else (
-            f"  no improvement {stopper.bad_epochs}/{stopper.patience}" if epoch >= stopper.min_epochs else "")
-        print(f"epoch {epoch:2d} | train loss {train_loss:.4f} | val loss {val_loss:.4f} | "
-              f"val NDCG@10 {val_ndcg:.4f} | {seconds:.1f}s{note}", flush=True)
+            if schedule.add(int(example_targets[order_cpu[i:i + batch_size]].sum())):
+                stop = validate()
+                if stop:
+                    break
         if stop:
-            print(f"early stop at epoch {epoch}")
+            print(f"early stop at check {len(log) - 1}")
             break
+    if not stop and (not log or log[-1]["targets"] < schedule.seen):
+        validate()  # training ended between checks: validate what it learned since the last one
 
     train_seconds = time.perf_counter() - start
     with open(run_dir / "log.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=log[0].keys())
         writer.writeheader()
         writer.writerows(log)
+    val_seconds = [row["val_seconds"] for row in log]
     summary = {"config": str(config_path), "train_seed": train_seed, "device": str(device),
-               "num_params": num_params, "best_epoch": best_epoch,
-               "best_val_ndcg": stopper.best, "epochs_run": len(log),
-               "train_seconds": round(train_seconds, 1), "git_commit": commit, "git_dirty": dirty}
+               "num_params": num_params, "eval_every_targets": t.eval_every_targets,
+               "best_check": best_check, "best_epochs": log[best_check]["epochs"],
+               "best_val_ndcg": stopper.best, "checks_run": len(log), "epochs_run": round(log[-1]["epochs"], 2),
+               "train_seconds": round(train_seconds, 1), "val_seconds_total": round(sum(val_seconds), 1),
+               "val_seconds_per_check": round(sum(val_seconds) / len(log), 2),
+               "git_commit": commit, "git_dirty": dirty}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-    print(f"best val NDCG@10 {stopper.best:.4f} at epoch {best_epoch} | "
-          f"{train_seconds / 60:.1f} min | saved {run_dir}/best.pt")
+    print(f"best val NDCG@10 {stopper.best:.4f} at check {best_check} ({log[best_check]['epochs']:.2f} epochs) | "
+          f"{train_seconds / 60:.1f} min, of which validation {sum(val_seconds) / 60:.1f} min | saved {run_dir}/best.pt")
 
 
 if __name__ == "__main__":

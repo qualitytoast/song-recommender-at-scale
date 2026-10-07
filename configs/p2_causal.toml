@@ -31,7 +31,8 @@ lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
 epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2,316), so the peak may come later
-min_epochs = 10       # was 20: best epochs are now ~5
+eval_every_targets = 172048  # one epoch's training targets at 5,000 playlists
+min_checks = 10       # was 20: best epochs are now ~5
 patience = 10
 augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0

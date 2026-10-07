@@ -31,7 +31,8 @@ lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
 epochs = 40
-min_epochs = 10       # was 20: best epochs are now ~5
+eval_every_targets = 74115  # one epoch's training targets at 5,000 playlists
+min_checks = 10       # was 20: best epochs are now ~5
 patience = 10
 augment_mask = 0.2       # was 0: each training song hidden with 20% chance
 augment_crop = 5         # was 0: hide the first 0-5 songs

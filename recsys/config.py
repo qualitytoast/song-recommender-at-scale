@@ -62,8 +62,9 @@ class TrainConfig:
     weight_decay: float
     batch_size: int
     epochs: int            # maximum epochs
-    min_epochs: int        # early-stopping patience only counts from this epoch on
-    patience: int          # stop after this many counted epochs without a new best NDCG@10
+    eval_every_targets: int  # run a validation check every this many training targets
+    min_checks: int        # early-stopping patience only counts from this validation check on
+    patience: int          # stop after this many counted checks without a new best NDCG@10
     augment_mask: float    # training windows: chance each song is hidden (see recsys/augment.py)
     augment_crop: int      # training windows: hide the first 0..augment_crop songs
     augment_reorder: float # training windows: chance a run of 3-5 songs is shuffled
