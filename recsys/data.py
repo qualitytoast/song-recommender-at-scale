@@ -238,6 +238,9 @@ class Dataset:
     Xc_train: np.ndarray = None   # every-position training chunks, see make_chunks: inputs,
     Yc_train: np.ndarray = None   # targets (-100 = padding),
     Nc_train: np.ndarray = None   # and name word IDs of each chunk's playlist
+    X_rank: np.ndarray = None     # windows from the ranker's playlists (data.ranker_split),
+    Y_rank: np.ndarray = None     # which the retriever never trains on
+    N_rank: np.ndarray = None
     genre_names: list = None      # genre_names[i] is the genre with ID i + 1 (0 is padding)
     song_genres: np.ndarray = None  # (vocab_size, GENRES_PER_ARTIST) genre IDs of each song's artist
 
@@ -264,10 +267,13 @@ def build_dataset(cfg):
     words = build_word_vocab([playlist_names[i] for i in train_idx], NAME_WORD_MIN_COUNT)
     encoded = encode_names(playlist_names, {w: i + 1 for i, w in enumerate(words)})
 
-    X_train, Y_train, P_train = make_windows(train, track_to_id, d.context_length)
-    Xc_train, Yc_train, Pc_train = make_chunks(train, track_to_id, d.context_length)
+    fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
+    fit = [playlists[i] for i in fit_idx]
+    X_train, Y_train, P_train = make_windows(fit, track_to_id, d.context_length)
+    Xc_train, Yc_train, Pc_train = make_chunks(fit, track_to_id, d.context_length)
+    X_rank, Y_rank, P_rank = make_windows([playlists[i] for i in rank_idx], track_to_id, d.context_length)
     X_test, Y_test, P_test = make_windows(held_out, track_to_id, d.context_length)
-    N_train = encoded[train_idx][P_train]
+    N_train = encoded[fit_idx][P_train]
     N_test = encoded[held_out_idx][P_test]
     if d.validation == "held_out_prefix":
         X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
@@ -292,7 +298,8 @@ def build_dataset(cfg):
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test,
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
-                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
+                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[fit_idx][Pc_train],
+                   X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
                    genre_names=genre_names, song_genres=song_genres)
 
 
@@ -303,6 +310,15 @@ def sample_validation(X_val, Y_val, N_val, max_windows, seed):
         return X_val, Y_val, N_val
     keep = np.sort(np.random.RandomState(seed).choice(len(X_val), max_windows, replace=False))
     return X_val[keep], Y_val[keep], N_val[keep]
+
+
+def split_off_ranker(train_idx, fraction):
+    """(retriever playlists, ranker playlists): the last `fraction` of the (already
+    shuffled) training playlists are kept for the second-stage ranker. The vocab and
+    everything else are still built from all training playlists, so the held-out
+    windows are the same with or without the split."""
+    cut = len(train_idx) - int(len(train_idx) * fraction)
+    return train_idx[:cut], train_idx[cut:]
 
 
 def song_genre_ids(genres_file, artist_uris, song_artist):
@@ -400,12 +416,14 @@ def build_dataset_from_store(cfg):
     def split_arrays(idx):
         tracks, offsets = concat_playlists(store, kept[idx])
         return to_vocab[tracks], offsets
-    train_songs, train_offsets = split_arrays(train_idx)
+    fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
+    train_songs, train_offsets = split_arrays(fit_idx)
     test_songs, test_offsets = split_arrays(held_out_idx)
     X_train, Y_train, P_train = windows_from_arrays(train_songs, train_offsets, d.context_length)
     Xc_train, Yc_train, Pc_train = chunks_from_arrays(train_songs, train_offsets, d.context_length)
     X_test, Y_test, P_test = windows_from_arrays(test_songs, test_offsets, d.context_length)
-    N_train, N_test = encoded[train_idx][P_train], encoded[held_out_idx][P_test]
+    N_train, N_test = encoded[fit_idx][P_train], encoded[held_out_idx][P_test]
+    X_rank, Y_rank, P_rank = windows_from_arrays(*split_arrays(rank_idx), d.context_length)
     if d.validation == "held_out_prefix":
         X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
     else:
@@ -427,7 +445,8 @@ def build_dataset_from_store(cfg):
                    artist_names=[store.artist_names[a] for a in artists],
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val, X_test=X_test, Y_test=Y_test,
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
-                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
+                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[fit_idx][Pc_train],
+                   X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
                    genre_names=genre_names, song_genres=song_genres)
 
 

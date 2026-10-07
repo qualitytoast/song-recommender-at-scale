@@ -1,12 +1,12 @@
-# Phase 3, step 2d: both fixes: 8,192 popularity-weighted random negatives.
-# sampled_negatives and negative_power differ from p3_sampled.toml (p3_neg8k + p3_popneg).
+# Phase 3, step 5: the p3_50k retriever trained on part A only (80% of training playlists).
+# Only ranker_split differs from p3_50k.toml: part B (the last 20%) is kept for training the ranker.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
-train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
+train_seeds = [1, 2]     # 2 seeds at this scale (was 3)
 
 [data]
-folder = "data/mpd"
-max_playlists = 5000
+folder = "data/mpd_store"   # was "data/mpd": the compact store (recsys/mpd_store.py)
+max_playlists = 50000  # was 5000
 min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
 min_freq = 2           # songs seen fewer times than this are dropped
 song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
@@ -15,9 +15,9 @@ context_length = 10    # predict the 11th song from the previous 10
 test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
 validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
-genres_file = "data/genres/musicbrainz_artists.jsonl"  # genres fetched for the 5,000-playlist artists
-val_max_windows = 0      # validate on every validation window
-ranker_split = 0.0       # no playlists kept back for a ranker
+genres_file = "data/genres/musicbrainz_all_mpd_artists.jsonl"  # was the API file: dump genres for all MPD artists
+val_max_windows = 20000  # was 0 (all 156,681): ~5 s per check instead of ~41 s
+ranker_split = 0.2       # was 0: the last 20% of training playlists are kept for the ranker
 val_size = 0             # was 3000; unused with separate_playlists
 
 [model]
@@ -34,8 +34,8 @@ lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
 epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2,316), so the peak may come later
-eval_every_targets = 172048  # one epoch's training targets at 5,000 playlists
-min_checks = 10       # was 20: best epochs are now ~5
+eval_every_targets = 572137  # a quarter of an epoch (2,288,549 targets)
+min_checks = 10          # = 2.5 epochs at a quarter epoch per check
 patience = 5             # was 10 epochs; now counts validation checks
 augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0
