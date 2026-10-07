@@ -450,3 +450,32 @@ the true song + 31 songs sampled from its shortlist; lr 1e-4 (fine-tuning).
 - Cost: shortlists for part B ~170 s, training ~7.5 min per seed, reranking
   all 159,081 held-out windows x 500 candidates ~100 s.
 - This was the last 2-seed run; new runs use 1 seed.
+
+**Training speed-up, lazy AdamW** (`recsys/lazy_adam.py`). Profiling a
+`p3_50k` training step (`scripts/profile_training_step.py`): 45.7 ms per step,
+58% of it the AdamW update, almost all on the per-ID tables (35.25M of 35.43M
+parameters) while a batch uses ~282 of 166,627 songs as context and targets
+(~8,500 with its sampled negatives). Lazy AdamW applies the AdamW update
+(momentum, step, weight decay) only to the table rows a batch used; the shared
+layers keep regular AdamW. Rows are worked out on the CPU, so the GPU never
+reports back. With every row used it equals AdamW exactly (tested).
+
+| Config (50,000 playlists, seed 1) | Held-out NDCG@10 | Hits@10 | Hits@1 | Top 500 | Top 2,000 | Best at | Training time |
+|---|---|---|---|---|---|---|---|
+| `p3_50k` (AdamW) | 0.1062 | 17.4% | 5.4% | 66.5% | 82.7% | 3.75 epochs | 39.5 min |
+| `p3_50k_lazy` (lazy AdamW) | **0.1130** | 17.6% | **6.4%** | 65.6% | 82.1% | 6.0 epochs | **23.7 min** |
+
+- `p3_50k_lazy` (2026-10-07, `d1009b0`): +6.4% NDCG@10 and +1.0 point Hits@1,
+  in 60% of the time (2.6x faster per epoch: ~43 s vs ~114 s per quarter
+  epoch; it needs 6 epochs to peak instead of 3.75). One seed, but `p3_50k`'s
+  two seeds differed by only 0.0003.
+- Why it learns differently: with AdamW, a song row keeps moving on its
+  momentum for many steps after each time it appears (each later push 0.9x the
+  previous, adding up to ~10x the first step), and every row shrinks with
+  weight decay every step. With lazy AdamW a row moves only when its song is in
+  the batch. For rarely seen rows that acts like a much lower learning rate:
+  slower learning early (validation NDCG@10 0.0509 vs 0.0693 after 1 epoch),
+  a later and higher peak, slower decline after it.
+- Trade-off for two-stage ranking: the deep end of the ranking is slightly
+  worse (top-500 recall 65.6% vs 66.5%, top-2,000 82.1% vs 82.7%) while the
+  top is better, so the ranker's ceiling would drop ~1 point.
