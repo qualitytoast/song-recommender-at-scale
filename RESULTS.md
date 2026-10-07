@@ -248,3 +248,31 @@ and genre, the two features shared across many songs, give nearly all of it;
 both mostly help get the right song into the top 10 rather than to #1 (Hits@1
 stays at 3.4-3.5%). Every run still peaks by epoch 2-4 and then overfits;
 no feature changed that, which points to more training data as the next lever.
+
+# Overfitting experiments
+
+Every Phase 2 run peaks by epoch 2-4. At its best epoch, `p2_genre` already
+scores NDCG@10 0.46 on training windows vs 0.066 on validation (Hits@10 64%
+vs 11%): it memorizes training playlists. 95% of training transitions (last
+song -> next song) occur exactly once, and only 10.6% of validation
+transitions ever occur in training. Each experiment below changes one thing
+on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
+
+| Config | Seeds | NDCG@10 mean (min–max) | Change vs `p2_genre` | Hits@10 | Hits@1 | Best epochs | Params | Min / seed |
+|---|---|---|---|---|---|---|---|---|
+| `p2_genre` | 3 | 0.0692 (0.0669–0.0715) | — | 11.6% (11.4%–11.8%) | 3.4% (3.1%–3.7%) | 3, 3, 2 | 7,202,491 | 9.7 |
+| `p2_augment` | 3 | 0.0689 (0.0686–0.0693) | -0.0002 | 11.6% (11.3%–11.7%) | 3.4% (3.3%–3.5%) | 4, 5, 5 | 7,202,555 | 12.0 |
+
+- `p2_augment` (2026-10-06, `f424206`): training windows only are altered
+  (`recsys/augment.py`): with 50% chance a run of 3-5 songs is shuffled, the
+  first 0-5 songs are hidden, and each song is hidden with 20% chance; a hidden
+  song becomes a learned [MASK] vector with its features switched off. About
+  40% of context songs end up hidden. Result: overfitting slows, the peak
+  doesn't rise. Per seed, held-out NDCG@10 -0.0022, +0.0017, -0.0003 and best
+  validation NDCG@10 -0.0015, +0.0033, -0.0010: no gain. But the peak moves
+  from epoch 2-3 to 4-5, validation NDCG declines more slowly after it (0.048-
+  0.052 at epoch 11 vs 0.042-0.046), training loss falls more slowly (4.1 vs
+  2.5 at epoch 11), and the seed spread narrows (0.0007 vs 0.0046). Early
+  stopping already caught `p2_genre` before memorization took over, so slowing
+  memorization doesn't help by itself; and hiding ~40% of songs makes training
+  windows unlike evaluation windows, which may cost some of what it gains.
