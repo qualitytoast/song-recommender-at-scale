@@ -2,7 +2,7 @@
 # Data size, the genres file (MusicBrainz dump, all MPD artists) and validation pacing differ from p3_neg8k_pop.toml.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
-train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
+train_seeds = [1, 2]     # 2 seeds at this scale (was 3)
 
 [data]
 folder = "data/mpd_store"   # was "data/mpd": the compact store (recsys/mpd_store.py)
