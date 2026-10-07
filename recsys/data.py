@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from recsys.mpd_store import is_store, load_store, playlists_from_store
+
 DURATION_BUCKETS = 10  # song lengths are grouped into this many equal-sized buckets
 NAME_WORD_MIN_COUNT = 2  # playlist-name words used in fewer training names are dropped
 GENRE_MIN_ARTISTS = 5    # genres listed for fewer vocab artists are dropped
@@ -238,8 +240,12 @@ class Dataset:
 
 def build_dataset(cfg):
     d = cfg.data
-    playlists, tracks, playlist_names = load_playlists(d.folder, d.max_playlists,
-                                                       d.min_playlist_len, d.song_key)
+    if is_store(d.folder):  # compact store from recsys.mpd_store, else raw MPD JSON slices
+        playlists, tracks, playlist_names = playlists_from_store(load_store(d.folder), d.max_playlists,
+                                                                 d.min_playlist_len, d.song_key)
+    else:
+        playlists, tracks, playlist_names = load_playlists(d.folder, d.max_playlists,
+                                                           d.min_playlist_len, d.song_key)
     # Split playlist indices, so playlists and their names stay paired. Same shuffle
     # as splitting the playlists themselves: it only depends on the seed and length.
     train_idx, val_idx, held_out_idx = split_playlists(list(range(len(playlists))),
