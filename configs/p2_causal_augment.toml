@@ -39,3 +39,4 @@ augment_reorder = 0.5    # was 0: half the chunks get a run of 3-5 songs shuffle
 objective = "every_position"  # was "last_position": predict the next song at every position
 softmax = "full"          # training scores every song
 sampled_negatives = 0
+negative_power = 0.0      # random negatives drawn uniformly

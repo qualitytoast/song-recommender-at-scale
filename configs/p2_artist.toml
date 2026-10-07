@@ -39,3 +39,4 @@ augment_reorder = 0.0
 objective = "last_position"  # one window -> its next song
 softmax = "full"          # training scores every song
 sampled_negatives = 0
+negative_power = 0.0      # random negatives drawn uniformly

@@ -1,5 +1,5 @@
-# Overfitting experiment 2: p2_genre trained on every position of song chunks, with causal attention.
-# Only objective and the epochs cap differ from p2_genre.toml.
+# Phase 3, step 2b: p3_sampled with 8,192 random negatives instead of 1,024.
+# Only sampled_negatives differs from p3_sampled.toml.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
@@ -37,6 +37,6 @@ augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0
 augment_reorder = 0.0
 objective = "every_position"  # was "last_position": predict the next song at every position
-softmax = "full"          # training scores every song
-sampled_negatives = 0
+softmax = "sampled"       # was "full": each batch scores its true next songs + random songs
+sampled_negatives = 8192  # was 1024
 negative_power = 0.0      # random negatives drawn uniformly

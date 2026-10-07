@@ -38,6 +38,7 @@ augment_reorder = 0.0
 objective = "last_position"
 softmax = "full"
 sampled_negatives = 0
+negative_power = 0.0
 """
 
 

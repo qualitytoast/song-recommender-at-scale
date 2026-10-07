@@ -73,6 +73,7 @@ class TrainConfig:
     softmax: str           # "full": training scores every song; "sampled": only the batch's
                            # true next songs plus sampled_negatives random ones (see recsys.sampled)
     sampled_negatives: int # random songs added to each batch's candidates (sampled softmax)
+    negative_power: float  # random songs drawn by (target frequency)^power; 0 = uniform
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))

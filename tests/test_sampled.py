@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from recsys.model import SongRecommender
-from recsys.sampled import candidate_set, log_q, sampled_softmax_loss
+from recsys.sampled import candidate_set, log_q, random_probs, sampled_softmax_loss
 
 ARTIST = [0, 0, 1, 2, 2, 2, 1]
 GENRES = [[1, 2], [1, 0], [2, 0], [0, 0], [1, 2], [2, 0], [1, 0]]
@@ -57,5 +57,21 @@ def test_accidental_hits_and_padding_are_masked():
 def test_log_q_is_expected_count_in_the_candidate_set():
     target_freq = torch.tensor([0.5, 0.25, 0.25, 0.0])
     # 8 targets per batch, 2 random draws over 4 songs: song 0 expected 8*0.5 + 2/4 = 4.5 times
-    q = log_q(torch.tensor([0, 3]), 8, target_freq, n_random=2, vocab_size=4)
+    q = log_q(torch.tensor([0, 3]), 8, target_freq, 2, random_probs(target_freq, 0))
     torch.testing.assert_close(q, torch.tensor([math.log(4.5), math.log(0.5)]))
+
+
+def test_popularity_weighted_probs_and_their_log_q():
+    target_freq = torch.tensor([0.5, 0.25, 0.25, 0.0])
+    probs = random_probs(target_freq, 1.0)                        # power 1: proportional to frequency
+    torch.testing.assert_close(probs, target_freq)
+    torch.testing.assert_close(random_probs(target_freq, 0.0), torch.full((4,), 0.25))
+    # song 0: 8 * 0.5 as a target + 2 * 0.5 as a random draw = 5
+    torch.testing.assert_close(log_q(torch.tensor([0]), 8, target_freq, 2, probs), torch.tensor([math.log(5.0)]))
+
+
+def test_popularity_weighted_draws_follow_the_probabilities():
+    probs = random_probs(torch.tensor([0.7, 0.2, 0.1, 0.0]), 1.0)
+    cand, _ = candidate_set(torch.full((1, 1), -100), 20000, 4, torch.Generator().manual_seed(0), probs)
+    share = torch.bincount(cand[1:], minlength=4).float() / 20000
+    torch.testing.assert_close(share, torch.tensor([0.7, 0.2, 0.1, 0.0]), atol=0.02, rtol=0)

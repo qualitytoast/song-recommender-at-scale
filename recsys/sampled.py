@@ -5,7 +5,9 @@ too big (a million songs x 320 predictions per batch is 1.3 GB of scores). Each
 training batch instead scores its predictions against a fixed-size candidate set:
   - every target slot of the batch: each true next song is a wrong answer for
     the other predictions ("in-batch negatives"), and
-  - n_random songs drawn uniformly from the whole catalog.
+  - n_random songs drawn from the whole catalog: uniformly, or (negative_power
+    > 0) in proportion to (how often the song is a training target)^power, which
+    favours popular songs, the usual confusions.
 Each prediction's label is its own slot. A column holding the same song as a
 prediction's answer, other than its own slot, is masked out (an "accidental
 hit": it's not a wrong answer), as are padding slots.
@@ -24,21 +26,34 @@ import torch
 from torch import nn
 
 
-def candidate_set(Y, n_random, vocab_size, generator):
+def random_probs(target_freq, power):
+    """Probability of drawing each song as a random negative: target_freq**power, normalized.
+    power 0 is uniform over the whole catalog."""
+    weights = torch.ones_like(target_freq) if power == 0 else target_freq ** power
+    return weights / weights.sum()
+
+
+def candidate_set(Y, n_random, vocab_size, generator, probs=None):
     """(candidates, real): every target slot of Y, flattened (padding slots hold song 0),
-    then n_random random songs; real marks the columns that aren't padding.
-    Random draws come from `generator` (CPU), so they don't disturb other random streams."""
+    then n_random random songs (uniform, or drawn from probs); real marks the columns
+    that aren't padding. Random draws come from `generator` (CPU), so they don't
+    disturb other random streams."""
     slots = Y.reshape(-1)
-    random_songs = torch.randint(0, vocab_size, (n_random,), generator=generator).to(Y.device)
+    if probs is None:
+        random_songs = torch.randint(0, vocab_size, (n_random,), generator=generator)
+    else:
+        random_songs = torch.multinomial(probs, n_random, replacement=True, generator=generator)
+    random_songs = random_songs.to(Y.device)
     candidates = torch.cat([slots.clamp(min=0), random_songs])
     real = torch.cat([slots != -100, torch.ones(n_random, dtype=torch.bool, device=Y.device)])
     return candidates, real
 
 
-def log_q(candidates, n_targets, target_freq, n_random, vocab_size):
+def log_q(candidates, n_targets, target_freq, n_random, probs):
     """log(expected number of times each candidate is in the candidate set):
-    as a true target (n_targets draws from the target frequencies) plus as a random song."""
-    return torch.log(n_targets * target_freq[candidates] + n_random / vocab_size)
+    as a true target (n_targets draws from the target frequencies) plus as a
+    random song (n_random draws from probs, see random_probs)."""
+    return torch.log((n_targets * target_freq[candidates] + n_random * probs[candidates]).clamp(min=1e-12))
 
 
 def sampled_softmax_loss(logits, Y, candidates, real, correction):
