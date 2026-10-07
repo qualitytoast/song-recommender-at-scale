@@ -1,0 +1,16 @@
+# Phase 3, scaling stage 2: second-stage ranker at 200,000 playlists (recsys/ranker.py).
+# Same settings as r_50k, on the 200k part-A retriever; checks scaled to its 1,470,511 part-B windows.
+
+[ranker]
+retriever = "configs/p3_200k_partA.toml"  # seed s uses runs/p3_200k_partA/seed<s>/best.pt
+train_seeds = [1]          # 1 seed per run
+shortlist = 500            # rerank the retriever's top 500 (held-out recall@500 ~66%)
+negatives = 31             # per training window: the true song + 31 sampled from its shortlist
+lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
+weight_decay = 0.05
+batch_size = 64            # windows per step
+epochs = 20                # maximum passes over the 1,470,511 part-B windows
+eval_every_examples = 294000  # ~1/5 epoch of part-B windows
+min_checks = 5
+patience = 5
+val_windows = 5000         # rerank the first 5,000 of the 20,000 validation windows each check
