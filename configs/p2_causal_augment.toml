@@ -1,4 +1,4 @@
-# Overfitting experiment 3: p2_causal + training augmentation (the p2_augment settings).
+# Overfitting experiment 3: p2_causal + training augmentation (mask and reorder as in p2_augment, crop off).
 # Only augment_mask and augment_reorder differ from p2_causal.toml (as in p2_augment; crop stays off).
 
 data_seed = 42           # playlist split, same as every Phase 1 run

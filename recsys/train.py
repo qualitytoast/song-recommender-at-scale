@@ -118,6 +118,7 @@ def train(config_path, train_seed):
         # Summed on the device: calling .item() every batch would make the CPU
         # wait for the GPU each step.
         loss_sum = torch.zeros((), device=device)
+        targets_used = torch.zeros((), device=device)  # augmentation can leave chunk targets out
         for i in range(0, n, batch_size):
             idx = order[i:i + batch_size]  # last batch may be smaller, like v1
             X, Y, hidden = X_train[idx], Y_train[idx], None
@@ -136,7 +137,8 @@ def train(config_path, train_seed):
             loss.backward()
             optimizer.step()
             loss_sum += loss.detach() * (Y != -100).sum()
-        train_loss = loss_sum.item() / n_targets
+            targets_used += (Y != -100).sum()
+        train_loss = loss_sum.item() / targets_used.item()
         # v1 checked every batch; once per epoch avoids the per-step wait above.
         if not math.isfinite(train_loss):
             raise FloatingPointError(f"Training loss became {train_loss} in epoch {epoch}. Training diverged.")
