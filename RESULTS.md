@@ -263,6 +263,7 @@ on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
 | `p2_genre` | 3 | 0.0692 (0.0669–0.0715) | — | 11.6% (11.4%–11.8%) | 3.4% (3.1%–3.7%) | 3, 3, 2 | 7,202,491 | 9.7 |
 | `p2_augment` | 3 | 0.0689 (0.0686–0.0693) | -0.0002 | 11.6% (11.3%–11.7%) | 3.4% (3.3%–3.5%) | 4, 5, 5 | 7,202,555 | 12.0 |
 | `p2_causal` | 3 | 0.0739 (0.0736–0.0744) | **+0.0047** | 12.1% (12.0%–12.2%) | 3.8% (3.8%–3.8%) | 5, 5, 4 | 7,202,491 | 5.2 |
+| `p2_causal_augment` | 3 | 0.0714 (0.0704–0.0733) | +0.0022 (-0.0025 vs `p2_causal`) | 12.3% (12.0%–12.7%) | 3.3% (3.2%–3.4%) | 7, 7, 8 | 7,202,555 | 9.4 |
 
 - `p2_augment` (2026-10-06, `f424206`): training windows only are altered
   (`recsys/augment.py`): with 50% chance a run of 3-5 songs is shuffled, the
@@ -295,3 +296,24 @@ on top of `p2_genre` and is compared to it, same seeds, same held-out windows.
   out-of-vocab songs), 172,048 targets vs 74,115, but only 10,102 of them have
   a full 10-song context, vs all 74,115 windows. A control that trains chunks
   only on the window targets would separate them.
+- `p2_causal_augment` (2026-10-06, `e738e7a`): `p2_causal` + augmentation of
+  the training chunks: mask 20% and reorder 50% as in `p2_augment`, crop off.
+  With chunks the targets sit inside the sequence, so targets inside a
+  shuffled run (whose context could hold a later song, even the answer) and
+  targets with nothing visible are left out of the loss: 19% of targets per
+  epoch. Crop was turned off because causal training already sees every
+  context length, and on short chunks (half have 5 songs or fewer) it hid
+  whole chunks, leaving out 48% of targets. Result: worse than `p2_causal`.
+  Held-out NDCG@10 -0.0032, -0.0039, -0.0004 per seed; validation NDCG@10 down
+  on every seed (-0.0032, -0.0022, -0.0029); Hits@1 down on every seed (3.8%
+  -> 3.3%), Hits@10 slightly up (12.1% -> 12.3%). Hiding and shuffling the
+  most recent songs blurs the signal that picks the exact next song. It peaks
+  later (epoch 7-8) and declines more slowly, as `p2_augment` did. The
+  training losses logged for this run are ~19% too low (divided by all
+  targets, not the ones used; fixed in `ddc449d`); validation and held-out
+  numbers are unaffected.
+
+**Overfitting experiments so far:** only every-position (causal) training
+raised the peak. Augmentation, on windows or on chunks, slows memorization
+but doesn't raise the peak, and on chunks it lowers it. `p2_causal` (0.0739
+NDCG@10, 12.1% Hits@10, 3.8% Hits@1, 10.9x most-popular) is the best setup.
