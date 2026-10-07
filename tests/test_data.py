@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 from recsys.config import Config, DataConfig, ModelConfig
-from recsys.data import (artist_genre_ids, build_dataset, build_genre_vocab, build_vocab,
+from recsys.data import (artist_genre_ids, sample_validation, build_dataset, build_genre_vocab, build_vocab,
                          build_word_vocab, duration_buckets, encode_names, load_artist_genres,
                          load_playlists, make_chunks, make_windows, name_words, song_feature_ids,
                          split_playlists)
@@ -166,7 +166,7 @@ def tiny_config(folder, vocab_from, validation, val_split, val_size=2, song_key=
     data = DataConfig(folder=str(folder), max_playlists=20, min_playlist_len=4, min_freq=2,
                       song_key=song_key, vocab_from=vocab_from, context_length=2,
                       test_split=0.1, validation=validation, val_size=val_size, val_split=val_split,
-                      genres_file=str(folder / "genres.jsonl"))
+                      genres_file=str(folder / "genres.jsonl"), val_max_windows=0)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True,
                         init="pytorch", features=list(features))
     return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
@@ -347,3 +347,12 @@ def test_chunks_contain_every_full_window_target(tmp_path):
     chunk_pairs = {(x, y) for xr, yr in zip(ds.Xc_train, ds.Yc_train) for x, y in zip(xr, yr) if y != -100}
     window_pairs = set(zip(ds.X_train[:, -1], ds.Y_train))
     assert window_pairs <= chunk_pairs
+
+
+def test_validation_sample_is_a_fixed_subset_in_order():
+    X, Y, N = np.arange(100).reshape(50, 2), np.arange(50), np.arange(50)[:, None]
+    a, b = sample_validation(X, Y, N, 10, seed=42), sample_validation(X, Y, N, 10, seed=42)
+    assert len(a[1]) == 10 and all(np.array_equal(x, y) for x, y in zip(a, b))  # same sample every run
+    assert np.all(np.diff(a[1]) > 0)                                            # original order kept
+    np.testing.assert_array_equal(a[0], X[a[1]])                                 # rows stay together
+    assert sample_validation(X, Y, N, 0, seed=42)[1] is Y                        # 0 = all

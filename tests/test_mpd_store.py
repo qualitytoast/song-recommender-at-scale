@@ -94,10 +94,12 @@ def random_mpd(tmp_path, n_playlists=120, seed=0):
     return raw
 
 
-def config(folder, genres, max_playlists=1000, validation="separate_playlists", val_split=0.1, val_size=0):
+def config(folder, genres, max_playlists=1000, validation="separate_playlists", val_split=0.1, val_size=0,
+           val_max_windows=0):
     data = DataConfig(folder=str(folder), max_playlists=max_playlists, min_playlist_len=4, min_freq=2,
                       song_key="track_uri", vocab_from="train", context_length=3, test_split=0.1,
-                      validation=validation, val_size=val_size, val_split=val_split, genres_file=str(genres))
+                      validation=validation, val_size=val_size, val_split=val_split, genres_file=str(genres),
+                      val_max_windows=val_max_windows)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True, init="pytorch",
                         features=["artist", "album", "duration", "playlist_name", "genre"])
     return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
@@ -122,7 +124,8 @@ def test_store_dataset_equals_json_dataset(tmp_path):
     raw = random_mpd(tmp_path)
     build_store(raw, tmp_path / "store")
     genres = tmp_path / "genres.jsonl"
-    for kwargs in [{}, {"max_playlists": 40}, {"validation": "held_out_prefix", "val_split": 0.0, "val_size": 7}]:
+    for kwargs in [{}, {"max_playlists": 40}, {"validation": "held_out_prefix", "val_split": 0.0, "val_size": 7},
+                   {"val_max_windows": 15}]:
         from_json = build_dataset(config(raw, genres, **kwargs))
         from_store = build_dataset(config(tmp_path / "store", genres, **kwargs))
         assert len(from_json.Y_train) > 50 and len(from_json.Yc_train) > 20  # a real test, not empty data

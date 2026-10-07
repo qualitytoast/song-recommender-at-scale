@@ -16,6 +16,7 @@ val_size = 3000
 validation = "held_out_prefix"
 val_split = 0.0
 genres_file = "data/genres/x.jsonl"
+val_max_windows = 0
 
 [model]
 embed_dim = 64

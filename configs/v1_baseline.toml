@@ -17,6 +17,7 @@ val_size = 3000        # first N held-out windows, used for early stopping
 validation = "held_out_prefix"  # v1: validation = first val_size held-out windows
 val_split = 0.0          # no separate validation playlists
 genres_file = "data/genres/musicbrainz_artists.jsonl"  # genres fetched for the 5,000-playlist artists
+val_max_windows = 0      # validate on every validation window
 
 [model]
 embed_dim = 64

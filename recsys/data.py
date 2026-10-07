@@ -274,6 +274,7 @@ def build_dataset(cfg):
     else:
         X_val, Y_val, P_val = make_windows(val, track_to_id, d.context_length)
         N_val = encoded[val_idx][P_val]
+    X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
                      "album": song_feature_ids(vocab, tracks, "album_uri"),
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
@@ -293,6 +294,15 @@ def build_dataset(cfg):
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
                    Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
                    genre_names=genre_names, song_genres=song_genres)
+
+
+def sample_validation(X_val, Y_val, N_val, max_windows, seed):
+    """At most max_windows validation windows (0 = all), a fixed random sample in the
+    original order. Early stopping then costs less per check; held-out stays complete."""
+    if not max_windows or len(X_val) <= max_windows:
+        return X_val, Y_val, N_val
+    keep = np.sort(np.random.RandomState(seed).choice(len(X_val), max_windows, replace=False))
+    return X_val[keep], Y_val[keep], N_val[keep]
 
 
 def song_genre_ids(genres_file, artist_uris, song_artist):
@@ -401,6 +411,7 @@ def build_dataset_from_store(cfg):
     else:
         X_val, Y_val, P_val = windows_from_arrays(*split_arrays(val_idx), d.context_length)
         N_val = encoded[val_idx][P_val]
+    X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
 
     artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
     albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])

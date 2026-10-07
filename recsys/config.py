@@ -31,6 +31,7 @@ class DataConfig:
     val_size: int          # used by "held_out_prefix"
     val_split: float       # used by "separate_playlists"; must be 0 otherwise
     genres_file: str       # artist genres JSONL (scripts/fetch_genres.py or genres_from_dump.py)
+    val_max_windows: int   # validate on at most this many windows (a fixed random sample); 0 = all
 
     def __post_init__(self):  # runs right after the dataclass fills in its fields
         _check_choice("song_key", self.song_key, ("track_name", "track_uri"))
