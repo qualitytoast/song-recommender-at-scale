@@ -99,6 +99,40 @@ def make_windows(playlists, track_to_id, context_length):
     return X, np.array(Y, dtype=np.int64), np.array(P, dtype=np.int64)
 
 
+def make_chunks(playlists, track_to_id, context_length):
+    """Training examples for the every-position objective.
+
+    Each playlist is split at songs outside the vocab; each run of vocab songs is
+    cut into chunks of up to context_length + 1 songs, consecutive chunks sharing
+    one song, so every transition (song -> next song) appears exactly once. A
+    chunk of k songs gives k - 1 predictions: inputs are its first k - 1 songs,
+    targets its last k - 1 (target t is the song after input t).
+
+    Returns (inputs, targets, P), each row one chunk: inputs (n, context_length)
+    padded with 0, targets (n, context_length) padded with -100 (which the loss
+    ignores), P[c] = index of chunk c's playlist. Padding sits after the real
+    songs, so with causal attention no real position can see it.
+    """
+    L = context_length
+    inputs, targets, P = [], [], []
+    for p, playlist in enumerate(playlists):
+        run = []
+        for key in playlist + [None]:  # None ends the last run
+            song = track_to_id.get(key) if key is not None else None
+            if song is not None:
+                run.append(song)
+                continue
+            for start in range(0, len(run) - 1, L):
+                chunk = run[start:start + L + 1]
+                pad = L + 1 - len(chunk)
+                inputs.append(chunk[:-1] + [0] * pad)
+                targets.append(chunk[1:] + [-100] * pad)
+                P.append(p)
+            run = []
+    as_array = lambda rows: np.array(rows, dtype=np.int64).reshape(-1, L)
+    return as_array(inputs), as_array(targets), np.array(P, dtype=np.int64)
+
+
 def song_feature_ids(vocab, tracks, field):
     """For each song in the vocab, the ID of its value of `field` (e.g. its artist).
 
@@ -195,6 +229,9 @@ class Dataset:
     N_train: np.ndarray   # (n, width) word IDs of each window's playlist name
     N_val: np.ndarray
     N_test: np.ndarray
+    Xc_train: np.ndarray = None   # every-position training chunks, see make_chunks: inputs,
+    Yc_train: np.ndarray = None   # targets (-100 = padding),
+    Nc_train: np.ndarray = None   # and name word IDs of each chunk's playlist
     genre_names: list = None      # genre_names[i] is the genre with ID i + 1 (0 is padding)
     song_genres: np.ndarray = None  # (vocab_size, GENRES_PER_ARTIST) genre IDs of each song's artist
 
@@ -216,6 +253,7 @@ def build_dataset(cfg):
     encoded = encode_names(playlist_names, {w: i + 1 for i, w in enumerate(words)})
 
     X_train, Y_train, P_train = make_windows(train, track_to_id, d.context_length)
+    Xc_train, Yc_train, Pc_train = make_chunks(train, track_to_id, d.context_length)
     X_test, Y_test, P_test = make_windows(held_out, track_to_id, d.context_length)
     N_train = encoded[train_idx][P_train]
     N_test = encoded[held_out_idx][P_test]
@@ -248,6 +286,7 @@ def build_dataset(cfg):
                    X_train=X_train, Y_train=Y_train, X_val=X_val, Y_val=Y_val,
                    X_test=X_test, Y_test=Y_test,
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
+                   Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[train_idx][Pc_train],
                    genre_names=genre_names, song_genres=song_genres)
 
 

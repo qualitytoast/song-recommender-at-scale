@@ -1,5 +1,5 @@
-# Phase 2 baseline: v1_fixed with min_epochs 10, run with 3 training seeds.
-# Only the seeds and min_epochs differ from v1_fixed.toml.
+# Overfitting experiment 2: p2_genre trained on every position of song chunks, with causal attention.
+# Only objective and the epochs cap differ from p2_genre.toml.
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
@@ -23,17 +23,17 @@ num_layers = 2
 dropout = 0.1          # after embeddings, after attention, after feed-forward
 scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
 init = "pytorch"         # was "v1": PyTorch's default starting weights
-features = []            # song features added to the song ID
+features = ["artist", "album", "duration", "playlist_name", "genre"]  # was without "genre"
 
 [train]
 optimizer = "adamw"    # decoupled weight decay
 lr = 1e-3
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 32
-epochs = 40
+epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2,316), so the peak may come later
 min_epochs = 10       # was 20: best epochs are now ~5
 patience = 10
 augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0
 augment_reorder = 0.0
-objective = "last_position"  # one window -> its next song
+objective = "every_position"  # was "last_position": predict the next song at every position

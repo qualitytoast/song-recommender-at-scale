@@ -236,3 +236,35 @@ def test_nothing_hidden_equals_no_hidden_argument():
     model = masked_model().eval()
     ids = torch.tensor([[0, 3, 6]])
     torch.testing.assert_close(model(ids, hidden=torch.zeros(1, 3, dtype=torch.bool)), model(ids))
+
+
+# --- causal attention / every-position output ---
+
+def causal_model(seed=0):
+    torch.manual_seed(seed)
+    return SongRecommender(vocab_size=7, embed_dim=4, context_length=4, num_layers=2, dropout=0.0,
+                           scale_attention=True, init="pytorch", song_features={"artist": ARTIST},
+                           causal=True)
+
+
+def test_causal_positions_cannot_see_later_songs():
+    model = causal_model().eval()
+    a = model(torch.tensor([[0, 3, 6, 1]]), all_positions=True)
+    b = model(torch.tensor([[0, 3, 2, 5]]), all_positions=True)  # songs at positions 2 and 3 changed
+    torch.testing.assert_close(a[0, :2], b[0, :2])               # positions 0 and 1 unaffected
+    assert not torch.allclose(a[0, 2], b[0, 2])
+
+
+def test_last_position_output_matches_all_positions():
+    model = causal_model().eval()
+    ids = torch.tensor([[0, 3, 6, 1], [2, 2, 5, 4]])
+    torch.testing.assert_close(model(ids), model(ids, all_positions=True)[:, -1])
+
+
+def test_non_causal_positions_do_see_later_songs():
+    torch.manual_seed(0)
+    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=4, num_layers=2, dropout=0.0,
+                            scale_attention=True, init="pytorch").eval()
+    a = model(torch.tensor([[0, 3, 6, 1]]), all_positions=True)
+    b = model(torch.tensor([[0, 3, 2, 5]]), all_positions=True)
+    assert not torch.allclose(a[0, 0], b[0, 0])  # without the mask, position 0 sees later songs

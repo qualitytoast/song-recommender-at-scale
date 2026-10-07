@@ -36,3 +36,4 @@ patience = 10
 augment_mask = 0.2       # was 0: each training song hidden with 20% chance
 augment_crop = 5         # was 0: hide the first 0-5 songs
 augment_reorder = 0.5    # was 0: half the windows get a run of 3-5 songs shuffled
+objective = "last_position"  # one window -> its next song

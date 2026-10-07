@@ -18,9 +18,10 @@ from torch import nn
 class SelfAttention(nn.Module):
     """Single-head attention: each song pulls in a weighted blend of the others."""
 
-    def __init__(self, embed_dim, scale):
+    def __init__(self, embed_dim, scale, causal=False):
         super().__init__()
         self.scale = scale
+        self.causal = causal
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
         self.value = nn.Linear(embed_dim, embed_dim)
@@ -34,6 +35,12 @@ class SelfAttention(nn.Module):
         # the scaled scores but passed the unscaled ones to softmax (scale=False).
         if self.scale:
             scores = scores / math.sqrt(q.shape[-1])
+        if self.causal:
+            # Each position may only look at itself and earlier positions: a score of
+            # -inf becomes a weight of exactly 0 after softmax.
+            n = scores.shape[-1]
+            later = torch.triu(torch.ones(n, n, dtype=torch.bool, device=scores.device), diagonal=1)
+            scores = scores.masked_fill(later, float("-inf"))
         weights = scores.softmax(dim=-1)
         return weights @ v
 
@@ -41,9 +48,9 @@ class SelfAttention(nn.Module):
 class TransformerBlock(nn.Module):
     """Attention -> add & norm -> feed-forward -> add & norm (post-LN, like v1)."""
 
-    def __init__(self, embed_dim, dropout, scale_attention):
+    def __init__(self, embed_dim, dropout, scale_attention, causal=False):
         super().__init__()
-        self.attention = SelfAttention(embed_dim, scale_attention)
+        self.attention = SelfAttention(embed_dim, scale_attention, causal)
         self.norm1 = nn.LayerNorm(embed_dim)
         self.ffn = nn.Sequential(
             nn.Linear(embed_dim, 4 * embed_dim),
@@ -76,12 +83,12 @@ class SongRecommender(nn.Module):
 
     def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
                  scale_attention, init, song_features=None, name_word_count=None,
-                 song_genres=None, mask_token=False):
+                 song_genres=None, mask_token=False, causal=False):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
         self.dropout = nn.Dropout(dropout)
-        self.blocks = nn.ModuleList(TransformerBlock(embed_dim, dropout, scale_attention)
+        self.blocks = nn.ModuleList(TransformerBlock(embed_dim, dropout, scale_attention, causal)
                                     for _ in range(num_layers))
         # v1's "matchmaker": scores the final vector against every song (own weights, with bias)
         self.output = nn.Linear(embed_dim, vocab_size)
@@ -132,10 +139,12 @@ class SongRecommender(nn.Module):
         real = (ids != 0).sum(dim=-1, keepdim=True).clamp(min=1)
         return table(ids).sum(dim=-2) / real
 
-    def forward(self, ids, names=None, hidden=None):
+    def forward(self, ids, names=None, hidden=None, all_positions=False):
         """ids: (batch, seq) song IDs; names: (batch, width) name word IDs;
         hidden: optional (batch, seq) bool from augmentation, True where a song is
-        hidden: its song vector is replaced by mask_vector and its features are dropped."""
+        hidden: its song vector is replaced by mask_vector and its features are dropped.
+        Returns (batch, vocab) next-song scores from the last position, or with
+        all_positions (batch, seq, vocab) scores from every position."""
         positions = torch.arange(ids.shape[1], device=ids.device)
         song = self.song_embedding(ids)
         features = torch.zeros_like(song)
@@ -153,8 +162,8 @@ class SongRecommender(nn.Module):
         x = self.dropout(x)
         for block in self.blocks:
             x = block(x)
-        h = x[:, -1, :]
-        logits = self.output(h)  # (batch, vocab_size): h . output row + bias, per song
+        h = x if all_positions else x[:, -1, :]
+        logits = self.output(h)  # h . output row + bias, per song
         # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
         candidates = [self.output_features[name](self.song_feature_ids(name)) for name in self.feature_names]
         if self.output_genres is not None:
@@ -187,7 +196,8 @@ def build_model(cfg, ds):
     song_genres = ds.song_genres if "genre" in m.features else None
     return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.context_length, m.num_layers,
                            m.dropout, m.scale_attention, m.init, song_features, name_word_count,
-                           song_genres, mask_token=cfg.train.augmenting)
+                           song_genres, mask_token=cfg.train.augmenting,
+                           causal=cfg.train.objective == "every_position")
 
 
 @torch.no_grad()

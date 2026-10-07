@@ -35,6 +35,7 @@ patience = 10
 augment_mask = 0.0
 augment_crop = 0
 augment_reorder = 0.0
+objective = "last_position"
 """
 
 
@@ -83,5 +84,13 @@ def test_unknown_feature_raises(tmp_path):
 def test_features_need_track_uri(tmp_path):
     path = tmp_path / "c.toml"  # DATA uses song_key = "track_name"
     path.write_text("data_seed = 42\ntrain_seeds = [1]\n" + DATA.replace("features = []", 'features = ["artist"]'))
+    with pytest.raises(ValueError):
+        load_config(path)
+
+
+def test_every_position_with_augmentation_raises(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("data_seed = 42\ntrain_seeds = [1]\n" + DATA.replace('"last_position"', '"every_position"')
+                    .replace("augment_mask = 0.0", "augment_mask = 0.2"))
     with pytest.raises(ValueError):
         load_config(path)

@@ -67,6 +67,14 @@ class TrainConfig:
     augment_mask: float    # training windows: chance each song is hidden (see recsys/augment.py)
     augment_crop: int      # training windows: hide the first 0..augment_crop songs
     augment_reorder: float # training windows: chance a run of 3-5 songs is shuffled
+    objective: str         # "last_position": one window -> its next song;
+                           # "every_position": chunks of songs, the next song predicted at
+                           # every position, with causal attention (see recsys.data.make_chunks)
+
+    def __post_init__(self):
+        _check_choice("objective", self.objective, ("last_position", "every_position"))
+        if self.objective == "every_position" and self.augmenting:
+            raise ValueError("augmentation is only implemented for the last_position objective")
 
     @property
     def augmenting(self):

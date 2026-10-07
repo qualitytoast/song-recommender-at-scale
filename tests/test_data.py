@@ -5,7 +5,7 @@ import numpy as np
 from recsys.config import Config, DataConfig, ModelConfig
 from recsys.data import (artist_genre_ids, build_dataset, build_genre_vocab, build_vocab,
                          build_word_vocab, duration_buckets, encode_names, load_artist_genres,
-                         load_playlists, make_windows, name_words, song_feature_ids,
+                         load_playlists, make_chunks, make_windows, name_words, song_feature_ids,
                          split_playlists)
 
 
@@ -316,3 +316,34 @@ def test_each_song_gets_its_artists_genres(tmp_path, monkeypatch):
         j = int(song.rsplit("s", 1)[-1])
         wanted = [g for g in (["pop"] if j < 6 else []) + ["rock"] if g in ds.genre_names]
         assert [ds.genre_names[i - 1] for i in row if i] == wanted
+
+
+# --- every-position chunks ---
+
+def test_chunks_split_at_unknown_songs_and_cover_each_transition_once():
+    ids = {k: i for i, k in enumerate("abcdefgh")}  # "?" is not in the vocab
+    # runs: [a, b] and [c, d, e, f, g, h]; with context 3 the long run gives chunks
+    # [c d e f] (3 targets) and [f g h] (2 targets, padded): 1 + 3 + 2 = 6 transitions
+    X, Y, P = make_chunks([["a", "b", "?", "c", "d", "e", "f", "g", "h"]], ids, context_length=3)
+    np.testing.assert_array_equal(X, [[0, 0, 0], [2, 3, 4], [5, 6, 0]])
+    np.testing.assert_array_equal(Y, [[1, -100, -100], [3, 4, 5], [6, 7, -100]])
+    np.testing.assert_array_equal(P, [0, 0, 0])
+    pairs = [(x, y) for xr, yr in zip(X, Y) for x, y in zip(xr, yr) if y != -100]
+    assert pairs == [(0, 1), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]  # every transition, once, in order
+
+
+def test_chunks_skip_single_songs_and_record_playlists():
+    ids = {"a": 0, "b": 1}
+    X, Y, P = make_chunks([["a"], ["a", "?", "b"], ["b", "a"]], ids, context_length=3)
+    np.testing.assert_array_equal(Y, [[0, -100, -100]])  # only playlist 2 has two neighbours in the vocab
+    np.testing.assert_array_equal(P, [2])
+
+
+def test_chunks_contain_every_full_window_target(tmp_path):
+    # Every (window -> target) example the last-position objective trains on is also
+    # predicted somewhere in the chunks, from the same last song.
+    write_tiny_mpd(tmp_path)
+    ds = build_dataset(tiny_config(tmp_path, "train", "separate_playlists", 0.1))
+    chunk_pairs = {(x, y) for xr, yr in zip(ds.Xc_train, ds.Yc_train) for x, y in zip(xr, yr) if y != -100}
+    window_pairs = set(zip(ds.X_train[:, -1], ds.Y_train))
+    assert window_pairs <= chunk_pairs

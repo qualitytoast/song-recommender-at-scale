@@ -36,3 +36,4 @@ patience = 10
 augment_mask = 0.0      # training-window augmentation off
 augment_crop = 0
 augment_reorder = 0.0
+objective = "last_position"  # one window -> its next song

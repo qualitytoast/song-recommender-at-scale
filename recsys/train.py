@@ -95,15 +95,19 @@ def train(config_path, train_seed):
     optimizer = make_optimizer(model.parameters(), cfg.train)
     stopper = EarlyStopping(cfg.train.min_epochs, cfg.train.patience)
 
-    X_train = torch.from_numpy(ds.X_train).to(device)
-    Y_train = torch.from_numpy(ds.Y_train).to(device)
-    N_train = torch.from_numpy(ds.N_train).to(device)
+    t = cfg.train
+    every_position = t.objective == "every_position"
+    # Training examples: windows (one target each) or chunks (a target at every position).
+    X_train, Y_train, N_train = ((ds.Xc_train, ds.Yc_train, ds.Nc_train) if every_position
+                                 else (ds.X_train, ds.Y_train, ds.N_train))
+    X_train, Y_train, N_train = (torch.from_numpy(a).to(device) for a in (X_train, Y_train, N_train))
+    n_targets = int((Y_train != -100).sum())
     shuffle_gen = torch.Generator().manual_seed(train_seed)  # batch order
     augment_gen = torch.Generator().manual_seed(train_seed + 1_000_000)  # augmentation draws
-    t = cfg.train
     n, batch_size = len(X_train), cfg.train.batch_size
     num_params = sum(p.numel() for p in model.parameters())
-    print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train | "
+    print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train "
+          f"{'chunks' if every_position else 'windows'} ({n_targets:,} targets) | "
           f"{len(ds.X_val):,} val | {num_params:,} params")
 
     log, best_epoch, start = [], None, time.perf_counter()
@@ -121,12 +125,15 @@ def train(config_path, train_seed):
                 reorder, hidden = augment_plan(len(idx), X.shape[1], augment_gen,
                                                t.augment_mask, t.augment_crop, t.augment_reorder)
                 X, hidden = X.gather(1, reorder.to(device)), hidden.to(device)
-            loss = nn.functional.cross_entropy(model(X, N_train[idx], hidden), Y_train[idx])
+            logits, Y = model(X, N_train[idx], hidden, all_positions=every_position), Y_train[idx]
+            # Mean over this batch's real targets; -100 marks chunk padding.
+            loss = nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), Y.reshape(-1),
+                                               ignore_index=-100)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            loss_sum += loss.detach() * len(idx)
-        train_loss = loss_sum.item() / n
+            loss_sum += loss.detach() * (Y != -100).sum()
+        train_loss = loss_sum.item() / n_targets
         # v1 checked every batch; once per epoch avoids the per-step wait above.
         if not math.isfinite(train_loss):
             raise FloatingPointError(f"Training loss became {train_loss} in epoch {epoch}. Training diverged.")
