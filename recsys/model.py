@@ -209,6 +209,25 @@ def build_model(cfg, ds):
 
 
 @torch.no_grad()
+def rank_and_loss(model, X, N, Y, device, max_scores=2**26):
+    """For each window: the rank of its true next song among all songs (1 = top;
+    1 + songs scored strictly higher, as recsys.metrics.target_ranks) and its
+    cross-entropy loss. Computed on the device a chunk at a time, keeping only
+    ranks and losses, so the full (windows x catalog) score matrix never exists:
+    each chunk holds at most max_scores scores. Returns numpy (ranks, losses)."""
+    model.eval()
+    chunk = max(1, max_scores // model.output.out_features)
+    ranks, losses = [], []
+    for i in range(0, len(X), chunk):
+        y = torch.from_numpy(Y[i:i + chunk]).to(device)
+        logits = model(torch.from_numpy(X[i:i + chunk]).to(device), torch.from_numpy(N[i:i + chunk]).to(device))
+        true = logits.gather(1, y[:, None])
+        ranks.append(((logits > true).sum(dim=1) + 1).cpu())
+        losses.append((torch.logsumexp(logits, dim=1) - true[:, 0]).cpu())
+    return torch.cat(ranks).numpy(), torch.cat(losses).numpy()
+
+
+@torch.no_grad()
 def predict(model, X, N, device, batch_size=512):
     """Logits for every row of X (numpy song IDs, with name word IDs N) as numpy, dropout off.
 

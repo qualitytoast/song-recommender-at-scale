@@ -268,3 +268,20 @@ def test_non_causal_positions_do_see_later_songs():
     a = model(torch.tensor([[0, 3, 6, 1]]), all_positions=True)
     b = model(torch.tensor([[0, 3, 2, 5]]), all_positions=True)
     assert not torch.allclose(a[0, 0], b[0, 0])  # without the mask, position 0 sees later songs
+
+
+# --- ranks and losses on the device, in chunks ---
+
+def test_rank_and_loss_match_the_full_score_matrix():
+    import numpy as np
+    from recsys.metrics import target_ranks
+    from recsys.model import predict, rank_and_loss
+    model = featured_model().eval()
+    rng = np.random.RandomState(0)
+    X, N, Y = rng.randint(0, 7, (50, 3)), np.zeros((50, 1), dtype=np.int64), rng.randint(0, 7, 50)
+    logits = predict(model, X, N, torch.device("cpu"))
+    for max_scores in (7, 70, 10**6):  # 1 window per chunk, 10 per chunk, all at once
+        ranks, losses = rank_and_loss(model, X, N, Y, torch.device("cpu"), max_scores=max_scores)
+        np.testing.assert_array_equal(ranks, target_ranks(logits, Y))
+        expected = nn.functional.cross_entropy(torch.from_numpy(logits), torch.from_numpy(Y), reduction="none")
+        np.testing.assert_allclose(losses, expected.numpy(), rtol=1e-5)

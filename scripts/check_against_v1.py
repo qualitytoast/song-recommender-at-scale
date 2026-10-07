@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 from recsys.config import load_config  # noqa: E402
 from recsys.data import build_dataset  # noqa: E402
 from recsys.evaluate import score  # noqa: E402
-from recsys.model import build_model, predict  # noqa: E402
+from recsys.model import build_model, predict, rank_and_loss  # noqa: E402
 
 CPU = torch.device("cpu")
 
@@ -80,7 +80,7 @@ def main():
 
     for name, X, Y, N in [("validation subset", ds.X_val, ds.Y_val, ds.N_val),
                           ("full held-out", ds.X_test, ds.Y_test, ds.N_test)]:
-        r = score(lambda x, n: predict(model, x, n, CPU), X, Y, N)
+        r = score(rank_and_loss(model, X, N, Y, CPU)[0])
         print(f"v1 weights scored by v2 code, {name:18}: "
               f"NDCG@10 {r['ndcg@10']:.4f}  Hits@10 {r['hits@10']:.3f}")
 

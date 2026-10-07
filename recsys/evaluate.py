@@ -13,29 +13,21 @@ import json
 import numpy as np
 import torch
 
-from recsys.baselines import popularity_scores
+from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
-from recsys.metrics import gains_at_k, hits_at_k
-from recsys.model import build_model, predict
+from recsys.metrics import gains_from_ranks
+from recsys.model import build_model, rank_and_loss
 from recsys.train import pick_device, run_dir_for
 
 KS = (1, 5, 10)
-CHUNK = 512  # full held-out logits would be 14,844 x 33,770 floats; score in chunks
 
 
-def score(logits_fn, X, Y, N):
-    """NDCG@10 and Hits@k for k in KS. logits_fn maps a chunk of X (song IDs) and N
-    (name word IDs) to (chunk, vocab) scores, so the model and the baseline are
-    measured by identical code."""
-    gains, hits = [], {k: [] for k in KS}
-    for i in range(0, len(X), CHUNK):
-        logits, y = logits_fn(X[i:i + CHUNK], N[i:i + CHUNK]), Y[i:i + CHUNK]
-        gains.append(gains_at_k(logits, y, k=10))
-        for k in KS:
-            hits[k].append(hits_at_k(logits, y, k))
-    result = {"n": len(X), "ndcg@10": float(np.mean(np.concatenate(gains)))}
-    result.update({f"hits@{k}": float(np.mean(np.concatenate(hits[k]))) for k in KS})
+def score(ranks):
+    """NDCG@10 and Hits@k for k in KS from target ranks, so the model and the baseline
+    are measured by identical code."""
+    result = {"n": len(ranks), "ndcg@10": float(np.mean(gains_from_ranks(ranks, k=10)))}
+    result.update({f"hits@{k}": float(np.mean(ranks <= k)) for k in KS})
     return result
 
 
@@ -52,10 +44,10 @@ def evaluate(config_path, train_seed):
     device = pick_device()
     model = build_model(cfg, ds).to(device)
     model.load_state_dict(checkpoint["model"])
-    model_fn = lambda xb, nb: predict(model, xb, nb, device)
+    model_score = lambda X, Y, N: score(rank_and_loss(model, X, N, Y, device)[0])
 
     pop, counts = popularity_scores(ds.Y_train, len(ds.vocab))  # training targets only
-    pop_fn = lambda xb, nb: np.broadcast_to(pop, (len(xb), len(pop)))
+
 
     # Older checkpoints (validated once per epoch) store "epoch" instead of "check".
     best_check = checkpoint.get("check", checkpoint.get("epoch"))
@@ -64,13 +56,12 @@ def evaluate(config_path, train_seed):
         # v1 style: validation is the first n_val held-out windows, so also report
         # the held-out windows early stopping never saw
         n_val = len(ds.X_val)
-        results["validation subset"] = score(model_fn, ds.X_val, ds.Y_val, ds.N_val)
-        results["held-out minus validation"] = score(model_fn, ds.X_test[n_val:], ds.Y_test[n_val:],
-                                                     ds.N_test[n_val:])
+        results["validation subset"] = model_score(ds.X_val, ds.Y_val, ds.N_val)
+        results["held-out minus validation"] = model_score(ds.X_test[n_val:], ds.Y_test[n_val:], ds.N_test[n_val:])
     else:
-        results["validation"] = score(model_fn, ds.X_val, ds.Y_val, ds.N_val)  # separate playlists
-    results["full held-out"] = score(model_fn, ds.X_test, ds.Y_test, ds.N_test)
-    results["most-popular (full held-out)"] = score(pop_fn, ds.X_test, ds.Y_test, ds.N_test)
+        results["validation"] = model_score(ds.X_val, ds.Y_val, ds.N_val)  # separate playlists
+    results["full held-out"] = model_score(ds.X_test, ds.Y_test, ds.N_test)
+    results["most-popular (full held-out)"] = score(popularity_ranks(pop, ds.Y_test))
 
     print(f"\n{run_dir}/best.pt (check {best_check})")
     print(f"{'':30}{'n':>8}{'NDCG@10':>10}{'hits@1':>9}{'hits@5':>9}{'hits@10':>9}")

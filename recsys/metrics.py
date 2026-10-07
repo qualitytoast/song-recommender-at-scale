@@ -1,8 +1,9 @@
 """Ranking metrics, identical in definition to v1's metrics.py.
 
-Every function takes logits of shape (n_examples, vocab_size), one score per
-song in the catalog, and the true next-song IDs, shape (n_examples,). Inputs
-are numpy arrays: move model output to the CPU first.
+The *_at_k functions take logits of shape (n_examples, vocab_size), one score
+per song in the catalog, and the true next-song IDs, shape (n_examples,), as
+numpy arrays. The *_from_ranks functions take ranks already computed (e.g. on
+the GPU by recsys.model.rank_and_loss, for catalogs too big to hold all logits).
 """
 import numpy as np
 
@@ -24,7 +25,12 @@ def gains_at_k(logits, targets, k=10):
     There is one relevant song per example, so the ideal DCG is 1 and NDCG is
     just this gain.
     """
-    ranks = target_ranks(logits, targets)
+    return gains_from_ranks(target_ranks(logits, targets), k)
+
+
+def gains_from_ranks(ranks, k=10):
+    """Per-example NDCG gain from target ranks: 1/log2(1 + rank) if rank <= k, else 0."""
+    ranks = np.asarray(ranks)
     gains = 1.0 / np.log2(ranks + 1)
     gains[ranks > k] = 0.0
     return gains

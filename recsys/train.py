@@ -26,9 +26,9 @@ from torch import nn
 from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.augment import augment_plan, ignored_targets
-from recsys.metrics import ndcg_at_k
+from recsys.metrics import gains_from_ranks
 from recsys.sampled import candidate_set, log_q, random_probs, sampled_softmax_loss
-from recsys.model import build_model, predict
+from recsys.model import build_model, rank_and_loss
 
 
 def pick_device():
@@ -161,10 +161,9 @@ def train(config_path, train_seed):
             raise FloatingPointError(f"Training loss became {train_loss} by check {check}. Training diverged.")
         train_seconds = time.perf_counter() - interval_start
         val_start = time.perf_counter()
-        val_logits = predict(model, ds.X_val, ds.N_val, device)
-        val_loss = nn.functional.cross_entropy(torch.from_numpy(val_logits),
-                                               torch.from_numpy(ds.Y_val)).item()
-        val_ndcg = ndcg_at_k(val_logits, ds.Y_val, k=10)
+        val_ranks, val_losses = rank_and_loss(model, ds.X_val, ds.N_val, ds.Y_val, device)
+        val_loss = float(val_losses.mean())
+        val_ndcg = float(gains_from_ranks(val_ranks, k=10).mean())
         val_seconds = time.perf_counter() - val_start
         improved, stop = stopper.update(check, val_ndcg)
         if improved:
