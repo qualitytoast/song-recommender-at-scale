@@ -701,6 +701,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 5a | `ranker_50k_score` | inputs: retriever score gap and rank | step 2 | 0.1179 -> 0.1226 (22) | 0.1213 (0.1171) | 7.0% | 18.6% | no | 3.4 + 0.7 min |
 | 5b | `ranker_50k_popularity` | input: popularity in part A | step 2 | 0.1179 -> 0.1236 (32) | 0.1221 (0.1171) | 7.1% | 18.7% | no | 5.9 + 1.2 min |
 | 5c | `ranker_50k_overlap` | inputs: artist, album and genre overlap with the context songs | step 2 | 0.1179 -> 0.1293 (28) | 0.1276 (0.1171) | 7.3% | 19.7% | yes | 6.0 + 1.3 min |
+| 5d | `ranker_50k_cooccurrence` | inputs: how often the candidate came 1-5 songs after the context songs (part A) | step 5c | 0.1179 -> 0.1352 (34) | 0.1351 (0.1171) | 7.9% | 20.6% | yes | 7.2 + 1.3 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
