@@ -1,0 +1,20 @@
+# Ranker scaling ladder, 5k: the baseline ranker for p3_5k_partA_b128. retriever_ranker_200k's settings
+# with exact search (30,587 songs) and checks scaled to its 14,449 part-B windows.
+
+[ranker]
+retriever = "configs/p3_5k_partA_b128.toml"  # seed s uses runs/p3_runs/p3_5k_partA_b128/seed<s>/best.pt
+train_seeds = [1]          # 1 seed per run
+shortlist = 500            # rerank the retriever's top 500
+search = "exact"           # every song scored (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)
+ivf_nlist = 0
+ivf_nprobe = 0
+negatives = 31             # per training window: the true song + 31 sampled from its shortlist
+optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
+lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
+weight_decay = 0.05
+batch_size = 64            # windows per step
+epochs = 20                # maximum passes over the 14,449 part-B windows
+eval_every_examples = 2889  # ~1/5 epoch of part-B windows
+min_checks = 5
+patience = 5
+val_windows = 6109        # every validation window (6,109 at 5k)
