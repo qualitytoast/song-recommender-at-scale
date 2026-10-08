@@ -699,6 +699,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 3 | `ranker_50k_frozen` | freeze the copied per-ID tables | step 2 | 0.1179 -> 0.1236 (46) | 0.1217 (0.1171) | 7.0% | 18.7% | no | 4.3 + 0.6 min |
 | 4 | `ranker_50k_fulllist` | compare with every other shortlisted song (99) instead of 31 | step 2 | 0.1179 -> 0.1250 (41) | 0.1229 (0.1171) | 7.1% | 18.8% | no | 5.0 + 0.6 min |
 | 5a | `ranker_50k_score` | inputs: retriever score gap and rank | step 2 | 0.1179 -> 0.1226 (22) | 0.1213 (0.1171) | 7.0% | 18.6% | no | 3.4 + 0.7 min |
+| 5b | `ranker_50k_popularity` | input: popularity in part A | step 2 | 0.1179 -> 0.1236 (32) | 0.1221 (0.1171) | 7.1% | 18.7% | no | 5.9 + 1.2 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -726,3 +727,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   shortlist's best) and log_rank: held-out 0.1213 vs 0.1222 (-0.0009), validation 0.1226 vs 0.1237,
   best at check 22 (step 2: 32): not kept. The ranker's score already adds the retriever's score
   directly, so these carry little that's new.
+- `ranker_50k_popularity` (2026-10-08, `ea86097`): input log_popularity (log of 1 + times the
+  candidate is a next song in part-A playlists): held-out 0.1221 vs 0.1222, validation 0.1236 vs
+  0.1237, the same training path as step 2: not kept. The retriever's per-song bias likely carries
+  popularity already.
