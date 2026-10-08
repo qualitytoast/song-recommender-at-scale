@@ -696,6 +696,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | — | `ranker_50k` | baseline (exact search) | — | 0.1178 -> 0.1178 (0) | 0.1172 (0.1172) | 6.8% | 17.9% | — | 6.2 + 2.1 min |
 | 1 | `ranker_50k_inlist` | train only on windows whose true song is in the shortlist | baseline | 0.1179 -> 0.1225 (32) | 0.1209 (0.1171) | 6.9% | 18.6% | yes | 6.0 + 1.0 min |
 | 2 | `ranker_50k_top100` | rerank the top 100 instead of 500 (wrong answers from the top 100) | step 1 | 0.1179 -> 0.1237 (32) | 0.1222 (0.1171) | 7.1% | 18.8% | yes | 3.3 + 0.7 min |
+| 3 | `ranker_50k_frozen` | freeze the copied per-ID tables | step 2 | 0.1179 -> 0.1236 (46) | 0.1217 (0.1171) | 7.0% | 18.7% | no | 4.3 + 0.6 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -710,3 +711,8 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   (+4.4%) over the retriever alone. It trains on the 117,999 part-B windows whose true song is in
   the top 100 (top-100 recall 41.5% on held-out, so the ranker can only reorder those songs). 3.3
   min of training.
+- `ranker_50k_frozen` (2026-10-08, `6e8a76f`): freezing the copied per-ID tables (songs, artists,
+  albums, genres, name words) leaves 92,481 of 35.4M weights training; held-out 0.1217 vs step 2's
+  0.1222 (-0.0005), validation 0.1236 vs 0.1237: not kept. Nearly the whole gain comes from the
+  attention and feed-forward layers and the new weights, and fine-tuning the tables wasn't hurting
+  either.
