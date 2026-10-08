@@ -1,10 +1,12 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from recsys.model import SongRecommender
-from recsys.ranker import MISSED, CandidateRanker, build_shortlists, final_ranks, sample_negatives, song_search
+from recsys.ranker import (MISSED, CandidateRanker, build_shortlists, check_vocab, final_ranks, sample_negatives,
+                           song_search)
 from recsys.search import song_vectors
 
 ARTIST = [0, 0, 1, 2, 2, 2, 1]
@@ -174,3 +176,11 @@ def test_every_retriever_input_feature_reaches_the_ranker_scores():
             with torch.no_grad():
                 ranker.retriever.get_submodule(table).weight[row] += 1.0
             assert not torch.allclose(ranker(context, names, cand, zeros), before), (side, table)
+
+
+def test_check_vocab_refuses_a_checkpoint_trained_on_other_songs():
+    check_vocab({"vocab": ["a", "b"]}, ["a", "b"], "best.pt")   # same songs, same order: fine
+    check_vocab({}, ["a", "b"], "best.pt")                      # older ranker checkpoint without a vocab
+    for other in (["b", "a"], ["a", "b", "c"]):                 # reordered or different songs
+        with pytest.raises(ValueError, match="different vocab"):
+            check_vocab({"vocab": ["a", "b"]}, other, "best.pt")

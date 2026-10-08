@@ -221,11 +221,22 @@ def ranker_rows(context, candidates, names, song_features, song_genres, device):
     return used_rows(songs, np.empty(0, dtype=np.int64), names, song_features, song_genres, device)
 
 
+def check_vocab(checkpoint, vocab, path):
+    """Song IDs come from the rebuilt dataset's vocab, the model's rows from the one it
+    was trained on. If they differ, every score would be meaningless, so refuse.
+    (Ranker checkpoints saved before this check have no vocab and are let through.)"""
+    if "vocab" in checkpoint and checkpoint["vocab"] != vocab:
+        raise ValueError(f"{path} was trained on a different vocab than its config builds now.")
+
+
 def load_retriever(rc, seed, device):
     cfg = load_config(rc.retriever)
     ds = build_dataset(cfg)
+    path = run_dir_for(rc.retriever, seed) / "best.pt"
+    checkpoint = torch.load(path, weights_only=True)
+    check_vocab(checkpoint, ds.vocab, path)
     model = build_model(cfg, ds).to(device)
-    model.load_state_dict(torch.load(run_dir_for(rc.retriever, seed) / "best.pt", weights_only=True)["model"])
+    model.load_state_dict(checkpoint["model"])
     return cfg, ds, model.eval()
 
 
@@ -252,6 +263,10 @@ def train_ranker(config_path, seed):
           f"{(train_ids == ds.Y_rank[:, None]).any(1).mean():.1%}", flush=True)
 
     ranker = CandidateRanker(retriever).to(device)
+    num_params = sum(p.numel() for p in ranker.parameters())
+    new_params = num_params - sum(p.numel() for p in retriever.parameters())
+    print(f"{num_params:,} params: the retriever's + {new_params:,} new (candidate marker, position, correction)",
+          flush=True)
     lazy = rc.optimizer == "lazy_adamw"
     if lazy:  # AdamW on only the table rows each batch uses (recsys/lazy_adam.py)
         optimizer = LazyAdamW(ranker, rc.lr, rc.weight_decay, prefix="retriever.")
@@ -279,7 +294,7 @@ def train_ranker(config_path, seed):
         improved, stop = stopper.update(check, result["ndcg@10"])
         if improved:
             best_check = check
-            torch.save({"model": ranker.state_dict(), "config": asdict(rc), "check": check,
+            torch.save({"model": ranker.state_dict(), "vocab": ds.vocab, "config": asdict(rc), "check": check,
                         "val_ndcg": result["ndcg@10"]}, run_dir / "best.pt")
         log.append({"check": check, "examples": seen, "train_loss": train_loss, "val_ndcg": result["ndcg@10"],
                     "val_hits10": result["hits@10"], "val_hits1": result["hits@1"],
@@ -331,7 +346,7 @@ def train_ranker(config_path, seed):
         writer.writeheader()
         writer.writerows(log)
     summary = {"config": str(config_path), "train_seed": seed, "retriever": rc.retriever, "search": rc.search_name(),
-               "best_check": best_check,
+               "num_params": num_params, "new_params": new_params, "best_check": best_check,
                "best_val_ndcg": stopper.best, "retriever_val_ndcg": log[0]["val_ndcg"], "checks_run": len(log),
                "train_seconds": round(time.perf_counter() - start, 1), "git_commit": commit, "git_dirty": dirty}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -353,6 +368,7 @@ def evaluate_ranker(config_path, seed):
     search_seconds = time.perf_counter() - start
     ranker = CandidateRanker(retriever).to(device)
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
+    check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])
     rerank_start = time.perf_counter()
     ranks = final_ranks(rerank(ranker, ds.X_test, ds.N_test, ids, scores, device), ids, ds.Y_test)
