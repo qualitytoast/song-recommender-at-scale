@@ -518,3 +518,41 @@ sample every quarter epoch; 836,433 held-out windows.
 - Cost: 64 min, of which validation 9.7 min: each check (20,000 windows x
   412,404 songs) took ~16 s against ~93 s of training, 15% of run time, more
   than the 4% at 50k. Held-out ranking of 836,433 windows took ~11 min.
+
+**System design: search benchmark** (`scripts/search_benchmark.py`; FAISS runs
+in its own process, `recsys/search_worker.py`, because FAISS and PyTorch each
+ship their own OpenMP library and can't share a process). Top 500 per query;
+"search recall" = share of the exact top 500 a method returns. Real vectors:
+`p3_200k_partA` seed 1 (412,404 songs), 5,000 held-out queries; exact search has
+the true next song in its top 500 for 65.0% of them.
+
+| Method (200k, real) | Search recall | Dropped from exact ranks 1-10 | ...251-500 | True song lost | True song in top 500 | Queries/s | Latency p50 / p99 | Memory | Build |
+|---|---|---|---|---|---|---|---|---|---|
+| exact, GPU (`torch.topk`) | 100% | 0 | 0 | 0 | 65.0% | 705 | 2.56 / 3.43 ms | 107 MB | — |
+| FAISS Flat (exact, CPU) | 100% | 0 | 0 | 0 | 65.0% | 6,559 | 1.63 / 2.00 ms | 107 MB | — |
+| Flat, 4 shards | 100% | 0 | 0 | 0 | 65.0% | 4,837 | 2.76 / 4.55 ms | 107 MB | — |
+| IVF nlist=2048 nprobe=16 | 84.0% | 4.36% | 21.25% | 3.54% | 63.6% | 25,938 | 0.14 / 0.31 ms | 111 MB | 10 s |
+| IVF nprobe=64 | 96.5% | 1.22% | 4.57% | 0.32% | 65.2% | 17,954 | 0.25 / 0.44 ms | 111 MB | 10 s |
+| IVF nprobe=256 | 99.5% | 0.17% | 0.64% | 0.00% | 65.1% | 4,516 | 0.71 / 1.39 ms | 111 MB | 10 s |
+| IVF nprobe=64, 4 shards | 89.9% | 2.44% | 13.54% | 2.42% | 63.8% | 10,566 | 0.16 / 0.27 ms | 111 MB | 3 s |
+| HNSW M=32 ef=512 | 94.5% | 1.28% | 7.60% | 0.86% | 64.9% | 9,409 | 0.71 / 1.17 ms | 219 MB | 22 s |
+| HNSW ef=1024 | 96.9% | 0.79% | 4.21% | 0.58% | 64.9% | 3,817 | 1.80 / 2.65 ms | 219 MB | 22 s |
+| HNSW ef=512, 4 shards | 98.1% | 0.21% | 2.80% | 0.38% | 64.9% | 2,150 | 0.85 / 1.05 ms | 219 MB | 15 s |
+
+At 1M songs (1,053,328 random stand-in vectors: speed and memory only; random
+vectors have no clusters, so their IVF/HNSW recall means nothing): exact GPU 294
+queries/s, 6.4 ms per request; Flat 2,522/s, 6.2 ms; IVF nprobe=64 9,419/s,
+0.41 ms, 53 s build; HNSW ef=512 1,838/s, 2.9 ms, 218 s build, 561 MB; flat
+and IVF ~275-283 MB.
+
+- FAISS Flat is exact and 9x faster than our GPU exact search (8.6x at 1M):
+  picking the top 500 of 412k scores (`torch.topk`) is slow on the Mac GPU.
+- Approximate methods drop songs at every rank, more often lower down (IVF
+  nprobe=64: 1.2% of the exact top 10, 4.6% of ranks 251-500). They also pick
+  up songs just outside the exact top 500, sometimes the true one, so IVF
+  nprobe=64 has the true song as often as exact (65.2% vs 65.0%) while losing it
+  for 0.32% of queries.
+- Sharding on one machine: lower batch speed in every case; accuracy up for
+  HNSW (each shard searched with the full ef, more total work), down for IVF.
+  Memory isn't a constraint at 1M (at most 561 MB), and single-request latency
+  is under 7 ms without sharding.
