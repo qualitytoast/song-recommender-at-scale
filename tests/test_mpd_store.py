@@ -116,6 +116,11 @@ def assert_same_dataset(a, b):
         elif isinstance(x, np.ndarray):
             assert x.dtype == y.dtype, field.name
             np.testing.assert_array_equal(x, y, err_msg=field.name)
+        elif isinstance(x, tuple):  # window histories: (songs, begin, end)
+            assert len(x) == len(y), field.name
+            for i, (u, v) in enumerate(zip(x, y)):
+                assert u.dtype == v.dtype, f"{field.name}[{i}]"
+                np.testing.assert_array_equal(u, v, err_msg=f"{field.name}[{i}]")
         else:
             assert x == y, field.name
 
@@ -164,3 +169,16 @@ def test_ranker_split_keeps_vocab_and_held_out_and_splits_training_playlists(tmp
     rows = lambda X, Y: sorted(map(tuple, np.column_stack([X, Y]).tolist()))
     assert rows(np.concatenate([split.X_train, split.X_rank]), np.concatenate([split.Y_train, split.Y_rank])) == \
         rows(whole.X_train, whole.Y_train)
+
+
+def test_window_histories_point_at_each_windows_own_context(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    for kwargs in [{"ranker_split": 0.2, "val_max_windows": 15},
+                   {"validation": "held_out_prefix", "val_split": 0.0, "val_size": 7}]:
+        ds = build_dataset(config(tmp_path / "store", tmp_path / "genres.jsonl", **kwargs))
+        for X, (songs, begin, end) in [(ds.X_rank, ds.H_rank), (ds.X_val, ds.H_val), (ds.X_test, ds.H_test)]:
+            assert len(X) == len(begin) == len(end)
+            L = X.shape[1]
+            assert (begin <= end - L).all()
+            np.testing.assert_array_equal(songs[end[:, None] - L + np.arange(L)].reshape(X.shape), X)

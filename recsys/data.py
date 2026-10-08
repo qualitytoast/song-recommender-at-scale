@@ -243,6 +243,11 @@ class Dataset:
     N_rank: np.ndarray = None
     genre_names: list = None      # genre_names[i] is the genre with ID i + 1 (0 is padding)
     song_genres: np.ndarray = None  # (vocab_size, GENRES_PER_ARTIST) genre IDs of each song's artist
+    fit_songs: np.ndarray = None    # the retriever's (part-A) playlists, concatenated: vocab IDs, -1 = outside
+    fit_offsets: np.ndarray = None  # the vocab; where each playlist starts in fit_songs, plus the end
+    H_rank: tuple = None  # (songs, begin, end) for the X_rank windows: window w's playlist up to and
+    H_val: tuple = None   # including its context songs is songs[begin[w]:end[w]] (window_histories);
+    H_test: tuple = None  # used by the ranker's whole-playlist inputs
 
 
 def build_dataset(cfg):
@@ -269,18 +274,25 @@ def build_dataset(cfg):
 
     fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
     fit = [playlists[i] for i in fit_idx]
+    rank = [playlists[i] for i in rank_idx]
     X_train, Y_train, P_train = make_windows(fit, track_to_id, d.context_length)
     Xc_train, Yc_train, Pc_train = make_chunks(fit, track_to_id, d.context_length)
-    X_rank, Y_rank, P_rank = make_windows([playlists[i] for i in rank_idx], track_to_id, d.context_length)
+    X_rank, Y_rank, P_rank = make_windows(rank, track_to_id, d.context_length)
     X_test, Y_test, P_test = make_windows(held_out, track_to_id, d.context_length)
     N_train = encoded[fit_idx][P_train]
     N_test = encoded[held_out_idx][P_test]
+    H_test = window_histories(*playlist_arrays(held_out, track_to_id), d.context_length)
     if d.validation == "held_out_prefix":
         X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
+        H_val = keep_histories(H_test, np.arange(len(X_val)))
     else:
         X_val, Y_val, P_val = make_windows(val, track_to_id, d.context_length)
         N_val = encoded[val_idx][P_val]
+        H_val = window_histories(*playlist_arrays(val, track_to_id), d.context_length)
+    keep = validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
+    H_val = H_val if keep is None else keep_histories(H_val, keep)
+    fit_songs, fit_offsets = playlist_arrays(fit, track_to_id)
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
                      "album": song_feature_ids(vocab, tracks, "album_uri"),
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
@@ -300,16 +312,46 @@ def build_dataset(cfg):
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
                    Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[fit_idx][Pc_train],
                    X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
-                   genre_names=genre_names, song_genres=song_genres)
+                   genre_names=genre_names, song_genres=song_genres, fit_songs=fit_songs, fit_offsets=fit_offsets,
+                   H_rank=window_histories(*playlist_arrays(rank, track_to_id), d.context_length),
+                   H_val=H_val, H_test=H_test)
+
+
+def validation_keep(n, max_windows, seed):
+    """The indices sample_validation keeps out of n validation windows, or None for all."""
+    if not max_windows or n <= max_windows:
+        return None
+    return np.sort(np.random.RandomState(seed).choice(n, max_windows, replace=False))
 
 
 def sample_validation(X_val, Y_val, N_val, max_windows, seed):
     """At most max_windows validation windows (0 = all), a fixed random sample in the
     original order. Early stopping then costs less per check; held-out stays complete."""
-    if not max_windows or len(X_val) <= max_windows:
+    keep = validation_keep(len(X_val), max_windows, seed)
+    if keep is None:
         return X_val, Y_val, N_val
-    keep = np.sort(np.random.RandomState(seed).choice(len(X_val), max_windows, replace=False))
     return X_val[keep], Y_val[keep], N_val[keep]
+
+
+def playlist_arrays(playlists, track_to_id):
+    """(songs, offsets) for playlists given as lists of song keys: their vocab IDs concatenated
+    (-1 = outside the vocab), and where each playlist starts, plus the end."""
+    songs = np.array([track_to_id.get(t, -1) for p in playlists for t in p], dtype=np.int64)
+    return songs, np.concatenate([[0], np.cumsum([len(p) for p in playlists])]).astype(np.int64)
+
+
+def window_histories(songs, offsets, context_length):
+    """(songs, begin, end) for the windows windows_from_arrays cuts from these playlists, in the
+    same order: window w's playlist up to and including its context songs is songs[begin[w]:end[w]],
+    so songs[end[w] - context_length:end[w]] is its context."""
+    _, _, playlist, start = windows_from_arrays(songs, offsets, context_length, with_starts=True)
+    return songs, offsets[playlist], start + context_length
+
+
+def keep_histories(histories, keep):
+    """window_histories for the windows at indices keep only."""
+    songs, begin, end = histories
+    return songs, begin[keep], end[keep]
 
 
 def split_off_ranker(train_idx, fraction):
@@ -354,8 +396,9 @@ def concat_playlists(store, playlist_ids):
     return np.asarray(store.playlist_tracks[positions], dtype=np.int64), offsets
 
 
-def windows_from_arrays(songs, offsets, context_length):
-    """make_windows for concatenated vocab IDs (-1 = outside the vocab) with playlist offsets."""
+def windows_from_arrays(songs, offsets, context_length, with_starts=False):
+    """make_windows for concatenated vocab IDs (-1 = outside the vocab) with playlist offsets.
+    with_starts: also return each window's first song's index in songs."""
     L, n = context_length, len(songs)
     playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
     end = offsets[1:][playlist]
@@ -364,6 +407,8 @@ def windows_from_arrays(songs, offsets, context_length):
     start = start[start + L < end]  # room for L inputs and a target in the same playlist
     start = start[unknown_before[start + L + 1] - unknown_before[start] == 0]
     X = songs[start[:, None] + np.arange(L)].reshape(-1, L)
+    if with_starts:
+        return X, songs[start + L], playlist[start], start
     return X, songs[start + L], playlist[start]
 
 
@@ -423,13 +468,20 @@ def build_dataset_from_store(cfg):
     Xc_train, Yc_train, Pc_train = chunks_from_arrays(train_songs, train_offsets, d.context_length)
     X_test, Y_test, P_test = windows_from_arrays(test_songs, test_offsets, d.context_length)
     N_train, N_test = encoded[fit_idx][P_train], encoded[held_out_idx][P_test]
-    X_rank, Y_rank, P_rank = windows_from_arrays(*split_arrays(rank_idx), d.context_length)
+    rank_arrays = split_arrays(rank_idx)
+    X_rank, Y_rank, P_rank = windows_from_arrays(*rank_arrays, d.context_length)
+    H_test = window_histories(test_songs, test_offsets, d.context_length)
     if d.validation == "held_out_prefix":
         X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
+        H_val = keep_histories(H_test, np.arange(len(X_val)))
     else:
-        X_val, Y_val, P_val = windows_from_arrays(*split_arrays(val_idx), d.context_length)
+        val_arrays = split_arrays(val_idx)
+        X_val, Y_val, P_val = windows_from_arrays(*val_arrays, d.context_length)
         N_val = encoded[val_idx][P_val]
+        H_val = window_histories(*val_arrays, d.context_length)
+    keep = validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
+    H_val = H_val if keep is None else keep_histories(H_val, keep)
 
     artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
     albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])
@@ -447,7 +499,9 @@ def build_dataset_from_store(cfg):
                    name_words=words, N_train=N_train, N_val=N_val, N_test=N_test,
                    Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[fit_idx][Pc_train],
                    X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
-                   genre_names=genre_names, song_genres=song_genres)
+                   genre_names=genre_names, song_genres=song_genres, fit_songs=train_songs,
+                   fit_offsets=train_offsets, H_rank=window_histories(*rank_arrays, d.context_length),
+                   H_val=H_val, H_test=H_test)
 
 
 if __name__ == "__main__":
