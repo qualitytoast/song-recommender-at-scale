@@ -739,3 +739,9 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   validation 0.1293 vs 0.1237, rising from the first check: kept. +0.0105 (+9.0%) over the retriever
   alone. Exact matches ("same artist as 3 of the 10 songs") are hard for dot-product attention to
   count, and easy as inputs.
+- `ranker_50k_cooccurrence` (2026-10-08, `a0c81fe`): step 5c plus inputs from part-A playlists: how
+  often the candidate came 1 to 5 songs after the last context song, after the 10 context songs
+  summed, and the share of context songs it ever came after: held-out 0.1351 vs 0.1276 (+0.0075),
+  Hits@1 7.9% vs 7.3%, Hits@10 20.6% vs 19.7%, validation 0.1352 vs 0.1293: kept. +0.0180 (+15.4%)
+  over the retriever alone, more than the older ranker added to its weaker retriever (+11.7%).
+  Counts are from part A only, so no ranker training window's own transition is in its inputs.
