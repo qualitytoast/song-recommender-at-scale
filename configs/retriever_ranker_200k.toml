@@ -1,5 +1,5 @@
 # Phase 3, scaling stage 2: second-stage ranker at 200,000 playlists (recsys/ranker.py).
-# r_50k's settings with lazy AdamW and IVF search, on the 200k part-A retriever; checks scaled to its 1,470,511 part-B windows.
+# retriever_ranker_50k's settings with lazy AdamW and IVF search, on the 200k part-A retriever; checks scaled to its 1,470,511 part-B windows.
 
 [ranker]
 retriever = "configs/p3_200k_partA.toml"  # seed s uses runs/p3_runs/p3_200k_partA/seed<s>/best.pt

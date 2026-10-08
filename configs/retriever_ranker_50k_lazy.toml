@@ -1,5 +1,5 @@
-# Lazy AdamW check: r_50k with lazy AdamW (only the table rows a batch uses are updated), seed 1.
-# Only the optimizer (and 1 seed) differ from r_50k.toml; compare with r_50k seed 1 (runs/r_runs/r_50k/seed1).
+# Lazy AdamW check: retriever_ranker_50k with lazy AdamW (only the table rows a batch uses are updated), seed 1.
+# Only the optimizer (and 1 seed) differ from retriever_ranker_50k.toml; compare with retriever_ranker_50k seed 1 (runs/retriever_ranker_runs/retriever_ranker_50k/seed1).
 
 [ranker]
 retriever = "configs/p3_50k_partA.toml"  # seed s uses runs/p3_runs/p3_50k_partA/seed<s>/best.pt

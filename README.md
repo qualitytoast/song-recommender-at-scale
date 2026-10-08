@@ -137,19 +137,21 @@ python scripts/genres_from_dump.py --store data/mpd_store --out data/genres/musi
 
 **Train and evaluate.** Every run is a config in `configs/` (no hidden
 defaults: a missing setting is an error); results go to
-`runs/<prefix>_runs/<config>/seed<k>/` (e.g.
+`runs/<group>/<config>/seed<k>/` (e.g.
 `runs/p3_runs/p3_200k_partA/seed1/`).
 
 ```bash
 python -m recsys.train    --config configs/p3_200k_partA.toml   # retriever (~1 h on an M-series Mac)
 python -m recsys.evaluate --config configs/p3_200k_partA.toml   # held-out NDCG@10, Hits@k, recall@K
-python -m recsys.ranker   --config configs/r_200k.toml          # ranker: train, then evaluate
+python -m recsys.ranker   --config configs/retriever_ranker_200k.toml          # ranker: train, then evaluate
 python scripts/search_benchmark.py real --config configs/p3_200k_partA.toml
 python -m pytest                                                # tests
 ```
 
 Config names follow the phases: `v1_*` (Phase 1), `p2_*` (features and
-overfitting), `p3_*` (scaling), `r_*` (rankers).
+overfitting), `p3_*` (scaling), `retriever_ranker_*` (the whole two-stage model:
+a ranker trained on a fixed retriever, tested together). Runs go in matching
+folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, `runs/retriever_ranker_runs/`.
 
 ## Layout
 

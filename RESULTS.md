@@ -421,7 +421,7 @@ find. Full held-out windows, exact search over the whole catalog.
 
 **Two-stage ranking (step 5).** The part-A retriever (`p3_50k_partA`: `p3_50k`
 trained on 80% of the training playlists, 32,000) builds each window's top-500
-shortlist; the ranker (`r_50k`, `recsys/ranker.py`) rescores the 500 by reading
+shortlist; the ranker (`retriever_ranker_50k`, `recsys/ranker.py`) rescores the 500 by reading
 each candidate together with the 10 context songs (the retriever's layers and
 weights, plus a candidate marker and position; context songs see only earlier
 context songs, each candidate sees the context and itself). Its score is the
@@ -437,10 +437,10 @@ the true song + 31 songs sampled from its shortlist; lr 1e-4 (fine-tuning).
 |---|---|---|---|---|---|---|
 | `p3_50k` retriever (40,000 playlists) | 2 | 0.1060 (0.1059–0.1062) | 17.4% | 5.4% | 66.4% | 40.6 |
 | `p3_50k_partA` retriever alone (32,000 playlists) | 2 | 0.1020 (0.1012–0.1027) | 16.4% | 5.4% | 62.2% | 36.6 |
-| **`p3_50k_partA` + `r_50k` ranker (top 500)** | 2 | **0.1146 (0.1142–0.1149)** | **18.2%** | **6.1%** | 62.2% | 36.6 + 7.5 |
+| **`p3_50k_partA` + `retriever_ranker_50k` ranker (top 500)** | 2 | **0.1146 (0.1142–0.1149)** | **18.2%** | **6.1%** | 62.2% | 36.6 + 7.5 |
 | most-popular | — | 0.0034 | 0.7% | 0.1% | 17.2% | — |
 
-- `r_50k` (2026-10-07, `01c1322`): reranking adds +0.0126 NDCG@10 (+12.3%) over
+- `retriever_ranker_50k` (2026-10-07, `01c1322`): reranking adds +0.0126 NDCG@10 (+12.3%) over
   the retriever it reranks, on both seeds (+0.0130, +0.0122), with the same
   shortlist; Hits@10 +1.8 points, Hits@1 +0.7. It also beats `p3_50k`, which
   trained on 25% more playlists, by +8.1%. The ranker peaks after one pass over
@@ -564,16 +564,16 @@ shared by every candidate) and itself only, instead of a masked 510 x 510 table:
 the same scores (tested against the masked version), reranking 2.4x faster
 (64 windows x 500 candidates: 39.9 -> 16.6 ms). Lazy AdamW as an option for the
 ranker (training step at 200k 58 -> 29 ms). Shortlists from exact search or
-FAISS IVF (nlist 2048, nprobe 128 for `r_200k`). On the 50k part-A retriever
+FAISS IVF (nlist 2048, nprobe 128 for `retriever_ranker_200k`). On the 50k part-A retriever
 with IVF, the retriever alone scores 0.1011 vs 0.1012 with exact search (seed 1),
 with the same top-500 recall (62.2%).
 
 | Ranker, seed 1 (50k, exact search) | Best val NDCG@10 (check) | Held-out NDCG@10 | Hits@1 | Hits@10 | Time |
 |---|---|---|---|---|---|
-| `r_50k` (AdamW) | 0.1202 (5) | **0.1142** | 6.1% | 18.2% | 7.5 min |
-| `r_50k_lazy` (lazy AdamW) | 0.1185 (4) | 0.1130 | 6.0% | 18.1% | 5.1 min |
+| `retriever_ranker_50k` (AdamW) | 0.1202 (5) | **0.1142** | 6.1% | 18.2% | 7.5 min |
+| `retriever_ranker_50k_lazy` (lazy AdamW) | 0.1185 (4) | 0.1130 | 6.0% | 18.1% | 5.1 min |
 
-- `r_50k_lazy` (2026-10-08, `dbdb578`): lazy AdamW peaks earlier and lower,
+- `retriever_ranker_50k_lazy` (2026-10-08, `dbdb578`): lazy AdamW peaks earlier and lower,
   -0.0012 held-out NDCG@10 (one seed, close to seed noise, but validation
   agrees). Times include building shortlists (~2.5 min); the lazy run also had
   shared-context attention.

@@ -38,8 +38,8 @@ Training data: windows from the playlists the retriever never trained on
 example is the true next song + `negatives` songs sampled from its shortlist; the
 loss picks the true one out of them.
 
-    python -m recsys.ranker --config configs/r_50k.toml            # train every seed, then evaluate
-    python -m recsys.ranker --config configs/r_50k.toml --evaluate # evaluate only
+    python -m recsys.ranker --config configs/retriever_ranker_50k.toml            # train every seed, then evaluate
+    python -m recsys.ranker --config configs/retriever_ranker_50k.toml --evaluate # evaluate only
 """
 import argparse
 import copy
