@@ -557,3 +557,23 @@ and IVF ~275-283 MB.
   HNSW (each shard searched with the full ef, more total work), down for IVF.
   Memory isn't a constraint at 1M (at most 561 MB), and single-request latency
   is under 7 ms without sharding.
+
+**Ranker updates before 200k.** Shared-context attention: each candidate's
+attention scores are computed against the 10 context songs (computed once,
+shared by every candidate) and itself only, instead of a masked 510 x 510 table:
+the same scores (tested against the masked version), reranking 2.4x faster
+(64 windows x 500 candidates: 39.9 -> 16.6 ms). Lazy AdamW as an option for the
+ranker (training step at 200k 58 -> 29 ms). Shortlists from exact search or
+FAISS IVF (nlist 2048, nprobe 128 for `r_200k`). On the 50k part-A retriever
+with IVF, the retriever alone scores 0.1011 vs 0.1012 with exact search (seed 1),
+with the same top-500 recall (62.2%).
+
+| Ranker, seed 1 (50k, exact search) | Best val NDCG@10 (check) | Held-out NDCG@10 | Hits@1 | Hits@10 | Time |
+|---|---|---|---|---|---|
+| `r_50k` (AdamW) | 0.1202 (5) | **0.1142** | 6.1% | 18.2% | 7.5 min |
+| `r_50k_lazy` (lazy AdamW) | 0.1185 (4) | 0.1130 | 6.0% | 18.1% | 5.1 min |
+
+- `r_50k_lazy` (2026-10-08, `dbdb578`): lazy AdamW peaks earlier and lower,
+  -0.0012 held-out NDCG@10 (one seed, close to seed noise, but validation
+  agrees). Times include building shortlists (~2.5 min); the lazy run also had
+  shared-context attention.
