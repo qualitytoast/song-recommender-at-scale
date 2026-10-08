@@ -15,6 +15,11 @@ LazyAdamW applies the same AdamW update only to the rows the batch used:
   - everything else (attention, feed-forward, LayerNorm, positions): regular AdamW.
 Bias correction uses the global step count, as in AdamW.
 
+The second-stage ranker (recsys/ranker.py) holds a copy of the retriever under
+the name "retriever", so its tables are "retriever.song_embedding.weight", ...:
+LazyAdamW(ranker, ..., prefix="retriever.") finds them, and rows keep the
+retriever's names. The ranker's own new parameters get regular AdamW.
+
 The rows a batch uses are worked out on the CPU from the batch's song IDs
 (used_rows), so the GPU never has to report back which rows it touched: that
 would make the CPU wait for the GPU every step.
@@ -35,10 +40,11 @@ def is_table(name):
 
 
 class LazyAdamW:
-    def __init__(self, model, lr, weight_decay, betas=(0.9, 0.999), eps=1e-8):
+    def __init__(self, model, lr, weight_decay, betas=(0.9, 0.999), eps=1e-8, prefix=""):
         named = dict(model.named_parameters())
-        self.tables = {n: p for n, p in named.items() if is_table(n)}
-        self.dense = torch.optim.AdamW([p for n, p in named.items() if not is_table(n)],
+        table = lambda n: n.startswith(prefix) and is_table(n[len(prefix):])
+        self.tables = {n[len(prefix):]: p for n, p in named.items() if table(n)}
+        self.dense = torch.optim.AdamW([p for n, p in named.items() if not table(n)],
                                        lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
         self.lr, self.weight_decay, (self.beta1, self.beta2), self.eps = lr, weight_decay, betas, eps
         self.exp_avg = {n: torch.zeros_like(p) for n, p in self.tables.items()}

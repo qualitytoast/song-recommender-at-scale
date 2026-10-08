@@ -47,6 +47,7 @@ from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.evaluate import score
+from recsys.lazy_adam import LazyAdamW, used_rows
 from recsys.model import build_model
 from recsys.train import EarlyStopping, git_state, pick_device, run_dir_for
 
@@ -59,14 +60,19 @@ class RankerConfig:
     train_seeds: list
     shortlist: int         # K: how many retriever songs the ranker reranks
     negatives: int         # shortlist songs sampled per training example, besides the true one
+    optimizer: str         # "adamw" or "lazy_adamw" (only the table rows a batch uses are updated)
     lr: float
-    weight_decay: float    # AdamW
+    weight_decay: float
     batch_size: int        # windows per step
     epochs: int            # maximum passes over the ranker's windows
     eval_every_examples: int  # validation check every this many training windows
     min_checks: int
     patience: int
     val_windows: int       # validate on the first this many validation windows
+
+    def __post_init__(self):
+        if self.optimizer not in ("adamw", "lazy_adamw"):
+            raise ValueError(f"optimizer must be adamw or lazy_adamw, got {self.optimizer!r}")
 
 
 def load_ranker_config(path):
@@ -159,6 +165,14 @@ def rerank(ranker, X, N, short_ids, short_scores, device, batch=64):
     return torch.cat(out).numpy()
 
 
+def ranker_rows(context, candidates, names, song_features, song_genres, device):
+    """The table rows a ranker batch uses (numpy in), for LazyAdamW. The ranker reads
+    context and candidate songs alike through the input-side tables; it never uses
+    the output-side ones (the retriever's score comes in frozen), so those get none."""
+    songs = np.concatenate([context, candidates], axis=1)
+    return used_rows(songs, np.empty(0, dtype=np.int64), names, song_features, song_genres, device)
+
+
 def load_retriever(rc, seed, device):
     cfg = load_config(rc.retriever)
     ds = build_dataset(cfg)
@@ -186,7 +200,13 @@ def train_ranker(config_path, seed):
           f"{(train_ids == ds.Y_rank[:, None]).any(1).mean():.1%}", flush=True)
 
     ranker = CandidateRanker(retriever).to(device)
-    optimizer = torch.optim.AdamW(ranker.parameters(), lr=rc.lr, weight_decay=rc.weight_decay)
+    lazy = rc.optimizer == "lazy_adamw"
+    if lazy:  # AdamW on only the table rows each batch uses (recsys/lazy_adam.py)
+        optimizer = LazyAdamW(ranker, rc.lr, rc.weight_decay, prefix="retriever.")
+    else:
+        optimizer = torch.optim.AdamW(ranker.parameters(), lr=rc.lr, weight_decay=rc.weight_decay)
+    song_features = {name: ds.song_features[name][0] for name in retriever.feature_names}
+    song_genres = ds.song_genres if retriever.input_genres is not None else None
     stopper = EarlyStopping(rc.min_checks, rc.patience)
     order_gen, negative_gen = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed + 3_000_000)
     X, N, Y = (torch.from_numpy(a) for a in (ds.X_rank, ds.N_rank, ds.Y_rank))
@@ -237,7 +257,11 @@ def train_ranker(config_path, seed):
             loss = nn.functional.cross_entropy(scores, torch.zeros(len(idx), dtype=torch.long, device=device))
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            if lazy:
+                optimizer.step(ranker_rows(X[idx].numpy(), candidates.numpy(), N[idx].numpy(), song_features,
+                                           song_genres, device))
+            else:
+                optimizer.step()
             loss_sum += loss.detach()
             steps += 1
             seen += len(idx)

@@ -6,6 +6,7 @@ retriever = "configs/p3_200k_partA.toml"  # seed s uses runs/p3_200k_partA/seed<
 train_seeds = [1]          # 1 seed per run
 shortlist = 500            # rerank the retriever's top 500 (held-out recall@500 ~66%)
 negatives = 31             # per training window: the true song + 31 sampled from its shortlist
+optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
 lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
 weight_decay = 0.05
 batch_size = 64            # windows per step
