@@ -497,3 +497,24 @@ reports back. With every row used it equals AdamW exactly (tested).
 - In both 128-chunk runs the best checks fall at epoch ends (checks 23 and 27
   are the top two in each): validation NDCG@10 dips at the start of each epoch,
   when the model starts revisiting the same playlists, and recovers by its end.
+
+**Scaling, stage 2: 200,000 playlists, part-A retriever.** `p3_200k_partA`:
+`p3_50k_lazy_b128_lr2`'s settings (lazy AdamW, 128 chunks, lr 2e-3) at 200,000
+playlists, trained on part A (80% of training playlists; part B is kept for the
+ranker). 412,404 songs, 63,395 artists, 166,700 albums, 717 genres; 7,788,816
+training targets per epoch; 83.3M parameters; validation on a 20,000-window
+sample every quarter epoch; 836,433 held-out windows.
+
+| Config (seed 1) | Songs | Held-out NDCG@10 | Hits@10 | Hits@1 | Top 500 | Most-popular NDCG@10 | Best at | Training time |
+|---|---|---|---|---|---|---|---|---|
+| `p3_50k_lazy_b128_lr2` (50k, all training playlists) | 166,627 | 0.1213 | 18.6% | 7.0% | 66.3% | 0.0034 | 6.0 epochs | 16.0 min |
+| `p3_200k_partA` (200k, part A) | 412,404 | 0.1257 | 19.0% | 7.5% | 64.0% | 0.0032 | 7.75 epochs | 64.2 min |
+
+- `p3_200k_partA` (2026-10-08, `c3084ad`): different held-out windows and a
+  2.5x bigger catalog than at 50k, so not directly comparable; against the
+  same windows' most-popular baseline it's 39x (vs ~36x at 50k). Top-500 recall
+  is lower (64.0% vs 66.3%) with 2.5x more songs to rank against.
+- It peaks later (7.75 epochs) and declines slowly after (stopped at 9 epochs).
+- Cost: 64 min, of which validation 9.7 min: each check (20,000 windows x
+  412,404 songs) took ~16 s against ~93 s of training, 15% of run time, more
+  than the 4% at 50k. Held-out ranking of 836,433 windows took ~11 min.
