@@ -6,9 +6,11 @@ between the playlist vector h and each song's output vector, and keeps the top K
 an IVF index in a FAISS search process (only the songs in the nprobe clusters
 nearest the query are scored; recsys/search.py), set by the config's `search`.
 Training, validation and held-out shortlists all come from the same search, so
-the ranker trains on the kind of shortlist it is tested on. Stage 2, the ranker, scores each shortlisted song by reading it
-*together with* the 10 context songs, so attention can relate the candidate to
-each song in the playlist ("same artist as the last song", ...).
+the ranker trains on the kind of shortlist it is tested on.
+
+Stage 2, the ranker, scores each shortlisted song by reading it *together with*
+the 10 context songs, so attention can relate the candidate to each song in the
+playlist ("same artist as the last song", ...).
 
 The ranker is a copy of the retriever (same layers, starting from its weights) fed
 10 context songs + K candidates in one pass, where
@@ -26,7 +28,8 @@ scores instead of 510 x 510 = 260,100, all but ~5,600 of which a mask would give
 zero weight: the same result, without computing what is thrown away.
 
 Score = the retriever's own score for the song (frozen, from building the
-shortlist) + a learned correction from the candidate's output vector. The
+shortlist) + a learned correction from the transformer's output at the
+candidate's position. The
 correction layer starts at zero, so before training the ranker reproduces the
 retriever's ranking exactly; training learns changes to it.
 
