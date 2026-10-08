@@ -12,6 +12,7 @@ v1-matching runs keep reproducing:
 import math
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -30,23 +31,22 @@ class SelfAttention(nn.Module):
         """x: (batch, seq, embed_dim). blocked: optional (seq, seq) bool, True where
         position i may not look at position j, on top of the causal rule."""
         q, k, v = self.query(x), self.key(x), self.value(x)
-        # scores[b, i, j] = how relevant song j is to song i
-        scores = q @ k.transpose(-2, -1)
-        # Scores are sums of embed_dim products, so they grow with embed_dim;
-        # dividing by sqrt(embed_dim) keeps softmax from saturating. v1 computed
-        # the scaled scores but passed the unscaled ones to softmax (scale=False).
-        if self.scale:
-            scores = scores / math.sqrt(q.shape[-1])
+        # PyTorch's built-in attention computes softmax(q @ k.T * scale) @ v in one call.
+        # scores[b, i, j] = how relevant song j is to song i. Scores are sums of
+        # embed_dim products, so they grow with embed_dim; dividing by sqrt(embed_dim)
+        # (scale=None, the default) keeps softmax from saturating. v1 computed the scaled
+        # scores but passed the unscaled ones to softmax (self.scale False: scale=1).
+        scale = None if self.scale else 1.0
+        if blocked is None:
+            # is_causal: each position may only look at itself and earlier positions.
+            # With this plain causal rule the built-in can skip the scores it would
+            # throw away (it matters for long sequences; at 10 songs it's tiny).
+            return F.scaled_dot_product_attention(q, k, v, is_causal=self.causal, scale=scale)
+        allowed = ~blocked  # the built-in's mask marks where attention IS allowed
         if self.causal:
-            # Each position may only look at itself and earlier positions: a score of
-            # -inf becomes a weight of exactly 0 after softmax.
-            n = scores.shape[-1]
-            later = torch.triu(torch.ones(n, n, dtype=torch.bool, device=scores.device), diagonal=1)
-            scores = scores.masked_fill(later, float("-inf"))
-        if blocked is not None:
-            scores = scores.masked_fill(blocked, float("-inf"))
-        weights = scores.softmax(dim=-1)
-        return weights @ v
+            n = x.shape[1]
+            allowed = allowed & torch.tril(torch.ones(n, n, dtype=torch.bool, device=x.device))
+        return F.scaled_dot_product_attention(q, k, v, attn_mask=allowed, scale=scale)
 
 
 class TransformerBlock(nn.Module):

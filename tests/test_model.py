@@ -51,6 +51,33 @@ def test_attention_is_unscaled_like_v1():
     torch.testing.assert_close(out[0, 0], torch.tensor([e / (e + 1), 1 / (e + 1)]))
 
 
+def written_out_attention(attn, x, blocked=None):
+    """Attention spelled out step by step (as before the built-in was used): the
+    built-in must give the same result."""
+    q, k, v = attn.query(x), attn.key(x), attn.value(x)
+    scores = q @ k.transpose(-2, -1)
+    if attn.scale:
+        scores = scores / math.sqrt(q.shape[-1])
+    n = scores.shape[-1]
+    if attn.causal:
+        scores = scores.masked_fill(torch.triu(torch.ones(n, n, dtype=torch.bool), diagonal=1), float("-inf"))
+    if blocked is not None:
+        scores = scores.masked_fill(blocked, float("-inf"))
+    return scores.softmax(dim=-1) @ v
+
+
+def test_builtin_attention_matches_written_out_attention():
+    torch.manual_seed(0)
+    x = torch.randn(3, 6, 8)
+    blocked = torch.rand(6, 6) < 0.3
+    blocked.fill_diagonal_(False)  # every position may see itself, so no row is fully blocked
+    for scale in (True, False):
+        for causal in (True, False):
+            attn = SelfAttention(embed_dim=8, scale=scale, causal=causal)
+            for b in (None, blocked):
+                torch.testing.assert_close(attn(x, b), written_out_attention(attn, x, b))
+
+
 def test_init_matches_v1():
     torch.manual_seed(0)
     model = SongRecommender(vocab_size=5000, embed_dim=64, context_length=10, num_layers=2, dropout=0.1, scale_attention=False, init="v1")
