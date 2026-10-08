@@ -191,6 +191,15 @@ def sample_negatives(short_ids, y, n, generator):
     return torch.topk(keys, n, dim=1, largest=False).indices
 
 
+def with_negatives(short_ids, short_scores, true_scores, y, n, generator):
+    """One training example per row: (candidates, base scores), each (rows, 1 + n) CPU
+    tensors, the true song y first with its retriever score, then n songs sampled from
+    its shortlist (sample_negatives) with theirs. The loss picks column 0 out of them."""
+    pos = sample_negatives(short_ids, y, n, generator)
+    return (torch.cat([y[:, None], short_ids.gather(1, pos).long()], dim=1),
+            torch.cat([true_scores[:, None], short_scores.gather(1, pos)], dim=1))
+
+
 def final_ranks(rerank_scores, short_ids, y):
     """Rank of each true song after reranking its shortlist: 1 + shortlist songs scored
     strictly higher (ties in the true song's favour, as everywhere else); MISSED if the
@@ -256,8 +265,8 @@ def train_ranker(config_path, seed):
     with song_search(rc, vectors, device) as search:
         train_ids, train_scores, train_true = build_shortlists(retriever, ds.X_rank, ds.N_rank, ds.Y_rank, device,
                                                                rc.shortlist, search, vectors)
-        val_ids, val_scores, _ = build_shortlists(retriever, X_val, N_val, Y_val, device, rc.shortlist, search,
-                                                  vectors)
+        val_ids, val_scores, val_true = build_shortlists(retriever, X_val, N_val, Y_val, device, rc.shortlist,
+                                                         search, vectors)
     print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows, {len(Y_val):,} val windows | shortlists "
           f"({rc.search_name()}) in {time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} "
           f"{(train_ids == ds.Y_rank[:, None]).any(1).mean():.1%}", flush=True)
@@ -278,6 +287,11 @@ def train_ranker(config_path, seed):
     order_gen, negative_gen = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed + 3_000_000)
     X, N, Y = (torch.from_numpy(a) for a in (ds.X_rank, ds.N_rank, ds.Y_rank))
     short_ids, short_scores, true_scores = (torch.from_numpy(a) for a in (train_ids, train_scores, train_true))
+    # Validation loss: the training loss on validation windows, with their negatives drawn
+    # once (own generator, so training's draws don't change) and reused at every check.
+    val_cands, val_base = (t.numpy() for t in with_negatives(
+        *(torch.from_numpy(a) for a in (val_ids, val_scores, val_true, Y_val)), rc.negatives,
+        torch.Generator().manual_seed(seed + 4_000_000)))
     log, best_check, seen, next_check = [], None, 0, rc.eval_every_examples
     loss_sum, steps, interval_start = torch.zeros((), device=device), 0, time.perf_counter()
 
@@ -290,20 +304,23 @@ def train_ranker(config_path, seed):
         train_seconds, val_start = time.perf_counter() - interval_start, time.perf_counter()
         ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device), val_ids, Y_val)
         result = score(ranks)
+        sampled = torch.from_numpy(rerank(ranker, X_val, N_val, val_cands, val_base, device))
+        val_loss = nn.functional.cross_entropy(sampled, torch.zeros(len(Y_val), dtype=torch.long)).item()
         val_seconds = time.perf_counter() - val_start
         improved, stop = stopper.update(check, result["ndcg@10"])
         if improved:
             best_check = check
             torch.save({"model": ranker.state_dict(), "vocab": ds.vocab, "config": asdict(rc), "check": check,
                         "val_ndcg": result["ndcg@10"]}, run_dir / "best.pt")
-        log.append({"check": check, "examples": seen, "train_loss": train_loss, "val_ndcg": result["ndcg@10"],
+        log.append({"check": check, "examples": seen, "train_loss": train_loss, "val_loss": val_loss,
+                    "val_ndcg": result["ndcg@10"],
                     "val_hits10": result["hits@10"], "val_hits1": result["hits@1"],
                     "train_seconds": round(train_seconds, 2), "val_seconds": round(val_seconds, 2)})
         note = "  *best" if improved else (
             f"  no improvement {stopper.bad_checks}/{stopper.patience}" if check >= stopper.min_checks else "")
-        print(f"check {check:3d} | {seen:,} windows | train loss {train_loss:.4f} | val NDCG@10 {result['ndcg@10']:.4f} "
-              f"Hits@10 {result['hits@10']:.3f} Hits@1 {result['hits@1']:.3f} | train {train_seconds:.0f}s + "
-              f"val {val_seconds:.0f}s{note}", flush=True)
+        print(f"check {check:3d} | {seen:,} windows | train loss {train_loss:.4f} | val loss {val_loss:.4f} | "
+              f"val NDCG@10 {result['ndcg@10']:.4f} Hits@10 {result['hits@10']:.3f} Hits@1 {result['hits@1']:.3f} | "
+              f"train {train_seconds:.0f}s + val {val_seconds:.0f}s{note}", flush=True)
         loss_sum.zero_()
         steps = 0
         ranker.train()
@@ -317,9 +334,8 @@ def train_ranker(config_path, seed):
         order = torch.randperm(len(Y), generator=order_gen)
         for i in range(0, len(Y), rc.batch_size):
             idx = order[i:i + rc.batch_size]
-            pos = sample_negatives(short_ids[idx], Y[idx], rc.negatives, negative_gen)
-            candidates = torch.cat([Y[idx][:, None], short_ids[idx].gather(1, pos).long()], dim=1)
-            base = torch.cat([true_scores[idx][:, None], short_scores[idx].gather(1, pos)], dim=1)
+            candidates, base = with_negatives(short_ids[idx], short_scores[idx], true_scores[idx], Y[idx],
+                                              rc.negatives, negative_gen)
             scores = ranker(X[idx].to(device), N[idx].to(device), candidates.to(device), base.to(device))
             loss = nn.functional.cross_entropy(scores, torch.zeros(len(idx), dtype=torch.long, device=device))
             optimizer.zero_grad()

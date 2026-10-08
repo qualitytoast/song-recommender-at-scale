@@ -6,7 +6,7 @@ import torch
 
 from recsys.model import SongRecommender
 from recsys.ranker import (MISSED, CandidateRanker, build_shortlists, check_vocab, final_ranks, sample_negatives,
-                           song_search)
+                           song_search, with_negatives)
 from recsys.search import song_vectors
 
 ARTIST = [0, 0, 1, 2, 2, 2, 1]
@@ -108,6 +108,18 @@ def test_negatives_are_distinct_shortlist_songs_other_than_the_true_one():
         for row in range(2):
             songs = short[row, pos[row]].tolist()
             assert len(set(pos[row].tolist())) == 4 and y[row].item() not in songs
+
+
+def test_examples_put_the_true_song_first_and_keep_each_songs_own_score():
+    short = torch.tensor([[5, 3, 9, 1, 7], [2, 4, 6, 8, 0]], dtype=torch.int32)
+    short_scores = short.float() / 10  # song s scores s / 10, so a score shows which song it belongs to
+    y, true_scores = torch.tensor([9, 1]), torch.tensor([0.9, 0.1])
+    candidates, base = with_negatives(short, short_scores, true_scores, y, 3, torch.Generator().manual_seed(0))
+    pos = sample_negatives(short, y, 3, torch.Generator().manual_seed(0))  # the same draws
+    assert candidates.dtype == torch.long and candidates.shape == base.shape == (2, 4)
+    assert candidates[:, 0].tolist() == [9, 1] and base[:, 0].tolist() == pytest.approx([0.9, 0.1])
+    assert torch.equal(candidates[:, 1:], short.gather(1, pos).long())
+    assert torch.allclose(base[:, 1:], candidates[:, 1:].float() / 10)
 
 
 def test_final_ranks():
