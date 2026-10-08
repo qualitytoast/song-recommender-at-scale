@@ -681,3 +681,25 @@ of the ranker's windows). Seed 1, held-out sets as in each scale's other rows.
 - Cost: `retriever_5k` 1.0 min, `ranker_5k` 0.6 min; `retriever_50k` 18.9 min
   (it peaks at 9 epochs; validation 3.6 min of it), `ranker_50k` 6.2 min +
   held-out 2.1 min.
+
+**Ranker improvement series at 50k** (on `retriever_50k`). Each step adds one change to the best ranker so
+far, and the change is kept if held-out NDCG@10 rises by more than 0.001 over the best so far and
+validation agrees (one seed; 50k seeds have differed by up to ~0.0007). Changes come from why the
+ranker failed (wrong answers too easy, out-of-shortlist training windows, no new information,
+fine-tuning drift, a training task unlike the ranking measured) and from other projects' rerankers
+(Gao, Dai & Callan, ECIR 2021: wrong answers from the retriever's own top results; the RecSys
+Challenge 2018 winners on this dataset: extra per-candidate inputs). From step 1 on, shortlists come
+from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
+
+| Step | Run | Change | Builds on | Val NDCG@10, check 0 -> best (check) | Held-out NDCG@10 (retriever alone) | Hits@1 | Hits@10 | Kept | Time (train + held-out) |
+|---|---|---|---|---|---|---|---|---|---|
+| — | `ranker_50k` | baseline (exact search) | — | 0.1178 -> 0.1178 (0) | 0.1172 (0.1172) | 6.8% | 17.9% | — | 6.2 + 2.1 min |
+| 1 | `ranker_50k_inlist` | train only on windows whose true song is in the shortlist | baseline | 0.1179 -> 0.1225 (32) | 0.1209 (0.1171) | 6.9% | 18.6% | yes | 6.0 + 1.0 min |
+
+- `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
+  held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
+  184,196 of 302,495 part-B windows whose true song is in the shortlist. Validation loss now falls
+  while NDCG@10 rises (0.1179 -> 0.1225 over 32 checks, ~6.4 epochs), where before they moved in
+  opposite directions: the out-of-shortlist windows were teaching it to lift songs the retriever
+  scored low. Check 0's validation loss is 2.64 (in-shortlist windows only), below random guessing
+  among 32 (3.47).
