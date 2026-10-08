@@ -695,6 +695,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 |---|---|---|---|---|---|---|---|---|---|
 | — | `ranker_50k` | baseline (exact search) | — | 0.1178 -> 0.1178 (0) | 0.1172 (0.1172) | 6.8% | 17.9% | — | 6.2 + 2.1 min |
 | 1 | `ranker_50k_inlist` | train only on windows whose true song is in the shortlist | baseline | 0.1179 -> 0.1225 (32) | 0.1209 (0.1171) | 6.9% | 18.6% | yes | 6.0 + 1.0 min |
+| 2 | `ranker_50k_top100` | rerank the top 100 instead of 500 (wrong answers from the top 100) | step 1 | 0.1179 -> 0.1237 (32) | 0.1222 (0.1171) | 7.1% | 18.8% | yes | 3.3 + 0.7 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -703,3 +704,9 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   opposite directions: the out-of-shortlist windows were teaching it to lift songs the retriever
   scored low. Check 0's validation loss is 2.64 (in-shortlist windows only), below random guessing
   among 32 (3.47).
+- `ranker_50k_top100` (2026-10-08, `33fd3a2`): reranking the retriever's top 100 instead of 500, so
+  each example's 31 wrong answers come from the top 100 (on average ~3 from the top 10, against ~0.6
+  when drawn from the top 500): +0.0013 over step 1 (0.1222 vs 0.1209), Hits@1 7.1% vs 6.9%; +0.0051
+  (+4.4%) over the retriever alone. It trains on the 117,999 part-B windows whose true song is in
+  the top 100 (top-100 recall 41.5% on held-out, so the ranker can only reorder those songs). 3.3
+  min of training.
