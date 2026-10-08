@@ -104,6 +104,7 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Sampled softmax, lazy AdamW, bigger batches | 50,000 | 166,627 | 0.1213 | 36x |
 | Two-stage at 50k: retriever (80% of training playlists) alone → + ranker | 50,000 | 166,627 | 0.1020 → 0.1146 | 34x |
 | Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
+| Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
 
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
@@ -115,7 +116,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Phase 2: song and playlist features, one at a time; overfitting experiments
 - [x] Phase 3 so far: compact data store, sampled softmax, 50k and 200k
       retrievers, two-stage ranking at 50k, faster training, search benchmark
-- [ ] Ranker at 200k (with FAISS IVF shortlists)
+- [x] Ranker at 200k (with FAISS IVF shortlists): no gain over the retriever yet
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
 - [ ] Personalization to one listener's history

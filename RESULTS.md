@@ -577,3 +577,58 @@ with the same top-500 recall (62.2%).
   -0.0012 held-out NDCG@10 (one seed, close to seed noise, but validation
   agrees). Times include building shortlists (~2.5 min); the lazy run also had
   shared-context attention.
+
+**Two-stage ranking at 200k** (`retriever_ranker_200k`). The baseline ranker for
+the `p3_200k_partA` retriever: `retriever_ranker_50k_lazy`'s settings with FAISS
+IVF shortlists (nlist 2048, nprobe 128), trained on the 1,470,511 part-B
+windows (top-500 recall 62.3%), validated every 294,000 windows on all 20,000
+validation windows. Validation loss is new in this run: the training loss (pick
+the true song out of it + 31 shortlist songs) on the validation windows, with
+their 31 drawn once and reused at every check.
+
+| Held-out (836,433 windows, 412,404 songs), seed 1 | NDCG@10 | Hits@1 | Hits@10 | Top 500 | Time |
+|---|---|---|---|---|---|
+| `p3_200k_partA` retriever alone, exact search | 0.1257 | 7.5% | 19.0% | 64.0% | 64.2 min |
+| `p3_200k_partA` retriever alone, IVF shortlist | 0.1255 | 7.5% | 19.0% | 64.0% | — |
+| `p3_200k_partA` + `retriever_ranker_200k` ranker (best check 0) | 0.1255 | 7.5% | 19.0% | 64.0% | 17.9 + 18.2 min |
+| most-popular | 0.0032 | 0.1% | 0.7% | 15.1% | — |
+
+| Check | Windows | Train loss | Val loss | Val NDCG@10 |
+|---|---|---|---|---|
+| 0 (= the retriever) | 0 | — | 4.380 | **0.1216** |
+| 1 | 294,016 | 4.452 | 4.253 | 0.1200 |
+| 2 | 588,032 | 4.389 | 4.200 | 0.1171 |
+| 3 | 882,048 | 4.352 | 4.163 | 0.1168 |
+| 4 | 1,176,000 | 4.331 | 4.130 | 0.1151 |
+| 5 | 1,470,016 | 4.302 | 4.106 | 0.1156 |
+| 6 | 1,764,015 | 4.268 | 4.081 | 0.1131 |
+| 7 | 2,058,031 | 4.251 | 4.059 | 0.1131 |
+| 8 | 2,352,047 | 4.239 | 4.042 | 0.1130 |
+| 9 | 2,646,063 | 4.219 | 4.025 | 0.1136 |
+
+- `retriever_ranker_200k` (2026-10-08, `3d205ec`): no gain. Every check scored
+  below check 0 (the retriever's own ranking), so early stopping kept check 0
+  and held-out "retriever + ranker" equals the retriever alone (0.1255). With
+  the same settings at 50k the ranker added +0.0118 (+11.7%) over its
+  retriever (`retriever_ranker_50k_lazy`).
+- Validation loss fell at every check (4.380 -> 4.025) while validation
+  NDCG@10 fell (0.1216 -> 0.1136). Not overfitting, which would raise
+  validation loss: the ranker gets better at picking the true song out of 32
+  while ordering the 500 worse. Check 0's validation loss, 4.38, is above
+  random guessing among 32 (ln 32 = 3.47): for the ~38% of windows whose true
+  song isn't in the shortlist, the retriever scored it below all 500
+  shortlisted songs, so the starting model is confidently wrong on them.
+- Why it helped at 50k and not at 200k is open. Candidates, untested: the
+  out-of-shortlist training windows (their loss rewards lifting songs the
+  retriever scored low); negatives drawn uniformly from the 500, mostly far
+  below the top 10 that NDCG@10 measures; or a peak before the first check
+  (294,016 windows; at 50k checks came every 60,000).
+- IVF shortlists cost little: 0.1255 vs 0.1257 NDCG@10 with exact search, and
+  the same top-500 recall (64.03% vs 64.01%; IVF also picks up songs just past
+  the exact top 500).
+- Cost: shortlists for part B and validation 204 s; ~1.5 min of training + 8 s
+  of validation per check; 17.9 min to the early stop. Held-out evaluation
+  18.2 min: shortlists 122 s, reranking 836,433 x 500 candidates 277 s, the
+  retriever's exact ranking of every song ~11 min.
+- Two earlier starts were stopped by choice (at checks 2 and 8, the second to
+  add validation loss); their validation NDCG@10 followed the same path.
