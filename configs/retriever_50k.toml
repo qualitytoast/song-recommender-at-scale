@@ -1,24 +1,24 @@
-# Ranker scaling ladder, 5k: p3_200k_partA's settings at 5,000 playlists, part A (80% of training playlists).
-# Its baseline ranker is retriever_ranker_5k_b128. With the 200k pair (p3_200k_partA + retriever_ranker_200k)
+# Ranker scaling ladder, 50k: retriever_200k's settings at 50,000 playlists, part A (80% of training playlists).
+# Its baseline ranker is ranker_50k. With the 200k pair (retriever_200k + ranker_200k)
 # it tests whether the ranker's gain depends on scale or on the retriever's settings: the ranker helped (+11.7%)
-# on p3_50k_partA (AdamW, batch 32) but not on p3_200k_partA (lazy AdamW, batch 128, lr 2e-3).
+# on p3_50k_partA (AdamW, batch 32) but not on retriever_200k (lazy AdamW, batch 128, lr 2e-3).
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1]        # 1 seed per run from now on
 
 [data]
 folder = "data/mpd_store"   # was "data/mpd": the compact store (recsys/mpd_store.py)
-max_playlists = 5000  # was 200000
+max_playlists = 50000  # was 200000
 min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
 min_freq = 2           # songs seen fewer times than this are dropped
 song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
 vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
 context_length = 10    # predict the 11th song from the previous 10
-test_split = 0.1       # fraction of playlists held out (500 at 5k)
+test_split = 0.1       # fraction of playlists held out (5,000 at 50k)
 validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
 genres_file = "data/genres/musicbrainz_all_mpd_artists.jsonl"  # was the API file: dump genres for all MPD artists
-val_max_windows = 20000  # a cap: 5k has 6,109 validation windows, all used
+val_max_windows = 20000  # a fixed sample of the validation windows
 ranker_split = 0.2       # the last 20% of training playlists are kept for the ranker
 val_size = 0             # was 3000; unused with separate_playlists
 
@@ -36,7 +36,7 @@ lr = 2e-3             # x2 for 128-chunk batches (p3_50k_lazy_b128_lr2)
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 128       # chunks per step (p3_50k_lazy_b128_lr2)
 epochs = 100           # a cap; early stopping ends the run
-eval_every_targets = 34541  # a quarter of an epoch (138,164 part-A targets)
+eval_every_targets = 458138  # a quarter of an epoch (1,832,555 part-A targets)
 min_checks = 10          # = 2.5 epochs at a quarter epoch per check
 patience = 5             # was 10 epochs; now counts validation checks
 augment_mask = 0.0      # training-window augmentation off

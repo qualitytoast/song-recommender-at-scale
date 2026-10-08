@@ -498,7 +498,7 @@ reports back. With every row used it equals AdamW exactly (tested).
   are the top two in each): validation NDCG@10 dips at the start of each epoch,
   when the model starts revisiting the same playlists, and recovers by its end.
 
-**Scaling, stage 2: 200,000 playlists, part-A retriever.** `p3_200k_partA`:
+**Scaling, stage 2: 200,000 playlists, part-A retriever.** `retriever_200k`:
 `p3_50k_lazy_b128_lr2`'s settings (lazy AdamW, 128 chunks, lr 2e-3) at 200,000
 playlists, trained on part A (80% of training playlists; part B is kept for the
 ranker). 412,404 songs, 63,395 artists, 166,700 albums, 717 genres; 7,788,816
@@ -508,9 +508,9 @@ sample every quarter epoch; 836,433 held-out windows.
 | Config (seed 1) | Songs | Held-out NDCG@10 | Hits@10 | Hits@1 | Top 500 | Most-popular NDCG@10 | Best at | Training time |
 |---|---|---|---|---|---|---|---|---|
 | `p3_50k_lazy_b128_lr2` (50k, all training playlists) | 166,627 | 0.1213 | 18.6% | 7.0% | 66.3% | 0.0034 | 6.0 epochs | 16.0 min |
-| `p3_200k_partA` (200k, part A) | 412,404 | 0.1257 | 19.0% | 7.5% | 64.0% | 0.0032 | 7.75 epochs | 64.2 min |
+| `retriever_200k` (200k, part A) | 412,404 | 0.1257 | 19.0% | 7.5% | 64.0% | 0.0032 | 7.75 epochs | 64.2 min |
 
-- `p3_200k_partA` (2026-10-08, `c3084ad`): different held-out windows and a
+- `retriever_200k` (2026-10-08, `c3084ad`): different held-out windows and a
   2.5x bigger catalog than at 50k, so not directly comparable; against the
   same windows' most-popular baseline it's 39x (vs ~36x at 50k). Top-500 recall
   is lower (64.0% vs 66.3%) with 2.5x more songs to rank against.
@@ -523,7 +523,7 @@ sample every quarter epoch; 836,433 held-out windows.
 in its own process, `recsys/search_worker.py`, because FAISS and PyTorch each
 ship their own OpenMP library and can't share a process). Top 500 per query;
 "search recall" = share of the exact top 500 a method returns. Real vectors:
-`p3_200k_partA` seed 1 (412,404 songs), 5,000 held-out queries; exact search has
+`retriever_200k` seed 1 (412,404 songs), 5,000 held-out queries; exact search has
 the true next song in its top 500 for 65.0% of them.
 
 | Method (200k, real) | Search recall | Dropped from exact ranks 1-10 | ...251-500 | True song lost | True song in top 500 | Queries/s | Latency p50 / p99 | Memory | Build |
@@ -564,7 +564,7 @@ shared by every candidate) and itself only, instead of a masked 510 x 510 table:
 the same scores (tested against the masked version), reranking 2.4x faster
 (64 windows x 500 candidates: 39.9 -> 16.6 ms). Lazy AdamW as an option for the
 ranker (training step at 200k 58 -> 29 ms). Shortlists from exact search or
-FAISS IVF (nlist 2048, nprobe 128 for `retriever_ranker_200k`). On the 50k part-A retriever
+FAISS IVF (nlist 2048, nprobe 128 for `ranker_200k`). On the 50k part-A retriever
 with IVF, the retriever alone scores 0.1011 vs 0.1012 with exact search (seed 1),
 with the same top-500 recall (62.2%).
 
@@ -578,8 +578,8 @@ with the same top-500 recall (62.2%).
   agrees). Times include building shortlists (~2.5 min); the lazy run also had
   shared-context attention.
 
-**Two-stage ranking at 200k** (`retriever_ranker_200k`). The baseline ranker for
-the `p3_200k_partA` retriever: `retriever_ranker_50k_lazy`'s settings with FAISS
+**Two-stage ranking at 200k** (`ranker_200k`). The baseline ranker for
+the `retriever_200k` retriever: `retriever_ranker_50k_lazy`'s settings with FAISS
 IVF shortlists (nlist 2048, nprobe 128), trained on the 1,470,511 part-B
 windows (top-500 recall 62.3%), validated every 294,000 windows on all 20,000
 validation windows. Validation loss is new in this run: the training loss (pick
@@ -588,9 +588,9 @@ their 31 drawn once and reused at every check.
 
 | Held-out (836,433 windows, 412,404 songs), seed 1 | NDCG@10 | Hits@1 | Hits@10 | Top 500 | Time |
 |---|---|---|---|---|---|
-| `p3_200k_partA` retriever alone, exact search | 0.1257 | 7.5% | 19.0% | 64.0% | 64.2 min |
-| `p3_200k_partA` retriever alone, IVF shortlist | 0.1255 | 7.5% | 19.0% | 64.0% | — |
-| `p3_200k_partA` + `retriever_ranker_200k` ranker (best check 0) | 0.1255 | 7.5% | 19.0% | 64.0% | 17.9 + 18.2 min |
+| `retriever_200k` retriever alone, exact search | 0.1257 | 7.5% | 19.0% | 64.0% | 64.2 min |
+| `retriever_200k` retriever alone, IVF shortlist | 0.1255 | 7.5% | 19.0% | 64.0% | — |
+| `retriever_200k` + `ranker_200k` ranker (best check 0) | 0.1255 | 7.5% | 19.0% | 64.0% | 17.9 + 18.2 min |
 | most-popular | 0.0032 | 0.1% | 0.7% | 15.1% | — |
 
 | Check | Windows | Train loss | Val loss | Val NDCG@10 |
@@ -606,7 +606,7 @@ their 31 drawn once and reused at every check.
 | 8 | 2,352,047 | 4.239 | 4.042 | 0.1130 |
 | 9 | 2,646,063 | 4.219 | 4.025 | 0.1136 |
 
-- `retriever_ranker_200k` (2026-10-08, `3d205ec`): no gain. Every check scored
+- `ranker_200k` (2026-10-08, `3d205ec`): no gain. Every check scored
   below check 0 (the retriever's own ranking), so early stopping kept check 0
   and held-out "retriever + ranker" equals the retriever alone (0.1255). With
   the same settings at 50k the ranker added +0.0118 (+11.7%) over its

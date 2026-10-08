@@ -3,7 +3,7 @@
     # speed and memory at a given catalog size, with stand-in vectors
     python scripts/search_benchmark.py synthetic --songs 1053328
     # speed and search recall on a trained retriever's real vectors and held-out queries
-    python scripts/search_benchmark.py real --config configs/p3_200k_partA.toml --seed 1
+    python scripts/search_benchmark.py real --config configs/retriever_200k.toml --seed 1
 
 For each method: build time, memory, batch speed (queries per second for a big
 batch, as when building shortlists), single-request latency (one query at a

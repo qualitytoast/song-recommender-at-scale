@@ -62,5 +62,5 @@ def test_run_dir_for_groups_runs_by_config_prefix():
     from pathlib import Path
     from recsys.train import run_dir_for
     assert run_dir_for("configs/v1_baseline.toml", 1) == Path("runs/v1_runs/v1_baseline/seed1")
-    assert run_dir_for("configs/p3_200k_partA.toml", 2) == Path("runs/p3_runs/p3_200k_partA/seed2")
-    assert run_dir_for("configs/retriever_ranker_200k.toml", 1) == Path("runs/retriever_ranker_runs/retriever_ranker_200k/seed1")
+    assert run_dir_for("configs/retriever_200k.toml", 2) == Path("runs/retriever_ranker_runs/retriever_200k/seed2")
+    assert run_dir_for("configs/ranker_200k.toml", 1) == Path("runs/retriever_ranker_runs/ranker_200k/seed1")
