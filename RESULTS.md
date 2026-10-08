@@ -698,6 +698,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 2 | `ranker_50k_top100` | rerank the top 100 instead of 500 (wrong answers from the top 100) | step 1 | 0.1179 -> 0.1237 (32) | 0.1222 (0.1171) | 7.1% | 18.8% | yes | 3.3 + 0.7 min |
 | 3 | `ranker_50k_frozen` | freeze the copied per-ID tables | step 2 | 0.1179 -> 0.1236 (46) | 0.1217 (0.1171) | 7.0% | 18.7% | no | 4.3 + 0.6 min |
 | 4 | `ranker_50k_fulllist` | compare with every other shortlisted song (99) instead of 31 | step 2 | 0.1179 -> 0.1250 (41) | 0.1229 (0.1171) | 7.1% | 18.8% | no | 5.0 + 0.6 min |
+| 5a | `ranker_50k_score` | inputs: retriever score gap and rank | step 2 | 0.1179 -> 0.1226 (22) | 0.1213 (0.1171) | 7.0% | 18.6% | no | 3.4 + 0.7 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -721,3 +722,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   other songs of its shortlist instead of 31, so training is the reranking task itself: held-out
   0.1229 vs 0.1222 (+0.0007, below the 0.001 bar), validation 0.1250 vs 0.1237 (+0.0013): not kept,
   a near miss. 5.0 min.
+- `ranker_50k_score` (2026-10-08, `b6d802b`): inputs score_gap (retriever score minus the
+  shortlist's best) and log_rank: held-out 0.1213 vs 0.1222 (-0.0009), validation 0.1226 vs 0.1237,
+  best at check 22 (step 2: 32): not kept. The ranker's score already adds the retriever's score
+  directly, so these carry little that's new.
