@@ -700,6 +700,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 4 | `ranker_50k_fulllist` | compare with every other shortlisted song (99) instead of 31 | step 2 | 0.1179 -> 0.1250 (41) | 0.1229 (0.1171) | 7.1% | 18.8% | no | 5.0 + 0.6 min |
 | 5a | `ranker_50k_score` | inputs: retriever score gap and rank | step 2 | 0.1179 -> 0.1226 (22) | 0.1213 (0.1171) | 7.0% | 18.6% | no | 3.4 + 0.7 min |
 | 5b | `ranker_50k_popularity` | input: popularity in part A | step 2 | 0.1179 -> 0.1236 (32) | 0.1221 (0.1171) | 7.1% | 18.7% | no | 5.9 + 1.2 min |
+| 5c | `ranker_50k_overlap` | inputs: artist, album and genre overlap with the context songs | step 2 | 0.1179 -> 0.1293 (28) | 0.1276 (0.1171) | 7.3% | 19.7% | yes | 6.0 + 1.3 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -731,3 +732,9 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   candidate is a next song in part-A playlists): held-out 0.1221 vs 0.1222, validation 0.1236 vs
   0.1237, the same training path as step 2: not kept. The retriever's per-song bias likely carries
   popularity already.
+- `ranker_50k_overlap` (2026-10-08, `0fa024d`): inputs comparing the candidate with the 10 context
+  songs (share with its artist, share with its album, how common its genres are among them, whether
+  the last song has its artist): held-out 0.1276 vs 0.1222 (+0.0054), Hits@10 19.7% vs 18.8%,
+  validation 0.1293 vs 0.1237, rising from the first check: kept. +0.0105 (+9.0%) over the retriever
+  alone. Exact matches ("same artist as 3 of the 10 songs") are hard for dot-product attention to
+  count, and easy as inputs.
