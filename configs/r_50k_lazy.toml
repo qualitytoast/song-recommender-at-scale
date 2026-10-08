@@ -1,0 +1,20 @@
+# Lazy AdamW check: r_50k with lazy AdamW (only the table rows a batch uses are updated), seed 1.
+# Only the optimizer (and 1 seed) differ from r_50k.toml; compare with r_50k seed 1 (runs/p3_r_50k/seed1).
+
+[ranker]
+retriever = "configs/p3_50k_partA.toml"  # seed s uses runs/p3_50k_partA/seed<s>/best.pt
+train_seeds = [1]
+shortlist = 500            # rerank the retriever's top 500 (held-out recall@500 62.2%, p3_50k_partA)
+search = "exact"           # every song scored
+ivf_nlist = 0
+ivf_nprobe = 0
+negatives = 31             # per training window: the true song + 31 sampled from its shortlist
+optimizer = "lazy_adamw"   # was "adamw": only the table rows a batch uses are updated
+lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
+weight_decay = 0.05
+batch_size = 64            # windows per step
+epochs = 20                # maximum passes over the 302,495 part-B windows
+eval_every_examples = 60000  # ~1/5 epoch of part-B windows
+min_checks = 5
+patience = 5
+val_windows = 5000         # rerank the first 5,000 of the 20,000 validation windows each check
