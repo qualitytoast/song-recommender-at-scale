@@ -38,7 +38,7 @@ def methods(n_songs):
     visits the same share of the catalog as the unsharded version."""
     nlist = 2 ** int(round(np.log2(4 * np.sqrt(n_songs))))
     out = [("flat", dict(kind="flat")), ("flat, 4 shards", dict(kind="flat", shards=4))]
-    for nprobe in (16, 64, 256):
+    for nprobe in (16, 64, 128, 256):
         out.append((f"ivf nlist={nlist} nprobe={nprobe}", dict(kind="ivf", nlist=nlist, nprobe=nprobe)))
     out.append((f"ivf nprobe=64, 4 shards", dict(kind="ivf", shards=4, nlist=nlist // 4, nprobe=16)))
     for ef in (512, 1024):
