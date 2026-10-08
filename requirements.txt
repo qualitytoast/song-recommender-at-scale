@@ -1,5 +1,6 @@
 contourpy==1.4.0
 cycler==0.12.1
+faiss-cpu==1.15.1
 filelock==4.0.10
 fonttools==4.66.1
 fsspec==2026.9.0
