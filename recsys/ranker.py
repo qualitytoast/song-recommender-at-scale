@@ -29,9 +29,9 @@ zero weight: the same result, without computing what is thrown away.
 
 Score = the retriever's own score for the song (frozen, from building the
 shortlist) + a learned correction from the transformer's output at the
-candidate's position. The
-correction layer starts at zero, so before training the ranker reproduces the
-retriever's ranking exactly; training learns changes to it.
+candidate's position. The correction layer starts at zero, so before training
+the ranker reproduces the retriever's ranking exactly; training learns changes
+to it.
 
 Training data: windows from the playlists the retriever never trained on
 (data.ranker_split), so the shortlists look like those for new playlists. Each
