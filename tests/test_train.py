@@ -56,3 +56,11 @@ def test_a_batch_passing_several_multiples_gives_one_check():
     assert schedule.add(10) is True      # passes 3, 6 and 9: one check
     assert schedule.next == 12
     assert schedule.add(1) is False and schedule.add(1) is True  # 11, then 12
+
+
+def test_run_dir_for_groups_runs_by_config_prefix():
+    from pathlib import Path
+    from recsys.train import run_dir_for
+    assert run_dir_for("configs/v1_baseline.toml", 1) == Path("runs/v1_runs/v1_baseline/seed1")
+    assert run_dir_for("configs/p3_200k_partA.toml", 2) == Path("runs/p3_runs/p3_200k_partA/seed2")
+    assert run_dir_for("configs/r_200k.toml", 1) == Path("runs/r_runs/r_200k/seed1")

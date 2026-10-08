@@ -2,7 +2,7 @@
 # Reranks the part-A retriever's top 500; trained on part-B windows the retriever never saw.
 
 [ranker]
-retriever = "configs/p3_50k_partA.toml"  # seed s uses runs/p3_50k_partA/seed<s>/best.pt
+retriever = "configs/p3_50k_partA.toml"  # seed s uses runs/p3_runs/p3_50k_partA/seed<s>/best.pt
 train_seeds = [1, 2]
 shortlist = 500            # rerank the retriever's top 500 (held-out recall@500 62.2%, p3_50k_partA)
 search = "exact"           # every song scored

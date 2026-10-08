@@ -2,7 +2,7 @@
 # r_50k's settings with lazy AdamW and IVF search, on the 200k part-A retriever; checks scaled to its 1,470,511 part-B windows.
 
 [ranker]
-retriever = "configs/p3_200k_partA.toml"  # seed s uses runs/p3_200k_partA/seed<s>/best.pt
+retriever = "configs/p3_200k_partA.toml"  # seed s uses runs/p3_runs/p3_200k_partA/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 500            # rerank the retriever's top 500 (held-out recall@500 64.0%, p3_200k_partA)
 search = "ivf"             # FAISS IVF index (search benchmark: 98.6% of the exact top 500)

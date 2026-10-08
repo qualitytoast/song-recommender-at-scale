@@ -2,7 +2,7 @@
 
     python -m recsys.summarize configs/p2_base.toml configs/p2_artist.toml ...
 
-Reads eval.json and summary.json from runs/<config>/seed<k>/ for every train
+Reads eval.json and summary.json from runs/<prefix>_runs/<config>/seed<k>/ for every train
 seed in each config. Each row shows the mean over seeds with the min-max range,
 and the change in mean NDCG@10 from the row above, so a feature's gain can be
 compared against how much the seeds alone move the score.

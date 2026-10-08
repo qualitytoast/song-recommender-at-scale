@@ -4,7 +4,7 @@
     python -m recsys.evaluate --config configs/p2_base.toml --seed 1   # one seed
 
 Rebuilds the dataset from the config (same data seed, same split), loads
-runs/<config name>/seed<train seed>/best.pt, prints the results and saves
+runs/<prefix>_runs/<config name>/seed<train seed>/best.pt, prints the results and saves
 them to eval.json in the same folder.
 """
 import argparse

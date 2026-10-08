@@ -5,7 +5,7 @@ keep the best check.
     python -m recsys.train --config configs/p2_base.toml            # every seed in train_seeds
     python -m recsys.train --config configs/p2_base.toml --seed 1   # one seed
 
-Writes runs/<config name>/seed<train seed>/:
+Writes runs/<prefix>_runs/<config name>/seed<train seed>/ (see run_dir_for):
     best.pt       weights at the best check, plus the vocab and config
     log.csv       one row per validation check
     summary.json  best check, training time, git commit, ...
@@ -102,7 +102,11 @@ def git_state():
 
 
 def run_dir_for(config_path, train_seed):
-    return Path("runs") / Path(config_path).stem / f"seed{train_seed}"
+    """runs/<prefix>_runs/<config name>/seed<k>: runs are grouped by the config name's
+    prefix, e.g. configs/v1_baseline.toml -> runs/v1_runs/v1_baseline/seed1 and
+    configs/r_200k.toml -> runs/r_runs/r_200k/seed1."""
+    name = Path(config_path).stem
+    return Path("runs") / f"{name.split('_')[0]}_runs" / name / f"seed{train_seed}"
 
 
 def train(config_path, train_seed):

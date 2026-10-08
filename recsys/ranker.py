@@ -71,7 +71,7 @@ MISSED = 10**9  # rank given to a true song that isn't in the shortlist: never i
 
 @dataclass(frozen=True)
 class RankerConfig:
-    retriever: str         # retriever config; seed s uses runs/<retriever>/seed<s>/best.pt
+    retriever: str         # retriever config; seed s uses run_dir_for(retriever, s)/best.pt
     train_seeds: list
     shortlist: int         # K: how many retriever songs the ranker reranks
     search: str            # how the shortlist is found: "exact" or "ivf" (FAISS IVF index)
