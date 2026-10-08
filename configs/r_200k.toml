@@ -17,4 +17,4 @@ epochs = 20                # maximum passes over the 1,470,511 part-B windows
 eval_every_examples = 294000  # ~1/5 epoch of part-B windows
 min_checks = 5
 patience = 5
-val_windows = 5000         # rerank the first 5,000 of the 20,000 validation windows each check
+val_windows = 20000        # every window of the retriever's 20,000-window validation sample
