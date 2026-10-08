@@ -7,13 +7,19 @@ between the playlist vector h and each song's output vector, and keeps the top K
 each song in the playlist ("same artist as the last song", ...).
 
 The ranker is a copy of the retriever (same layers, starting from its weights) fed
-10 context songs + K candidates in one pass. An attention mask makes:
+10 context songs + K candidates in one pass, where
   - context songs see only earlier context songs, exactly as in the retriever
     (so they never see a candidate), and
-  - each candidate see the 10 context songs and itself, never another candidate,
+  - each candidate sees the 10 context songs and itself, never another candidate,
 so every candidate is scored independently and the context is computed once.
 A candidate token is its song + feature vectors, a learned "candidate" vector and
 a learned position vector for the next slot.
+
+Attention computes only those allowed scores (ranker_block): per layer, 10 x 10
+for the context and 11 per candidate (the 10 context keys, computed once and
+shared by every candidate, plus its own key). With 500 candidates that's ~5,600
+scores instead of 510 x 510 = 260,100, all but ~5,600 of which a mask would give
+zero weight: the same result, without computing what is thrown away.
 
 Score = the retriever's own score for the song (frozen, from building the
 shortlist) + a learned correction from the candidate's output vector. The
@@ -96,26 +102,39 @@ class CandidateRanker(nn.Module):
         """ids (b, L) context songs; names (b, w) name word IDs; candidates (b, C) song
         IDs; base_scores (b, C) the retriever's scores for them. Returns (b, C) scores."""
         r = self.retriever
-        L, C = ids.shape[1], candidates.shape[1]
+        L = ids.shape[1]
         context = r.embed_songs(ids) + r.position_embedding(torch.arange(L, device=ids.device))
         cand = r.embed_songs(candidates) + self.candidate_position + self.candidate_marker
-        x = torch.cat([context, cand], dim=1)
         if r.name_words is not None:
-            x = x + r.mean_vector(r.name_words, names)[:, None, :]  # name at every position, as in the retriever
-        x = r.dropout(x)
-        blocked = ranker_mask(L, C, ids.device)
+            name = r.mean_vector(r.name_words, names)[:, None, :]  # name at every position, as in the retriever
+            context, cand = context + name, cand + name
+        context, cand = r.dropout(context), r.dropout(cand)
+        later = torch.triu(torch.ones(L, L, dtype=torch.bool, device=ids.device), diagonal=1)
         for block in r.blocks:
-            x = block(x, blocked)
-        return base_scores + self.correction(x[:, L:]).squeeze(-1)
+            context, cand = ranker_block(block, context, cand, later)
+        return base_scores + self.correction(cand).squeeze(-1)
 
 
-def ranker_mask(L, C, device):
-    """(L + C, L + C) bool, True where attention is blocked: context position i sees
-    context positions <= i; candidate k sees the context and itself only."""
-    n = L + C
-    i, j = torch.arange(n, device=device)[:, None], torch.arange(n, device=device)[None, :]
-    allowed = torch.where(i < L, (j <= i), (j < L) | (j == i))
-    return ~allowed
+def ranker_block(block, context, cand, later):
+    """One TransformerBlock over context (b, L, d) and candidates (b, C, d), computing
+    only the allowed attention scores: context position i attends to context <= i
+    (`later` (L, L) marks the rest); each candidate to the L context songs and itself.
+    Returns the new (context, cand)."""
+    a = block.attention
+    q, k, v = a.query(context), a.key(context), a.value(context)
+    cq, ck, cv = a.query(cand), a.key(cand), a.value(cand)
+    scale = math.sqrt(q.shape[-1]) if a.scale else 1.0
+    weights = ((q @ k.transpose(-2, -1)) / scale).masked_fill(later, float("-inf")).softmax(dim=-1)
+    context_out = weights @ v
+    # Each candidate: scores against the context keys (b, C, L) and its own key (b, C, 1).
+    scores = torch.cat([cq @ k.transpose(-2, -1), (cq * ck).sum(dim=-1, keepdim=True)], dim=-1) / scale
+    weights = scores.softmax(dim=-1)
+    cand_out = weights[..., :-1] @ v + weights[..., -1:] * cv
+    # The rest of the block works on each position alone: the same as the retriever's.
+    x = torch.cat([context, cand], dim=1)
+    x = block.norm1(x + block.dropout(torch.cat([context_out, cand_out], dim=1)))
+    x = block.norm2(x + block.dropout(block.ffn(x)))
+    return x[:, :context.shape[1]], x[:, context.shape[1]:]
 
 
 @torch.no_grad()
