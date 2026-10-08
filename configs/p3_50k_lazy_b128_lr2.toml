@@ -12,7 +12,7 @@ min_freq = 2           # songs seen fewer times than this are dropped
 song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
 vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
 context_length = 10    # predict the 11th song from the previous 10
-test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
+test_split = 0.1       # fraction of playlists held out (5,000 at 50k)
 validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
 genres_file = "data/genres/musicbrainz_all_mpd_artists.jsonl"  # was the API file: dump genres for all MPD artists
@@ -33,7 +33,7 @@ optimizer = "lazy_adamw"  # was "adamw": weight decay and momentum apply to used
 lr = 2e-3             # was 1e-3: x2 = sqrt(4), for 4x the batch
 weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
 batch_size = 128       # was 32: 4x fewer steps per epoch
-epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2,316), so the peak may come later
+epochs = 100           # a cap; early stopping ends the run
 eval_every_targets = 572137  # a quarter of an epoch (2,288,549 targets)
 min_checks = 10          # = 2.5 epochs at a quarter epoch per check
 patience = 5             # was 10 epochs; now counts validation checks

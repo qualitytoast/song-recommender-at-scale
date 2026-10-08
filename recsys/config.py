@@ -61,7 +61,7 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    optimizer: str         # "sgd", "adam" or "adamw"
+    optimizer: str         # "sgd", "adam", "adamw" or "lazy_adamw" (recsys/lazy_adam.py)
     lr: float
     weight_decay: float
     batch_size: int

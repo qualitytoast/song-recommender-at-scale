@@ -1,13 +1,14 @@
-"""Train SongRecommender with v1's loop: mini-batch SGD, early stopping on
-validation NDCG@10, keep the best epoch.
+"""Train SongRecommender: mini-batches, a validation check every
+eval_every_targets training targets, early stopping on validation NDCG@10,
+keep the best check.
 
     python -m recsys.train --config configs/p2_base.toml            # every seed in train_seeds
     python -m recsys.train --config configs/p2_base.toml --seed 1   # one seed
 
 Writes runs/<config name>/seed<train seed>/:
-    best.pt       weights of the best epoch, plus the vocab and config
-    log.csv       one row per epoch
-    summary.json  best epoch, training time, git commit, ...
+    best.pt       weights at the best check, plus the vocab and config
+    log.csv       one row per validation check
+    summary.json  best check, training time, git commit, ...
     config.toml   copy of the config used
 """
 import argparse
