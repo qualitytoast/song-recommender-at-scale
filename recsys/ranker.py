@@ -2,7 +2,11 @@
 
 Stage 1, the retriever (SongRecommender), scores every song with one dot product
 between the playlist vector h and each song's output vector, and keeps the top K
-(the shortlist). Stage 2, the ranker, scores each shortlisted song by reading it
+(the shortlist). The top K are found by exact search (every song scored) or by
+an IVF index in a FAISS search process (only the songs in the nprobe clusters
+nearest the query are scored; recsys/search.py), set by the config's `search`.
+Training, validation and held-out shortlists all come from the same search, so
+the ranker trains on the kind of shortlist it is tested on. Stage 2, the ranker, scores each shortlisted song by reading it
 *together with* the 10 context songs, so attention can relate the candidate to
 each song in the playlist ("same artist as the last song", ...).
 
@@ -42,6 +46,7 @@ import math
 import shutil
 import time
 import tomllib
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -54,7 +59,8 @@ from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.evaluate import score
 from recsys.lazy_adam import LazyAdamW, used_rows
-from recsys.model import build_model
+from recsys.model import build_model, rank_and_loss
+from recsys.search import ExactSearch, SearchWorker, query_vectors, song_vectors
 from recsys.train import EarlyStopping, git_state, pick_device, run_dir_for
 
 MISSED = 10**9  # rank given to a true song that isn't in the shortlist: never in any top k
@@ -65,6 +71,9 @@ class RankerConfig:
     retriever: str         # retriever config; seed s uses runs/<retriever>/seed<s>/best.pt
     train_seeds: list
     shortlist: int         # K: how many retriever songs the ranker reranks
+    search: str            # how the shortlist is found: "exact" or "ivf" (FAISS IVF index)
+    ivf_nlist: int         # ivf: clusters the songs are grouped into (0 for exact)
+    ivf_nprobe: int        # ivf: clusters searched per query (0 for exact)
     negatives: int         # shortlist songs sampled per training example, besides the true one
     optimizer: str         # "adamw" or "lazy_adamw" (only the table rows a batch uses are updated)
     lr: float
@@ -79,6 +88,11 @@ class RankerConfig:
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
             raise ValueError(f"optimizer must be adamw or lazy_adamw, got {self.optimizer!r}")
+        if self.search not in ("exact", "ivf"):
+            raise ValueError(f"search must be exact or ivf, got {self.search!r}")
+
+    def search_name(self):
+        return "exact" if self.search == "exact" else f"ivf nlist={self.ivf_nlist} nprobe={self.ivf_nprobe}"
 
 
 def load_ranker_config(path):
@@ -137,21 +151,33 @@ def ranker_block(block, context, cand, later):
     return x[:, :context.shape[1]], x[:, context.shape[1]:]
 
 
-@torch.no_grad()
-def build_shortlists(model, X, N, Y, device, k, max_scores=2**26):
-    """The retriever's top-k songs for each window: (ids (n, k) int32, scores (n, k)
-    float32, best first), plus each true song's retriever score (n,). Exact search over
-    the whole catalog, a chunk of windows at a time on the device."""
-    model.eval()
-    chunk = max(1, max_scores // model.output.out_features)
+@contextmanager
+def song_search(rc, vectors, device):
+    """A function (queries, k) -> (ids, scores), each query's top k songs best first,
+    searching the song vectors (recsys.search.song_vectors) the way rc.search says:
+    exact on the device, or IVF in a FAISS search process that closes afterwards."""
+    if rc.search == "exact":
+        yield ExactSearch(vectors, device).search
+        return
+    with SearchWorker() as worker:
+        worker.build("songs", vectors, kind="ivf", nlist=rc.ivf_nlist, nprobe=rc.ivf_nprobe)
+        yield lambda queries, k: worker.search("songs", queries, k)
+
+
+def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000):
+    """Each window's top-k songs found by `search` (song_search) over `vectors`: (ids
+    (n, k) int32, scores (n, k) float32, best first), plus each true song's retriever
+    score (n,). A chunk of windows at a time, so only one chunk's results are in flight."""
     ids, scores, true = [], [], []
     for i in range(0, len(X), chunk):
-        logits = model(torch.from_numpy(X[i:i + chunk]).to(device), torch.from_numpy(N[i:i + chunk]).to(device))
-        top = torch.topk(logits, k, dim=1)
-        ids.append(top.indices.int().cpu())
-        scores.append(top.values.cpu())
-        true.append(logits.gather(1, torch.from_numpy(Y[i:i + chunk]).to(device)[:, None])[:, 0].cpu())
-    return torch.cat(ids).numpy(), torch.cat(scores).numpy(), torch.cat(true).numpy()
+        queries = query_vectors(model, X[i:i + chunk], N[i:i + chunk], device)
+        top_ids, top_scores = search(queries, k)
+        if (top_ids < 0).any():  # FAISS pads with -1 when the searched clusters hold fewer than k songs
+            raise RuntimeError(f"search found fewer than {k} songs for some windows; search more clusters")
+        ids.append(top_ids.astype(np.int32))
+        scores.append(top_scores.astype(np.float32))
+        true.append(np.einsum("nd,nd->n", queries, vectors[Y[i:i + chunk]]))
+    return np.concatenate(ids), np.concatenate(scores), np.concatenate(true)
 
 
 def sample_negatives(short_ids, y, n, generator):
@@ -210,12 +236,16 @@ def train_ranker(config_path, seed):
     device = pick_device()
     cfg, ds, retriever = load_retriever(rc, seed, device)
     start = time.perf_counter()
-    train_ids, train_scores, train_true = build_shortlists(retriever, ds.X_rank, ds.N_rank, ds.Y_rank, device, rc.shortlist)
     v = slice(0, rc.val_windows)
     X_val, N_val, Y_val = ds.X_val[v], ds.N_val[v], ds.Y_val[v]
-    val_ids, val_scores, _ = build_shortlists(retriever, X_val, N_val, Y_val, device, rc.shortlist)
-    print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows, {len(Y_val):,} val windows | shortlists in "
-          f"{time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} "
+    vectors = song_vectors(retriever)
+    with song_search(rc, vectors, device) as search:
+        train_ids, train_scores, train_true = build_shortlists(retriever, ds.X_rank, ds.N_rank, ds.Y_rank, device,
+                                                               rc.shortlist, search, vectors)
+        val_ids, val_scores, _ = build_shortlists(retriever, X_val, N_val, Y_val, device, rc.shortlist, search,
+                                                  vectors)
+    print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows, {len(Y_val):,} val windows | shortlists "
+          f"({rc.search_name()}) in {time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} "
           f"{(train_ids == ds.Y_rank[:, None]).any(1).mean():.1%}", flush=True)
 
     ranker = CandidateRanker(retriever).to(device)
@@ -297,7 +327,8 @@ def train_ranker(config_path, seed):
         writer = csv.DictWriter(f, fieldnames=log[0].keys())
         writer.writeheader()
         writer.writerows(log)
-    summary = {"config": str(config_path), "train_seed": seed, "retriever": rc.retriever, "best_check": best_check,
+    summary = {"config": str(config_path), "train_seed": seed, "retriever": rc.retriever, "search": rc.search_name(),
+               "best_check": best_check,
                "best_val_ndcg": stopper.best, "retriever_val_ndcg": log[0]["val_ndcg"], "checks_run": len(log),
                "train_seconds": round(time.perf_counter() - start, 1), "git_commit": commit, "git_dirty": dirty}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -312,7 +343,11 @@ def evaluate_ranker(config_path, seed):
     device = pick_device()
     cfg, ds, retriever = load_retriever(rc, seed, device)
     start = time.perf_counter()
-    ids, scores, _ = build_shortlists(retriever, ds.X_test, ds.N_test, ds.Y_test, device, rc.shortlist)
+    vectors = song_vectors(retriever)
+    with song_search(rc, vectors, device) as search:
+        ids, scores, _ = build_shortlists(retriever, ds.X_test, ds.N_test, ds.Y_test, device, rc.shortlist, search,
+                                          vectors)
+    search_seconds = time.perf_counter() - start
     ranker = CandidateRanker(retriever).to(device)
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
     ranker.load_state_dict(checkpoint["model"])
@@ -321,13 +356,17 @@ def evaluate_ranker(config_path, seed):
     rerank_seconds = time.perf_counter() - rerank_start
     retriever_ranks = final_ranks(scores, ids, ds.Y_test)  # its own order within its shortlist = its full ranks
     pop, _ = popularity_scores(ds.Y_train, len(ds.vocab))
-    results = {"best_check": checkpoint["check"],
+    results = {"best_check": checkpoint["check"], "search": rc.search_name(),
                f"retriever + ranker (top {rc.shortlist})": score(ranks),
-               "retriever alone": score(retriever_ranks),
-               "most-popular": score(popularity_ranks(pop, ds.Y_test)),
-               "rerank_seconds": round(rerank_seconds, 1), "total_seconds": round(time.perf_counter() - start, 1)}
+               "retriever alone": score(retriever_ranks)}
+    if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
+        results["retriever alone, exact search"] = score(rank_and_loss(retriever, ds.X_test, ds.N_test, ds.Y_test,
+                                                                       device)[0])
+    results.update({"most-popular": score(popularity_ranks(pop, ds.Y_test)),
+                    "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
+                    "total_seconds": round(time.perf_counter() - start, 1)})
     print(f"\n{run_dir}/best.pt (check {checkpoint['check']}) | held-out {len(ds.Y_test):,} windows | "
-          f"reranking {rerank_seconds:.0f}s")
+          f"shortlists ({rc.search_name()}) {search_seconds:.0f}s | reranking {rerank_seconds:.0f}s")
     print(f"{'':34}{'NDCG@10':>10}{'hits@1':>9}{'hits@5':>9}{'hits@10':>9}{f'top {rc.shortlist}':>10}")
     for name, r in results.items():
         if isinstance(r, dict):

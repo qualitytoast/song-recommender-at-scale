@@ -1,8 +1,11 @@
+from types import SimpleNamespace
+
 import numpy as np
 import torch
 
 from recsys.model import SongRecommender
-from recsys.ranker import MISSED, CandidateRanker, final_ranks, sample_negatives
+from recsys.ranker import MISSED, CandidateRanker, build_shortlists, final_ranks, sample_negatives, song_search
+from recsys.search import song_vectors
 
 ARTIST = [0, 0, 1, 2, 2, 2, 1]
 GENRES = [[1, 2], [1, 0], [2, 0], [0, 0], [1, 2], [2, 0], [1, 0]]
@@ -112,3 +115,62 @@ def test_final_ranks():
     # row 0: song 9 scores 0.5, one song higher -> 2; row 1: song 7 not shortlisted;
     # row 2: song 2 ties with song 1 -> ties go to the true song -> 1
     np.testing.assert_array_equal(final_ranks(scores, short, y), [2, MISSED, 1])
+
+
+def big_retriever(vocab=400):
+    torch.manual_seed(0)
+    rng = np.random.RandomState(0)
+    m = SongRecommender(vocab_size=vocab, embed_dim=8, context_length=3, num_layers=1, dropout=0.0,
+                        scale_attention=True, init="pytorch", song_features={"artist": rng.randint(0, 20, vocab)},
+                        name_word_count=3, song_genres=rng.randint(0, 4, (vocab, 2)), causal=True).eval()
+    with torch.no_grad():
+        m.output_features["artist"].weight.normal_()
+        m.output_genres.weight[1:].normal_()
+    rng = np.random.RandomState(1)
+    return m, rng.randint(0, vocab, (60, 3)), rng.randint(0, 4, (60, 2)), rng.randint(0, vocab, 60)
+
+
+def shortlists(search, nlist=0, nprobe=0, k=20):
+    model, X, N, Y = big_retriever()
+    vectors = song_vectors(model)
+    rc = SimpleNamespace(search=search, ivf_nlist=nlist, ivf_nprobe=nprobe)
+    with song_search(rc, vectors, torch.device("cpu")) as find:
+        return build_shortlists(model, X, N, Y, torch.device("cpu"), k, find, vectors, chunk=25), (model, X, N, Y)
+
+
+def test_exact_shortlists_are_the_retrievers_top_k_and_true_scores():
+    (ids, scores, true), (model, X, N, Y) = shortlists("exact")
+    logits = model(torch.from_numpy(X), torch.from_numpy(N))
+    top = torch.topk(logits, 20, dim=1)
+    np.testing.assert_array_equal(ids, top.indices.numpy())
+    np.testing.assert_allclose(scores, top.values.detach().numpy(), rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(true, logits[torch.arange(len(Y)), torch.from_numpy(Y)].detach().numpy(),
+                               rtol=1e-5, atol=1e-5)
+    assert ids.dtype == np.int32 and scores.dtype == np.float32
+
+
+def test_ivf_shortlists_searching_every_cluster_match_exact_and_fewer_clusters_can_miss():
+    (exact_ids, exact_scores, exact_true), _ = shortlists("exact")
+    (ids, scores, true), _ = shortlists("ivf", nlist=8, nprobe=8)
+    np.testing.assert_array_equal(ids, exact_ids)
+    np.testing.assert_allclose(scores, exact_scores, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(true, exact_true, rtol=1e-5, atol=1e-5)  # true scores never depend on the search
+    (ids, _, _), _ = shortlists("ivf", nlist=8, nprobe=2)
+    assert not np.array_equal(ids, exact_ids)
+
+
+def test_every_retriever_input_feature_reaches_the_ranker_scores():
+    # The ranker reads songs through the retriever's input side, so changing any input
+    # table's row for a context song or for a candidate must change that candidate's
+    # score. (Output-side tables enter through the retriever's frozen score instead.)
+    context, names, cand, zeros = torch.tensor([[0, 3, 6]]), torch.tensor([[1, 2]]), torch.tensor([[4]]), torch.zeros(1, 1)
+    for side, song in (("context", 3), ("candidate", 4)):
+        for table, row in (("song_embedding", song), ("input_features.artist", ARTIST[song]),
+                           ("input_genres", GENRES[song][0]), ("name_words", 1), ("position_embedding", 1)):
+            if side == "candidate" and table == "position_embedding":
+                continue  # a candidate has its own learned position
+            ranker = trained_ranker()
+            before = ranker(context, names, cand, zeros)
+            with torch.no_grad():
+                ranker.retriever.get_submodule(table).weight[row] += 1.0
+            assert not torch.allclose(ranker(context, names, cand, zeros), before), (side, table)
