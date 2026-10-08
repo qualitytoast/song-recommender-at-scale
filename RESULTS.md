@@ -632,3 +632,52 @@ their 31 drawn once and reused at every check.
   retriever's exact ranking of every song ~11 min.
 - Two earlier starts were stopped by choice (at checks 2 and 8, the second to
   add validation loss); their validation NDCG@10 followed the same path.
+
+**Ranker scaling ladder: 5k, 50k, 200k.** Does the ranker's gain depend on the
+scale, or on the retriever's settings? `ranker_200k` added nothing, while the
+same ranker settings had added +11.7% at 50k on an older retriever
+(`p3_50k_partA`: AdamW, batch 32, lr 1e-3). So `retriever_200k`'s settings (lazy
+AdamW, batch 128, lr 2e-3, part A) were trained at 5k and 50k (`retriever_5k`,
+`retriever_50k`), each followed by its baseline ranker (`ranker_5k`,
+`ranker_50k`: `ranker_200k`'s settings with exact search and checks every ~1/5
+of the ranker's windows). Seed 1, held-out sets as in each scale's other rows.
+
+| Retriever (part A) | Songs | Held-out NDCG@10 | Hits@1 | Hits@10 | Top 500 | × most-popular | Best at | Training time |
+|---|---|---|---|---|---|---|---|---|
+| `retriever_5k` | 30,587 | 0.0589 | 2.7% | 10.2% | 57.2% | 9.1x | 5.0 epochs | 1.0 min |
+| `p3_50k_partA` (older settings) | 166,627 | 0.1012 | 5.3% | 16.4% | 62.2% | 30x | — | 36.6 min |
+| `retriever_50k` | 166,627 | **0.1172** | **6.8%** | 17.9% | **64.2%** | 34.5x | 9.0 epochs | 18.9 min |
+| `retriever_200k` | 412,404 | 0.1257 | 7.5% | 19.0% | 64.0% | 39.4x | 7.75 epochs | 64.2 min |
+
+| Ranker (held-out) | On retriever | Retriever alone → + ranker | Gain | Val NDCG@10, check 0 → last | Val loss, check 0 → last |
+|---|---|---|---|---|---|
+| `ranker_5k` | `retriever_5k` | 0.0589 → 0.0589 | 0 (best check 0) | 0.0588 → 0.0586 | 5.132 → 5.108 |
+| `retriever_ranker_50k_lazy` | `p3_50k_partA` (older settings) | 0.1012 → 0.1130 | **+0.0118 (+11.7%)** | 0.1061 → 0.1175 (best 0.1185) | — |
+| `ranker_50k` | `retriever_50k` | 0.1172 → 0.1172 | 0 (best check 0) | 0.1178 → 0.1157 | 4.568 → 4.474 |
+| `ranker_200k` | `retriever_200k` | 0.1255 → 0.1255 | 0 (best check 0) | 0.1216 → 0.1136 | 4.380 → 4.025 |
+
+- `retriever_5k`, `ranker_5k`, `retriever_50k`, `ranker_50k` (2026-10-08,
+  `0e683f9`; run as `p3_5k_partA_b128`, `retriever_ranker_5k_b128`,
+  `p3_50k_partA_b128`, `retriever_ranker_50k_b128`, renamed in `2dd6c79`).
+- The retriever's settings decide it, not the scale. At 50k, with the same
+  ranker settings, checks at the same spacing (~60,000 windows) and the same
+  held-out windows, the ranker adds +11.7% on the older retriever and nothing on
+  `retriever_50k`. `retriever_50k` alone (0.1172) beats the older retriever +
+  ranker (0.1130) on NDCG@10 and Hits@1 (6.8% vs 6.0%), and has a higher top-500
+  recall (64.2% vs 62.2%); the older pair is slightly higher on Hits@10 (18.1%
+  vs 17.9%). The ranker's 50k gain was making up for what the older settings
+  left undone; a likely reason, untested: the ranker trains against its
+  shortlist's songs, harder wrong answers than the retriever's random
+  negatives, and batch 128 gives the retriever harder ones of its own (the other
+  ~1,280 real next songs in each batch).
+- Not an early peak missed by sparse checks: `ranker_50k` checks every 60,499
+  windows, like the older 50k ranker (which was already +0.007 at its first
+  check), and is below check 0 from its first check.
+- Same pattern as 200k: validation loss falls at every check while NDCG@10
+  falls a little. The 5k ranker barely moves (14,449 training windows, 226 steps
+  per epoch at lr 1e-4), so 5k says little on its own.
+- Same settings at 50k vs 200k: `retriever_50k` -> `retriever_200k` +7.3%
+  NDCG@10 (different held-out windows and a 2.5x bigger catalog).
+- Cost: `retriever_5k` 1.0 min, `ranker_5k` 0.6 min; `retriever_50k` 18.9 min
+  (it peaks at 9 epochs; validation 3.6 min of it), `ranker_50k` 6.2 min +
+  held-out 2.1 min.
