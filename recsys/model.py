@@ -133,6 +133,20 @@ class SongRecommender(nn.Module):
         # Learned stand-in for songs hidden by training-time augmentation (recsys/augment.py).
         self.mask_vector = nn.Parameter(torch.zeros(embed_dim)) if mask_token else None
 
+    def hidden_states(self, ids, names=None, hidden=None):
+        """The transformer's output at every position, (batch, seq, embed_dim): the
+        playlist vector h is the last position's, which scoring compares with every
+        song's output vector (forward), or a search index does (recsys/search.py)."""
+        positions = torch.arange(ids.shape[1], device=ids.device)
+        x = self.embed_songs(ids, hidden) + self.position_embedding(positions)
+        if self.name_words is not None:
+            name_vector = self.mean_vector(self.name_words, names)  # (batch, embed_dim)
+            x = x + name_vector[:, None, :]  # same name vector at every position
+        x = self.dropout(x)
+        for block in self.blocks:
+            x = block(x)
+        return x
+
     def embed_songs(self, ids, hidden=None):
         """Input vectors for song IDs (any shape): song vector + feature vectors.
         Hidden songs (augmentation) become mask_vector with their features dropped."""
@@ -164,14 +178,7 @@ class SongRecommender(nn.Module):
         Returns (batch, vocab) next-song scores from the last position, or with
         all_positions (batch, seq, vocab) scores from every position. With
         candidates (1-D song IDs), only those songs are scored: (..., len(candidates))."""
-        positions = torch.arange(ids.shape[1], device=ids.device)
-        x = self.embed_songs(ids, hidden) + self.position_embedding(positions)
-        if self.name_words is not None:
-            name_vector = self.mean_vector(self.name_words, names)  # (batch, embed_dim)
-            x = x + name_vector[:, None, :]  # same name vector at every position
-        x = self.dropout(x)
-        for block in self.blocks:
-            x = block(x)
+        x = self.hidden_states(ids, names, hidden)
         h = x if all_positions else x[:, -1, :]
         if candidates is not None:  # sampled softmax: score only these songs
             vectors = self.output.weight[candidates]
