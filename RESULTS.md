@@ -704,6 +704,8 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 5d | `ranker_50k_cooccurrence` | inputs: how often the candidate came 1-5 songs after the context songs (part A) | step 5c | 0.1179 -> 0.1352 (34) | 0.1351 (0.1171) | 7.9% | 20.6% | yes | 7.2 + 1.3 min |
 | 5e | `ranker_50k_history` | inputs 5c and 5d also over the playlist so far (up to 100 songs) | step 5d | 0.1179 -> 0.1353 (29) | 0.1357 (0.1171) | 7.9% | 20.7% | no | 7.2 + 1.3 min |
 | 4 again | `ranker_50k_cooccurrence_fulllist` | step 4's change (all 99 as wrong answers) on step 5d | step 5d | 0.1179 -> 0.1343 (20) | 0.1340 (0.1171) | 7.8% | 20.4% | no | 5.2 + 1.3 min |
+| depth 250 | `ranker_50k_rerank250` | rerank the top 250, wrong answers still from the top 100 | step 5d | 0.1179 -> 0.1297 (17) | 0.1292 (0.1171) | 7.5% | 19.7% | no | 6.0 + 1.6 min |
+| depth 500 | `ranker_50k_rerank500` | rerank the top 500, wrong answers still from the top 100 | step 5d | 0.1179 -> 0.1245 (8) | 0.1240 (0.1171) | 7.2% | 19.0% | no | 5.7 + 2.5 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -764,3 +766,11 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   2, retried on the best ranker: held-out 0.1340 vs 0.1351 (-0.0011), validation 0.1343 vs 0.1352,
   best at check 20 (step 5d: 34): not kept. With the overlap and co-occurrence inputs, 31 wrong
   answers drawn afresh each epoch do better than the same 99 every time.
+- Reranking depth (`ranker_50k_rerank250`, `dca461b`, held-out re-evaluated at `7a3a99b` after a
+  crash printing recall@250; `ranker_50k_rerank500`, `7a3a99b`): step 5d reranking the top 250 or
+  500 instead of 100, its 31 wrong answers still drawn from the top 100 (new setting
+  negatives_from), training on the windows with the true song in the top 250 (155,388) or 500
+  (184,196): held-out 0.1292 and 0.1240 vs 0.1351, validation 0.1297 and 0.1245 vs 0.1352, peaking
+  earlier (checks 17 and 8 vs 34). The top 100 stays: even with the overlap and co-occurrence
+  inputs, more candidates mean more songs wrongly lifted into the top 10, and training on true songs
+  ranked below all their wrong answers pulls the ranker toward lifting deep songs.
