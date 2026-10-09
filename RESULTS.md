@@ -774,3 +774,24 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   earlier (checks 17 and 8 vs 34). The top 100 stays: even with the overlap and co-occurrence
   inputs, more candidates mean more songs wrongly lifted into the top 10, and training on true songs
   ranked below all their wrong answers pulls the ranker toward lifting deep songs.
+
+**Retriever tests at 50k** (each a fresh retriever built on `retriever_50k`, held-out NDCG@10 0.1172; kept if
+held-out rises by more than 0.001 and validation agrees). Carried over from the ranker work: more wrong
+answers, and the playlist before the window.
+
+| Run | Change | Held-out NDCG@10 | Hits@1 | Hits@10 | Top 100 | Top 500 | Best validation (epochs) | Training time | Kept |
+|---|---|---|---|---|---|---|---|---|---|
+| `retriever_50k` | — | 0.1172 | 6.8% | 17.9% | 41.4% | 64.2% | 0.1178 (9.0) | 18.9 min | — |
+| `retriever_50k_neg32k` | 32,768 sampled wrong answers instead of 8,192 | stopped by choice | — | — | — | — | 0.1041 at 2.75 epochs (`retriever_50k`: 0.1036) | 3.3x per check | no |
+| `retriever_50k_ctx20` | reads up to 20 songs (the window's 10 and up to 10 before) | 0.1141 | 6.7% | 17.5% | 41.3% | 64.7% | 0.1160 (6.75) | 9.8 min | no |
+
+- `retriever_50k_neg32k` (2026-10-08, `6fb345e`): stopped after 10 checks (2.75 epochs) because it was 3.3x
+  slower per check (74 vs 23 s; ~3.5 h at 200k), while validation tracked `retriever_50k` within 0.0005.
+- `retriever_50k_ctx20` (2026-10-08, `a20992c`; new setting `input_length`): training chunks of up to 21
+  songs, so the retriever learns to read 1 to 20 songs; held-out and validation windows are the same as
+  `retriever_50k`'s, each read with up to 10 songs before it (stopping at the playlist start or a song
+  outside the vocab). 84 chunks per batch keep ~980 training predictions per step. Held-out 0.1141 vs
+  0.1172 (-0.0031), validation 0.1160 vs 0.1178: not kept. It reaches the true song slightly more often
+  deep in the list (top 500: 64.7% vs 64.2%) but ranks the top 10 worse, and peaks sooner (6.75 epochs).
+  Half the training time (9.8 vs 18.9 min). With `input_length` = 10 every earlier result is unchanged
+  (`retriever_50k` re-scored: 0.117196 both ways).
