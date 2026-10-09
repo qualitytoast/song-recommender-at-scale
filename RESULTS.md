@@ -885,3 +885,27 @@ same recipe as `retriever_50k`. Checks every 117,600 windows (~1/5 epoch).
 - It trained on 607,096 of 1,470,511 part-B windows (41.3% have the true song in the filtered top 100;
   estimated 588,000 from 50k's share). 10.7 min of training (shortlists 68 s, ~31 s per check);
   held-out 8.4 min, most of it the exact-search reference line (shortlists 43 s, reranking 70 s).
+
+**Speed-ups, phase A: the retriever** (2026-10-09). Kept if at least 5% faster with held-out NDCG@10
+within ±0.003 of the reference (time is the priority for these). Step times are medians of 3 runs measured
+in alternation with the baseline (`scripts/profile_training_step.py`, 150 steps), since one-off timings varied
+by up to 11%.
+
+| # | Change | Speed | Quality | Kept |
+|---|---|---|---|---|
+| 1 | Rank every song against output vectors built once, not once per chunk of windows (`4abcf4d`) | validation and held-out ranking 1.33-1.73x faster: 200k held-out 697 -> 404 s, 200k validation check 16 -> 10 s | identical NDCG@10, Hits and recall (0.15% of windows' ranks differ, never where a metric counts) | yes |
+| 4 | Row-only table updates (`rowwise_adamw`, no full-size table gradients) | -4.2% per step at 200k, -7.4% at 50k (freezing the tables entirely: -39%, the most it could save) | same update (tested) | no (below 5% at 200k; code removed in `6667536`) |
+| 6 | Mixed precision (16-bit forward and loss) | bf16 +1.5% / +5.7%, fp16 +31% / -1.7% per step (200k / 50k) | not run | no |
+| 7 | Batch 256 chunks (lr 2.8e-3, x sqrt 2) | -9.7% / -9.1% per epoch (200k / 50k); the real run peaked at 7 epochs instead of 9: 14.3 vs 18.9 min | `retriever_50k_b256` 0.1178 vs 0.1172 (+0.0006), validation 0.1187 vs 0.1178, top 500 64.6% vs 64.2% | yes: the new base retriever |
+| 5 | Score a fixed 200,000-window sample of held-out windows, each still ranked against every song (`test_max_windows`, `148f166`) | 200k held-out ranking 404 -> 95 s (4.3x) | at 200k the sample reads 0.1248 vs 0.1257 for all windows; over 500 random samples within ±0.0011 (95%); a difference between two models on the same sample is known to ±0.0008, and 50,000+-window samples always gave the same verdict as all windows | yes: from now on (all windows at 5k and 50k, which have fewer) |
+
+- Row-only updates save much less than freezing the tables because most of the tables' cost is the per-row
+  update itself (~13 small GPU operations per table, 8 tables, every step), not building full-size
+  gradients; large systems fuse those into one custom GPU kernel (FBGEMM), out of scope here.
+- Mixed precision doesn't help on the Mac GPU with 64-dimensional vectors: the matrix math is too small for
+  16-bit arithmetic to pay off.
+- Batch 256 is 9-10% faster per epoch in the alternating comparison but only ~3% per check in the real
+  runs (21.4 vs 22.1 s, different days); most of its run-time saving came from peaking two epochs sooner,
+  one seed.
+- Phase B (the ranker: reuse the retriever's exact-search number in its evaluation, cache shortlists per
+  retriever) starts from a baseline ranker on `retriever_50k_b256`.
