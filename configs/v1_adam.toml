@@ -19,6 +19,7 @@ validation = "held_out_prefix"  # v1: validation = first val_size held-out windo
 val_split = 0.0          # no separate validation playlists
 genres_file = "data/genres/musicbrainz_artists.jsonl"  # genres fetched for the 5,000-playlist artists
 val_max_windows = 0      # validate on every validation window
+test_max_windows = 0     # all held-out windows
 ranker_split = 0.0       # no playlists kept back for a ranker
 
 [model]

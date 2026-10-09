@@ -18,6 +18,7 @@ validation = "separate_playlists"  # was "held_out_prefix": early stopping never
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
 genres_file = "data/genres/musicbrainz_all_mpd_artists.jsonl"  # was the API file: dump genres for all MPD artists
 val_max_windows = 20000  # was 0 (all 156,681): ~5 s per check instead of ~41 s
+test_max_windows = 0     # all held-out windows
 ranker_split = 0.2       # was 0: the last 20% of training playlists are kept for the ranker
 val_size = 0             # was 3000; unused with separate_playlists
 

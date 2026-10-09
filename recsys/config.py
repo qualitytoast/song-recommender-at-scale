@@ -34,6 +34,8 @@ class DataConfig:
     val_split: float       # used by "separate_playlists"; must be 0 otherwise
     genres_file: str       # artist genres JSONL (scripts/fetch_genres.py or genres_from_dump.py)
     val_max_windows: int   # validate on at most this many windows (a fixed random sample); 0 = all
+    test_max_windows: int  # score at most this many held-out windows: a fixed random sample, each still ranked
+                           # against every song, so scores stay unbiased; 0 = all
     ranker_split: float    # fraction of training playlists kept out of retriever training, for
                            # training the second-stage ranker (recsys/ranker.py); 0 = none
 
@@ -44,6 +46,8 @@ class DataConfig:
         if (self.validation == "separate_playlists") != (self.val_split > 0):
             raise ValueError("val_split must be > 0 with separate_playlists validation, "
                              "and 0 with held_out_prefix")
+        if self.validation == "held_out_prefix" and self.test_max_windows:
+            raise ValueError("held_out_prefix validation uses the first held-out windows; test_max_windows must be 0")
         if self.input_length < self.context_length:
             raise ValueError(f"input_length ({self.input_length}) can't be below context_length "
                              f"({self.context_length})")

@@ -95,12 +95,13 @@ def random_mpd(tmp_path, n_playlists=120, seed=0):
 
 
 def config(folder, genres, max_playlists=1000, validation="separate_playlists", val_split=0.1, val_size=0,
-           val_max_windows=0, ranker_split=0.0, input_length=3):
+           val_max_windows=0, ranker_split=0.0, input_length=3, test_max_windows=0):
     data = DataConfig(folder=str(folder), max_playlists=max_playlists, min_playlist_len=4, min_freq=2,
                       song_key="track_uri", vocab_from="train", context_length=3, input_length=input_length,
                       test_split=0.1,
                       validation=validation, val_size=val_size, val_split=val_split, genres_file=str(genres),
-                      val_max_windows=val_max_windows, ranker_split=ranker_split)
+                      val_max_windows=val_max_windows, ranker_split=ranker_split,
+                      test_max_windows=test_max_windows)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True, init="pytorch",
                         features=["artist", "album", "duration", "playlist_name", "genre"])
     return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
@@ -132,7 +133,8 @@ def test_store_dataset_equals_json_dataset(tmp_path):
     genres = tmp_path / "genres.jsonl"
     for kwargs in [{}, {"max_playlists": 40}, {"validation": "held_out_prefix", "val_split": 0.0, "val_size": 7},
                    {"val_max_windows": 15}, {"ranker_split": 0.2},
-                   {"input_length": 6, "ranker_split": 0.2, "val_max_windows": 15}]:
+                   {"input_length": 6, "ranker_split": 0.2, "val_max_windows": 15},
+                   {"test_max_windows": 25, "input_length": 6}]:
         from_json = build_dataset(config(raw, genres, **kwargs))
         from_store = build_dataset(config(tmp_path / "store", genres, **kwargs))
         assert len(from_json.Y_train) > 50 and len(from_json.Yc_train) > 20  # a real test, not empty data
@@ -210,3 +212,19 @@ def test_window_inputs_are_the_windows_themselves_at_the_window_length(tmp_path)
     build_store(raw, tmp_path / "store")
     ds = build_dataset(config(tmp_path / "store", tmp_path / "genres.jsonl", ranker_split=0.2))
     assert ds.XI_test is ds.X_test and ds.XI_rank is ds.X_rank and (ds.LI_test == 3).all()
+
+
+def test_held_out_sample_is_a_fixed_subset_in_order(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    genres = tmp_path / "genres.jsonl"
+    full = build_dataset(config(tmp_path / "store", genres, input_length=6))
+    a, b = (build_dataset(config(tmp_path / "store", genres, input_length=6, test_max_windows=25)) for _ in range(2))
+    assert len(a.Y_test) == 25 < len(full.Y_test)
+    np.testing.assert_array_equal(a.Y_test, b.Y_test)  # the same sample every time
+    keep = [next(j for j in range(len(full.X_test)) if (full.X_test[j] == x).all() and full.Y_test[j] == y
+                 and (full.N_test[j] == n).all()) for x, y, n in zip(a.X_test, a.Y_test, a.N_test)]
+    assert keep == sorted(keep)  # original order
+    np.testing.assert_array_equal(a.XI_test, full.XI_test[keep])  # each window keeps its retriever input
+    np.testing.assert_array_equal(a.H_test[2], full.H_test[2][keep])
+    np.testing.assert_array_equal(a.X_val, full.X_val)  # validation is untouched

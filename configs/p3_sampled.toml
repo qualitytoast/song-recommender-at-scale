@@ -18,6 +18,7 @@ validation = "separate_playlists"  # was "held_out_prefix": early stopping never
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
 genres_file = "data/genres/musicbrainz_artists.jsonl"  # genres fetched for the 5,000-playlist artists
 val_max_windows = 0      # validate on every validation window
+test_max_windows = 0     # all held-out windows
 ranker_split = 0.0       # no playlists kept back for a ranker
 val_size = 0             # was 3000; unused with separate_playlists
 

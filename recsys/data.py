@@ -307,6 +307,8 @@ def build_dataset(cfg):
     X_rval, Y_rval, N_rval, H_rval = X_val[rkeep], Y_val[rkeep], N_val[rkeep], keep_histories(H_val, rkeep)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
     H_val = H_val if keep is None else keep_histories(H_val, keep)
+    X_test, Y_test, N_test, H_test = sample_held_out(X_test, Y_test, N_test, H_test, d.test_max_windows,
+                                                     cfg.data_seed)
     fit_songs, fit_offsets = playlist_arrays(fit, track_to_id)
     H_rank = window_histories(*playlist_arrays(rank, track_to_id), d.context_length)
     (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
@@ -357,6 +359,16 @@ def ranker_validation_keep(n, max_windows, seed):
     if len(other) <= max_windows:
         return other
     return np.sort(np.random.RandomState(seed + 1).choice(other, max_windows, replace=False))
+
+
+def sample_held_out(X, Y, N, histories, max_windows, seed):
+    """At most max_windows held-out windows (0 = all): a fixed random sample in the original order
+    (the same rule as validation_keep). Each window is still ranked against every song, so the
+    scores stay unbiased; a 200,000-window sample is within ~0.001 NDCG@10 of all windows at 200k."""
+    keep = validation_keep(len(X), max_windows, seed)
+    if keep is None:
+        return X, Y, N, histories
+    return X[keep], Y[keep], N[keep], keep_histories(histories, keep)
 
 
 def sample_validation(X_val, Y_val, N_val, max_windows, seed):
@@ -536,6 +548,8 @@ def build_dataset_from_store(cfg):
     X_rval, Y_rval, N_rval, H_rval = X_val[rkeep], Y_val[rkeep], N_val[rkeep], keep_histories(H_val, rkeep)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
     H_val = H_val if keep is None else keep_histories(H_val, keep)
+    X_test, Y_test, N_test, H_test = sample_held_out(X_test, Y_test, N_test, H_test, d.test_max_windows,
+                                                     cfg.data_seed)
     H_rank = window_histories(*rank_arrays, d.context_length)
     (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
         window_inputs(X, H, d.input_length)
