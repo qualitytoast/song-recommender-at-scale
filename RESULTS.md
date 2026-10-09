@@ -934,3 +934,23 @@ held-out evaluation 67 s.
   of training, the whole run 158 vs ~397 s (without the baseline's 24 s of shortlist building). Kept: the new
   base ranker. Unlike the retriever (where a bigger batch also adds in-batch wrong answers), the ranker's
   gain is speed only, which is why quality moves slightly down.
+
+**Speed-ups, phase C: the retriever before 1M** (2026-10-09). Same rule (at least 5% faster per epoch,
+held-out within ±0.003). Timed at 1M and 50k with the profiler's new `--compile` and `--negatives` options.
+
+| # | Change | Speed (per epoch) | Quality | Kept |
+|---|---|---|---|---|
+| C1 | `torch.compile` the training step's forward pass and loss (`compile = true`, `bde6144`): many small GPU operations fused into fewer, same math | 1M: 54.9 -> 35.2 ms per step (-36%), 16.2 -> 10.4 min per epoch; 50k: -41%; the real 50k run 21.4 -> 8.9 s of training per check (2.4x) | `retriever_50k_compile` 0.1172 vs 0.1178 (-0.0006), validation 0.1175 vs 0.1187; top 100 42.5% vs 41.9%; training losses match the uncompiled run's at every check | yes |
+| C2 | 4,096 sampled wrong answers instead of 8,192, on top of C1 | 1M: 35.2 -> 26.1 ms per step (-26%; -52% vs no compile); 50k: -27% | `retriever_50k_neg4096` 0.1168 (-0.0004 vs C1, -0.0010 vs `retriever_50k_b256`), validation 0.1173; top 100 41.3% (C1 42.5%, b256 41.9%); peaked at 8.0 epochs (C1 5.0, b256 7.0) | passes the rule; open (see below) |
+| - | Batch 512 (lr 4e-3) | 50k: +5.4% (slower) | not run | no |
+
+- Batch 512 is slower because the batch's own true songs are also wrong answers for the other predictions:
+  doubling the batch more than doubles the table of scores, which outweighs halving the steps.
+- C2's open points: it reached its best later (8.0 vs 5.0 epochs, one seed each), which would eat into the
+  per-epoch gain if it's systematic, and its top-100 recall is lower, which caps what the ranker can fix
+  (the ranker reorders the top 100).
+- **The machine matters more than any of these.** The GPU is shared with other apps: during most of
+  today's measurements, Chrome kept it busy (82% with no training running), which roughly doubled step times
+  (1M baseline 108-122 ms per step vs 54.9 ms on a quiet machine; 50k validation checks 3.95 vs 2.1 s).
+  Comparisons measured in alternation still hold, but absolute times from today before C (phase A and B,
+  the 1M estimate of 36 min per epoch) were taken with that load. Long runs and timings need a quiet machine.
