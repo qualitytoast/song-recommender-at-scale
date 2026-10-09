@@ -806,9 +806,18 @@ training windows throughout.
 | Step | Run | Change | Builds on | Val NDCG@10, check 0 -> best (check) | Held-out NDCG@10 (retriever alone) | Hits@1 | Hits@10 | Kept | Time (train + held-out) |
 |---|---|---|---|---|---|---|---|---|---|
 | base | `ranker_50k_v2_base` | best ranker so far (`ranker_50k_cooccurrence`), separate validation windows | — | 0.1153 -> 0.1340 (35) | 0.1351 (0.1171) | 7.9% | 20.6% | — | 5.9 + 0.7 min |
+| input | `ranker_50k_v2_noinput` | leave the retriever's input songs out of every shortlist | base | 0.1230 -> 0.1444 (35) | 0.1462 (0.1255) | 8.7% | 21.9% | yes | 6.0 + 0.7 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
   retriever alone scores 0.1153 on these windows against 0.1179 on the ones that picked its
   checkpoint: that sample flattered it by ~0.0026. The ranker's validation gain is +0.0187 here
   (+0.0173 there).
+- `ranker_50k_v2_noinput` (2026-10-08, `1e162ef`; new setting exclude_input): shortlists (training,
+  validation, held-out) leave out the songs in the retriever's input, searching 10 deeper and
+  keeping the best 100 others: held-out 0.1462 vs 0.1351 (+0.0111, +8.2%), Hits@1 8.7% vs 7.9%,
+  Hits@10 21.9% vs 20.6%, validation 0.1444 vs 0.1340: kept. The retriever alone gains too with the
+  same shortlists (0.1255 vs 0.1171): it was spending top-10 places on songs already in the
+  playlist, which resemble the rest of it. Only 0.45% of held-out next songs (709 of 159,081) repeat
+  an input song, the windows this rule now gets wrong. The ranker adds +0.0207 (+16.5%) over the
+  filtered retriever. The "retriever alone, exact search" line in eval.json is unfiltered (0.1172).
