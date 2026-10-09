@@ -41,8 +41,9 @@ loss picks the true one out of them.
 Options, each a config setting, for making the ranker beat a strong retriever:
   train_windows = "in_shortlist": train only on windows whose true song is in the
       shortlist (the ranker can only ever rank songs the retriever passes it)
-  shortlist / negatives: how many songs are reranked, and how many of them each
-      training example's true song is compared against (all of them: shortlist - 1)
+  shortlist / negatives / negatives_from: how many songs are reranked, how many of them
+      each training example's true song is compared against (all: shortlist - 1), and
+      from how many of the shortlist's first songs those are drawn
   freeze_tables: keep the copied per-ID tables at the retriever's values
   features: extra per-candidate inputs (recsys/rank_features.py) for the correction
       layer, standardized with statistics from training examples
@@ -88,6 +89,7 @@ class RankerConfig:
     ivf_nlist: int         # ivf: clusters the songs are grouped into (0 for exact)
     ivf_nprobe: int        # ivf: clusters searched per query (0 for exact)
     negatives: int         # shortlist songs sampled per training example, besides the true one
+    negatives_from: int    # ... drawn from the first this many shortlist songs (= shortlist: all of it)
     optimizer: str         # "adamw" or "lazy_adamw" (only the table rows a batch uses are updated)
     lr: float
     weight_decay: float
@@ -108,8 +110,9 @@ class RankerConfig:
             raise ValueError(f"search must be exact or ivf, got {self.search!r}")
         if self.train_windows not in ("all", "in_shortlist"):
             raise ValueError(f"train_windows must be all or in_shortlist, got {self.train_windows!r}")
-        if not 1 <= self.negatives < self.shortlist:
-            raise ValueError(f"negatives must be 1 to shortlist - 1 ({self.shortlist - 1}), got {self.negatives}")
+        if not 1 <= self.negatives < self.negatives_from <= self.shortlist:
+            raise ValueError(f"need 1 <= negatives < negatives_from <= shortlist, got {self.negatives}, "
+                             f"{self.negatives_from}, {self.shortlist}")
         unknown = sorted(set(self.features) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown features {unknown}; known: {list(GROUPS)}")
@@ -212,19 +215,22 @@ def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000):
     return np.concatenate(ids), np.concatenate(scores), np.concatenate(true)
 
 
-def sample_negatives(short_ids, y, n, generator):
+def sample_negatives(short_ids, y, n, generator, top=None):
     """For each row, n distinct shortlist positions whose song isn't the true song y,
-    chosen uniformly (CPU tensors). Returns (rows, n) positions."""
+    chosen uniformly (CPU tensors), from the first `top` positions only if given.
+    Returns (rows, n) positions."""
     keys = torch.rand(short_ids.shape, generator=generator)
     keys[short_ids == y[:, None]] = 2.0  # the true song is never a negative
+    if top is not None:
+        keys[:, top:] = 2.0  # nor is a song past the first `top`
     return torch.topk(keys, n, dim=1, largest=False).indices
 
 
-def with_negatives(short_ids, short_scores, true_scores, y, n, generator):
+def with_negatives(short_ids, short_scores, true_scores, y, n, generator, top=None):
     """One training example per row: (candidates, base scores), each (rows, 1 + n) CPU
     tensors, the true song y first with its retriever score, then n songs sampled from
-    its shortlist (sample_negatives) with theirs. The loss picks column 0 out of them."""
-    pos = sample_negatives(short_ids, y, n, generator)
+    its shortlist's first `top` (sample_negatives) with theirs. The loss picks column 0."""
+    pos = sample_negatives(short_ids, y, n, generator, top)
     return (torch.cat([y[:, None], short_ids.gather(1, pos).long()], dim=1),
             torch.cat([true_scores[:, None], short_scores.gather(1, pos)], dim=1))
 
@@ -401,13 +407,13 @@ def train_ranker(config_path, seed):
     loss_rows = np.arange(len(Y_val)) if rc.train_windows == "all" else np.flatnonzero(shortlisted(val_ids, Y_val))
     val_cands, val_base = (t.numpy() for t in with_negatives(
         *(torch.from_numpy(a[loss_rows]) for a in (val_ids, val_scores, val_true, Y_val)), rc.negatives,
-        torch.Generator().manual_seed(seed + 4_000_000)))
+        torch.Generator().manual_seed(seed + 4_000_000), rc.negatives_from))
     loss_features = feature_fn(featurizer, val_ids[loss_rows], val_scores[loss_rows], ds.H_val, loss_rows, device)
     if featurizer is not None:  # standardize the extra inputs with a fixed sample of training examples
         sample = np.sort(np.random.RandomState(seed).choice(len(Y_tr), min(20000, len(Y_tr)), replace=False))
         cands, base = with_negatives(
             *(torch.from_numpy(a[sample]) for a in (train_ids, train_scores, train_true, Y_tr)), rc.negatives,
-            torch.Generator().manual_seed(seed + 5_000_000))
+            torch.Generator().manual_seed(seed + 5_000_000), rc.negatives_from)
         set_feature_scale(ranker, train_features, sample, X_tr, cands.numpy(), base.numpy(), device)
         print("extra inputs (mean / std): " + ", ".join(
             f"{n} {m:.3g}/{s:.3g}" for n, m, s in zip(featurizer.names, ranker.feature_mean.tolist(),
@@ -457,7 +463,7 @@ def train_ranker(config_path, seed):
         for i in range(0, len(Y), rc.batch_size):
             idx = order[i:i + rc.batch_size]
             candidates, base = with_negatives(short_ids[idx], short_scores[idx], true_scores[idx], Y[idx],
-                                              rc.negatives, negative_gen)
+                                              rc.negatives, negative_gen, rc.negatives_from)
             context, cands, base = X[idx].to(device), candidates.to(device), base.to(device)
             f = None if train_features is None else train_features(idx.numpy(), context, cands, base)
             scores = ranker(context, N[idx].to(device), cands, base, f)

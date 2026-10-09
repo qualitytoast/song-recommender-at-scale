@@ -196,3 +196,15 @@ def test_check_vocab_refuses_a_checkpoint_trained_on_other_songs():
     for other in (["b", "a"], ["a", "b", "c"]):                 # reordered or different songs
         with pytest.raises(ValueError, match="different vocab"):
             check_vocab({"vocab": ["a", "b"]}, other, "best.pt")
+
+
+def test_negatives_can_be_drawn_from_the_top_of_the_shortlist_only():
+    short = torch.tensor([[5, 3, 9, 1, 7, 8], [2, 4, 6, 8, 0, 1]])
+    y = torch.tensor([3, 8])  # true songs at positions 1 and 3
+    for seed in range(20):
+        g1, g2 = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed)
+        pos = sample_negatives(short, y, 2, g1, top=3)
+        assert ((pos < 3) & (short.gather(1, pos) != y[:, None])).all()  # first 3 positions, never the true song
+        # top = the whole shortlist draws exactly as before
+        assert torch.equal(sample_negatives(short, y, 2, g2, top=6),
+                           sample_negatives(short, y, 2, torch.Generator().manual_seed(seed)))

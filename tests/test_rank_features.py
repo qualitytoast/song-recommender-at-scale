@@ -106,7 +106,7 @@ def test_freezing_keeps_the_copied_tables_while_the_layers_train():
 
 def config(**changes):
     settings = dict(retriever="r.toml", train_seeds=[1], shortlist=100, search="exact", ivf_nlist=0, ivf_nprobe=0,
-                    negatives=31, optimizer="lazy_adamw", lr=1e-4, weight_decay=0.05, batch_size=64, epochs=1,
+                    negatives=31, negatives_from=100, optimizer="lazy_adamw", lr=1e-4, weight_decay=0.05, batch_size=64, epochs=1,
                     eval_every_examples=10, min_checks=1, patience=1, val_windows=10, train_windows="all",
                     freeze_tables=False, features=[])
     return RankerConfig(**{**settings, **changes})
@@ -114,6 +114,8 @@ def config(**changes):
 
 def test_ranker_config_checks_the_new_settings():
     config(negatives=99, train_windows="in_shortlist", features=["popularity", "history"])  # fine
-    for bad in (dict(negatives=100), dict(train_windows="some"), dict(features=["vibes"])):
+    config(shortlist=500, negatives_from=100)                                                # fine
+    for bad in (dict(negatives=100), dict(negatives_from=600), dict(negatives=31, negatives_from=31),
+                dict(train_windows="some"), dict(features=["vibes"])):
         with pytest.raises(ValueError):
             config(**bad)

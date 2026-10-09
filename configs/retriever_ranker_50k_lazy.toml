@@ -9,6 +9,7 @@ search = "exact"           # every song scored
 ivf_nlist = 0
 ivf_nprobe = 0
 negatives = 31             # per training window: the true song + 31 sampled from its shortlist
+negatives_from = 500       # ... drawn from the whole shortlist
 optimizer = "lazy_adamw"   # was "adamw": only the table rows a batch uses are updated
 lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
 weight_decay = 0.05
