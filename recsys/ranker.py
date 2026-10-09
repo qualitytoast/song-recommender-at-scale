@@ -47,6 +47,11 @@ Options, each a config setting, for making the ranker beat a strong retriever:
   freeze_tables: keep the copied per-ID tables at the retriever's values
   features: extra per-candidate inputs (recsys/rank_features.py) for the correction
       layer, standardized with statistics from training examples
+  correction_hidden: the correction as a small network (this many hidden units) that can
+      combine its inputs, instead of a weighted sum of them (0)
+  exclude_input: songs in the retriever's input never enter a shortlist
+  val_set = "separate": validate on validation windows outside the retriever's validation
+      sample, so the windows that picked the retriever's checkpoint don't also judge the ranker
 
     python -m recsys.ranker --config configs/retriever_ranker_50k.toml            # train every seed, then evaluate
     python -m recsys.ranker --config configs/retriever_ranker_50k.toml --evaluate # evaluate only
@@ -73,7 +78,8 @@ from recsys.data import build_dataset
 from recsys.evaluate import score
 from recsys.lazy_adam import LazyAdamW, is_table, used_rows
 from recsys.model import build_model, rank_and_loss
-from recsys.rank_features import GROUPS, CandidateFeatures, history_matrix, pair_counts
+from recsys.rank_features import (GROUPS, CandidateFeatures, history_matrix, membership_keys, neighbour_lists,
+                                  pair_counts, playlist_vectors)
 from recsys.search import ExactSearch, SearchWorker, query_vectors, song_vectors
 from recsys.train import EarlyStopping, git_state, pick_device, run_dir_for
 
@@ -102,6 +108,11 @@ class RankerConfig:
     train_windows: str     # "all", or "in_shortlist": only windows whose true song is in the shortlist
     freeze_tables: bool    # true: the copied per-ID tables keep the retriever's values
     features: list         # extra per-candidate inputs: groups from recsys/rank_features.py ([] = none)
+    correction_hidden: int # 0: the correction is a weighted sum of its inputs; else a network with this
+                           # many hidden units, which can combine them
+    exclude_input: bool    # true: songs in the retriever's input are left out of every shortlist
+    val_set: str           # "retriever": the retriever's validation sample; "separate": other validation
+                           # windows (data.ranker_validation_keep)
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -113,6 +124,10 @@ class RankerConfig:
         if not 1 <= self.negatives < self.negatives_from <= self.shortlist:
             raise ValueError(f"need 1 <= negatives < negatives_from <= shortlist, got {self.negatives}, "
                              f"{self.negatives_from}, {self.shortlist}")
+        if self.val_set not in ("retriever", "separate"):
+            raise ValueError(f"val_set must be retriever or separate, got {self.val_set!r}")
+        if self.correction_hidden < 0:
+            raise ValueError(f"correction_hidden must be 0 or more, got {self.correction_hidden}")
         unknown = sorted(set(self.features) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown features {unknown}; known: {list(GROUPS)}")
@@ -127,7 +142,7 @@ def load_ranker_config(path):
 
 
 class CandidateRanker(nn.Module):
-    def __init__(self, retriever, n_features=0):
+    def __init__(self, retriever, n_features=0, hidden=0):
         super().__init__()
         self.retriever = copy.deepcopy(retriever)  # fine-tuned; starts as the retriever
         dim = self.retriever.output.in_features
@@ -136,10 +151,16 @@ class CandidateRanker(nn.Module):
         self.candidate_position = nn.Parameter(torch.zeros(dim))
         # The correction reads the transformer's output for the candidate and, if used, its
         # n_features extra inputs, standardized with statistics from training examples
-        # (set_feature_scale). Starting at zero, it still changes nothing before training.
-        self.correction = nn.Linear(dim + n_features, 1)
-        nn.init.zeros_(self.correction.weight)
-        nn.init.zeros_(self.correction.bias)
+        # (set_feature_scale): a weighted sum of them (hidden = 0), or a small network with
+        # `hidden` units that can combine them. Its last layer starts at zero, so it still
+        # changes nothing before training.
+        if hidden:
+            self.correction = nn.Sequential(nn.Linear(dim + n_features, hidden), nn.ReLU(), nn.Linear(hidden, 1))
+            last = self.correction[-1]
+        else:
+            self.correction = last = nn.Linear(dim + n_features, 1)
+        nn.init.zeros_(last.weight)
+        nn.init.zeros_(last.bias)
         if n_features:
             self.register_buffer("feature_mean", torch.zeros(n_features))
             self.register_buffer("feature_std", torch.ones(n_features))
@@ -199,22 +220,36 @@ def song_search(rc, vectors, device):
         yield lambda queries, k: worker.search("songs", queries, k)
 
 
-def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, lengths=None):
+def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, lengths=None, exclude_input=False):
     """Each window's top-k songs found by `search` (song_search) over `vectors`: (ids
     (n, k) int32, scores (n, k) float32, best first), plus each true song's retriever
     score (n,). X: the retriever's inputs, with lengths if padded (data.window_inputs).
-    A chunk of windows at a time, so only one chunk's results are in flight."""
+    exclude_input: leave the input's songs out (drop_input_songs). A chunk of windows at a
+    time, so only one chunk's results are in flight."""
     ids, scores, true = [], [], []
+    extra = X.shape[1] if exclude_input else 0  # search deeper by up to that many songs dropped
     for i in range(0, len(X), chunk):
         n = None if lengths is None else lengths[i:i + chunk]
         queries = query_vectors(model, X[i:i + chunk], N[i:i + chunk], device, lengths=n)
-        top_ids, top_scores = search(queries, k)
+        top_ids, top_scores = search(queries, k + extra)
         if (top_ids < 0).any():  # FAISS pads with -1 when the searched clusters hold fewer than k songs
-            raise RuntimeError(f"search found fewer than {k} songs for some windows; search more clusters")
+            raise RuntimeError(f"search found fewer than {k + extra} songs for some windows; search more clusters")
+        if exclude_input:
+            top_ids, top_scores = drop_input_songs(top_ids, top_scores, X[i:i + chunk], n, k)
         ids.append(top_ids.astype(np.int32))
         scores.append(top_scores.astype(np.float32))
         true.append(np.einsum("nd,nd->n", queries, vectors[Y[i:i + chunk]]))
     return np.concatenate(ids), np.concatenate(scores), np.concatenate(true)
+
+
+def drop_input_songs(ids, scores, inputs, lengths, k):
+    """The best k of each row's songs ids (n, m) with scores, best first, leaving out songs in
+    the row's input (inputs (n, I), its first lengths[r] real, or all of them without lengths)."""
+    width = inputs.shape[1]
+    real = np.arange(width) < (np.full(len(inputs), width) if lengths is None else lengths)[:, None]
+    in_input = ((ids[:, :, None] == inputs[:, None, :]) & real[:, None, :]).any(-1)
+    keep = np.argsort(in_input, axis=1, kind="stable")[:, :k]  # songs not in the input first, order kept
+    return np.take_along_axis(ids, keep, 1), np.take_along_axis(scores, keep, 1)
 
 
 def sample_negatives(short_ids, y, n, generator, top=None):
@@ -284,23 +319,55 @@ def make_featurizer(rc, ds, retriever, device):
     no_pairs = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
     pairs = (pair_counts(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
              if {"cooccurrence", "history"} & set(rc.features) else no_pairs)
-    return CandidateFeatures(rc.features, retriever, popularity, pairs, device)
+    members = (membership_keys(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
+               if "neighbours" in rc.features else None)
+    return CandidateFeatures(rc.features, retriever, popularity, pairs, device, ds.song_duration_ms, members)
 
 
-def feature_fn(featurizer, short_ids, short_scores, histories, rows, device):
+def window_neighbours(featurizer, ds, retriever, XI, N, LI, device):
+    """(windows, NEIGHBOURS) part-A playlists most like each window (rank_features.neighbour_lists),
+    from the retriever's inputs XI (lengths LI); None unless the featurizer uses "neighbours"."""
+    if featurizer is None or "neighbours" not in featurizer.groups:
+        return None
+    if featurizer.playlists is None:  # each part-A playlist's average song vector, made once
+        featurizer.playlists = playlist_vectors(ds.fit_songs, ds.fit_offsets, song_vectors(retriever))
+    return neighbour_lists(query_vectors(retriever, XI, N, device, lengths=LI), featurizer.playlists, device)
+
+
+def feature_fn(featurizer, short_ids, short_scores, histories, rows, device, neighbours=None):
     """None without a featurizer. Otherwise a function (i, context, cands, base) -> the extra
     inputs for windows i (numpy indices) of a set whose shortlists are short_ids / short_scores
-    (numpy, best first) and whose playlists so far are entries rows of histories."""
+    (numpy, best first), whose playlists so far are entries rows of histories, and whose most
+    alike part-A playlists are neighbours (window_neighbours, aligned with i)."""
     if featurizer is None:
         return None
+    songs, begin, end = histories
 
     def features(i, context, cands, base):
         ranks = shortlist_ranks(torch.from_numpy(short_ids[i]).to(device), cands)
         top = torch.from_numpy(short_scores[i, 0]).to(device)
         history = (torch.from_numpy(history_matrix(histories, rows[i])).to(device)
                    if "history" in featurizer.groups else None)
-        return featurizer(context, cands, base, ranks, top, history)
+        nbrs = torch.from_numpy(neighbours[i]).to(device) if neighbours is not None else None
+        playlist_len = torch.from_numpy(end[rows[i]] - begin[rows[i]]).to(device)
+        return featurizer(context, cands, base, ranks, top, history, nbrs, playlist_len)
     return features
+
+
+def ranker_validation(rc, ds):
+    """The ranker's validation windows, the first rc.val_windows of the retriever's validation
+    sample (val_set "retriever") or of the windows outside it (val_set "separate"):
+    (X, N, Y, XI, LI, histories)."""
+    if rc.val_set == "retriever":
+        arrays = (ds.X_val, ds.N_val, ds.Y_val, ds.XI_val, ds.LI_val, ds.H_val)
+    elif ds.Y_rval is None or len(ds.Y_rval) == 0:
+        raise ValueError("val_set = \"separate\" needs validation windows outside the retriever's sample "
+                         "(val_max_windows below the number of validation windows)")
+    else:
+        arrays = (ds.X_rval, ds.N_rval, ds.Y_rval, ds.XI_rval, ds.LI_rval, ds.H_rval)
+    v = slice(0, rc.val_windows)
+    X, N, Y, XI, LI, (songs, begin, end) = arrays
+    return X[v], N[v], Y[v], XI[v], LI[v], (songs, begin[v], end[v])
 
 
 @torch.no_grad()
@@ -364,14 +431,15 @@ def train_ranker(config_path, seed):
     device = pick_device()
     cfg, ds, retriever = load_retriever(rc, seed, device)
     start = time.perf_counter()
-    v = slice(0, rc.val_windows)
-    X_val, N_val, Y_val = ds.X_val[v], ds.N_val[v], ds.Y_val[v]
+    X_val, N_val, Y_val, XI_val, LI_val, H_val = ranker_validation(rc, ds)
     vectors = song_vectors(retriever)
     with song_search(rc, vectors, device) as search:
         train_ids, train_scores, train_true = build_shortlists(retriever, ds.XI_rank, ds.N_rank, ds.Y_rank, device,
-                                                               rc.shortlist, search, vectors, lengths=ds.LI_rank)
-        val_ids, val_scores, val_true = build_shortlists(retriever, ds.XI_val[v], N_val, Y_val, device, rc.shortlist,
-                                                         search, vectors, lengths=ds.LI_val[v])
+                                                               rc.shortlist, search, vectors, lengths=ds.LI_rank,
+                                                               exclude_input=rc.exclude_input)
+        val_ids, val_scores, val_true = build_shortlists(retriever, XI_val, N_val, Y_val, device, rc.shortlist,
+                                                         search, vectors, lengths=LI_val,
+                                                         exclude_input=rc.exclude_input)
     in_list = shortlisted(train_ids, ds.Y_rank)
     rows = np.flatnonzero(in_list) if rc.train_windows == "in_shortlist" else np.arange(len(ds.Y_rank))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
@@ -381,7 +449,7 @@ def train_ranker(config_path, seed):
           f"{in_list.mean():.1%}", flush=True)
 
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
     if rc.freeze_tables:
         freeze_tables(ranker)
     num_params = sum(p.numel() for p in ranker.parameters())
@@ -401,8 +469,10 @@ def train_ranker(config_path, seed):
     order_gen, negative_gen = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed + 3_000_000)
     X, N, Y = (torch.from_numpy(a) for a in (X_tr, N_tr, Y_tr))
     short_ids, short_scores, true_scores = (torch.from_numpy(a) for a in (train_ids, train_scores, train_true))
-    train_features = feature_fn(featurizer, train_ids, train_scores, ds.H_rank, rows, device)
-    val_features = feature_fn(featurizer, val_ids, val_scores, ds.H_val, np.arange(len(Y_val)), device)
+    train_nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_rank[rows], N_tr, ds.LI_rank[rows], device)
+    val_nbrs = window_neighbours(featurizer, ds, retriever, XI_val, N_val, LI_val, device)
+    train_features = feature_fn(featurizer, train_ids, train_scores, ds.H_rank, rows, device, train_nbrs)
+    val_features = feature_fn(featurizer, val_ids, val_scores, H_val, np.arange(len(Y_val)), device, val_nbrs)
     # Validation loss: the training loss on validation windows of the kind trained on (all, or
     # those with the true song shortlisted), their negatives drawn once (own generator, so
     # training's draws don't change) and reused at every check.
@@ -410,7 +480,8 @@ def train_ranker(config_path, seed):
     val_cands, val_base = (t.numpy() for t in with_negatives(
         *(torch.from_numpy(a[loss_rows]) for a in (val_ids, val_scores, val_true, Y_val)), rc.negatives,
         torch.Generator().manual_seed(seed + 4_000_000), rc.negatives_from))
-    loss_features = feature_fn(featurizer, val_ids[loss_rows], val_scores[loss_rows], ds.H_val, loss_rows, device)
+    loss_features = feature_fn(featurizer, val_ids[loss_rows], val_scores[loss_rows], H_val, loss_rows, device,
+                               None if val_nbrs is None else val_nbrs[loss_rows])
     if featurizer is not None:  # standardize the extra inputs with a fixed sample of training examples
         sample = np.sort(np.random.RandomState(seed).choice(len(Y_tr), min(20000, len(Y_tr)), replace=False))
         cands, base = with_negatives(
@@ -516,15 +587,16 @@ def evaluate_ranker(config_path, seed):
     vectors = song_vectors(retriever)
     with song_search(rc, vectors, device) as search:
         ids, scores, _ = build_shortlists(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, rc.shortlist, search,
-                                          vectors, lengths=ds.LI_test)
+                                          vectors, lengths=ds.LI_test, exclude_input=rc.exclude_input)
     search_seconds = time.perf_counter() - start
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
     check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])
     rerank_start = time.perf_counter()
-    features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device)
+    nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_test, ds.N_test, ds.LI_test, device)
+    features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device, nbrs)
     ranks = final_ranks(rerank(ranker, ds.X_test, ds.N_test, ids, scores, device, features=features), ids, ds.Y_test)
     rerank_seconds = time.perf_counter() - rerank_start
     retriever_ranks = final_ranks(scores, ids, ds.Y_test)  # its own order within its shortlist = its full ranks

@@ -22,3 +22,6 @@ val_windows = 6109        # every validation window (6,109 at 5k)
 train_windows = "all"      # every window, whether or not its true song is shortlisted
 freeze_tables = false      # the copied per-ID tables train too
 features = []              # no extra per-candidate inputs
+correction_hidden = 0      # the correction is a weighted sum of its inputs
+exclude_input = false      # input songs can be in the shortlist
+val_set = "retriever"      # validate on the retriever's validation sample

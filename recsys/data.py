@@ -254,6 +254,13 @@ class Dataset:
     LI_test: np.ndarray = None  # context_length, XI_* is X_* itself
     XI_rank: np.ndarray = None
     LI_rank: np.ndarray = None
+    X_rval: np.ndarray = None   # the ranker's validation windows: validation windows outside the
+    Y_rval: np.ndarray = None   # retriever's sample (ranker_validation_keep), so the windows that picked
+    N_rval: np.ndarray = None   # the retriever's checkpoint don't also judge the ranker
+    H_rval: tuple = None
+    XI_rval: np.ndarray = None
+    LI_rval: np.ndarray = None
+    song_duration_ms: np.ndarray = None  # (vocab_size,) each song's length in milliseconds
 
 
 def build_dataset(cfg):
@@ -296,12 +303,15 @@ def build_dataset(cfg):
         N_val = encoded[val_idx][P_val]
         H_val = window_histories(*playlist_arrays(val, track_to_id), d.context_length)
     keep = validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
+    rkeep = ranker_validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
+    X_rval, Y_rval, N_rval, H_rval = X_val[rkeep], Y_val[rkeep], N_val[rkeep], keep_histories(H_val, rkeep)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
     H_val = H_val if keep is None else keep_histories(H_val, keep)
     fit_songs, fit_offsets = playlist_arrays(fit, track_to_id)
     H_rank = window_histories(*playlist_arrays(rank, track_to_id), d.context_length)
-    (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank) = (
-        window_inputs(X, H, d.input_length) for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank)))
+    (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
+        window_inputs(X, H, d.input_length)
+        for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank), (X_rval, H_rval)))
     song_features = {"artist": song_feature_ids(vocab, tracks, "artist_uri"),
                      "album": song_feature_ids(vocab, tracks, "album_uri"),
                      "duration": duration_buckets(vocab, tracks, DURATION_BUCKETS)}
@@ -323,7 +333,9 @@ def build_dataset(cfg):
                    X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
                    genre_names=genre_names, song_genres=song_genres, fit_songs=fit_songs, fit_offsets=fit_offsets,
                    H_rank=H_rank, H_val=H_val, H_test=H_test, XI_val=XI_val, LI_val=LI_val, XI_test=XI_test,
-                   LI_test=LI_test, XI_rank=XI_rank, LI_rank=LI_rank)
+                   LI_test=LI_test, XI_rank=XI_rank, LI_rank=LI_rank, X_rval=X_rval, Y_rval=Y_rval, N_rval=N_rval,
+                   H_rval=H_rval, XI_rval=XI_rval, LI_rval=LI_rval,
+                   song_duration_ms=np.array([tracks[k]["duration_ms"] for k in vocab], dtype=np.int64))
 
 
 def validation_keep(n, max_windows, seed):
@@ -331,6 +343,20 @@ def validation_keep(n, max_windows, seed):
     if not max_windows or n <= max_windows:
         return None
     return np.sort(np.random.RandomState(seed).choice(n, max_windows, replace=False))
+
+
+def ranker_validation_keep(n, max_windows, seed):
+    """Indices of validation windows outside the retriever's sample (validation_keep): a fixed
+    random sample of at most max_windows of them, in the original order (none if the retriever
+    uses every validation window). The ranker validates on these, so the windows that picked the
+    retriever's checkpoint don't also judge the ranker."""
+    keep = validation_keep(n, max_windows, seed)
+    if keep is None:
+        return np.zeros(0, dtype=np.int64)
+    other = np.setdiff1d(np.arange(n), keep)
+    if len(other) <= max_windows:
+        return other
+    return np.sort(np.random.RandomState(seed + 1).choice(other, max_windows, replace=False))
 
 
 def sample_validation(X_val, Y_val, N_val, max_windows, seed):
@@ -506,11 +532,14 @@ def build_dataset_from_store(cfg):
         N_val = encoded[val_idx][P_val]
         H_val = window_histories(*val_arrays, d.context_length)
     keep = validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
+    rkeep = ranker_validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
+    X_rval, Y_rval, N_rval, H_rval = X_val[rkeep], Y_val[rkeep], N_val[rkeep], keep_histories(H_val, rkeep)
     X_val, Y_val, N_val = sample_validation(X_val, Y_val, N_val, d.val_max_windows, cfg.data_seed)
     H_val = H_val if keep is None else keep_histories(H_val, keep)
     H_rank = window_histories(*rank_arrays, d.context_length)
-    (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank) = (
-        window_inputs(X, H, d.input_length) for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank)))
+    (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
+        window_inputs(X, H, d.input_length)
+        for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank), (X_rval, H_rval)))
 
     artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
     albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])
@@ -530,7 +559,9 @@ def build_dataset_from_store(cfg):
                    X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
                    genre_names=genre_names, song_genres=song_genres, fit_songs=train_songs,
                    fit_offsets=train_offsets, H_rank=H_rank, H_val=H_val, H_test=H_test, XI_val=XI_val,
-                   LI_val=LI_val, XI_test=XI_test, LI_test=LI_test, XI_rank=XI_rank, LI_rank=LI_rank)
+                   LI_val=LI_val, XI_test=XI_test, LI_test=LI_test, XI_rank=XI_rank, LI_rank=LI_rank,
+                   X_rval=X_rval, Y_rval=Y_rval, N_rval=N_rval, H_rval=H_rval, XI_rval=XI_rval, LI_rval=LI_rval,
+                   song_duration_ms=np.asarray(store.track_duration_ms[vocab_tracks], dtype=np.int64))
 
 
 if __name__ == "__main__":

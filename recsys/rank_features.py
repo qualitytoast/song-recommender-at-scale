@@ -17,9 +17,17 @@ Groups (RankerConfig.features), their columns in this order:
   history          overlap and cooccurrence over the playlist so far (its last HISTORY songs,
                    the 10 context songs included) instead of the 10 context songs, plus
                    log_hist_len: log(1 + how many songs that is)
+  neighbours       of the NEIGHBOURS part-A playlists most like this one (neighbour_lists),
+                   the share that contain the candidate: nbr_share_50 (all of them) and
+                   nbr_share_10 (the 10 most alike)
+  song_length      length_gap: how far the candidate's length is from the context songs'
+                   typical length, |log(its length) - mean log(their lengths)|
+  playlist_length  log_playlist_len: log(1 + songs in the playlist so far). The same for every
+                   candidate of a window, so only a correction that combines inputs can use it
 
-Counts come from part-A playlists only (the retriever's training playlists). The ranker trains
-on part B; counting part B would put the very transitions it is asked to predict into its inputs.
+Counts and neighbours come from part-A playlists only (the retriever's training playlists).
+The ranker trains on part B; counting part B would put the very transitions it is asked to
+predict into its inputs.
 """
 import numpy as np
 import torch
@@ -31,9 +39,13 @@ GROUPS = {
     "cooccurrence": ["log_after_last", "log_after_context", "context_with_pair"],
     "history": ["hist_same_artist", "hist_same_album", "hist_genre_match", "hist_log_after", "hist_with_pair",
                 "log_hist_len"],
+    "neighbours": ["nbr_share_50", "nbr_share_10"],
+    "song_length": ["length_gap"],
+    "playlist_length": ["log_playlist_len"],
 }
-PAIR_WINDOW = 5  # a pair (a, b): song b comes 1 to 5 songs after song a in a playlist
-HISTORY = 100    # history inputs look at up to this many of the playlist's most recent songs
+PAIR_WINDOW = 5   # a pair (a, b): song b comes 1 to 5 songs after song a in a playlist
+HISTORY = 100     # history inputs look at up to this many of the playlist's most recent songs
+NEIGHBOURS = 50   # neighbour inputs look at this many of the most alike part-A playlists
 
 
 def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
@@ -49,6 +61,32 @@ def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
     return np.unique(np.concatenate(keys), return_counts=True)
 
 
+def playlist_vectors(songs, offsets, vectors):
+    """(playlists, d) float32: each playlist's average song vector (recsys.search.song_vectors)
+    over its songs in the vocab (songs: playlists concatenated, -1 = outside the vocab). A
+    window's query vector . this = the retriever's average score for the playlist's songs."""
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    known = songs >= 0
+    sums = torch.zeros(len(offsets) - 1, vectors.shape[1]).index_add_(
+        0, torch.from_numpy(playlist[known]), torch.from_numpy(vectors[songs[known]]))
+    counts = np.bincount(playlist[known], minlength=len(offsets) - 1).clip(min=1)
+    return (sums / torch.from_numpy(counts)[:, None].float()).numpy()
+
+
+def membership_keys(songs, offsets, vocab_size):
+    """Sorted keys playlist * vocab_size + song, one per (playlist, song in it) pair."""
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    known = songs >= 0
+    return np.unique(playlist[known] * vocab_size + songs[known])
+
+
+def neighbour_lists(queries, playlists, device, k=NEIGHBOURS):
+    """(windows, k) int32: for each query vector (recsys.search.query_vectors), the k playlists
+    (rows of playlist_vectors) it scores highest, most alike first."""
+    from recsys.search import ExactSearch  # here, so this module's other parts don't need search
+    return ExactSearch(playlists, device).search(queries, k)[0].astype(np.int32)
+
+
 def history_matrix(histories, rows, length=HISTORY):
     """(len(rows), length) song IDs: the last `length` songs of each window's playlist so far,
     right-aligned (the last column is the window's last context song), -1 before the playlist
@@ -61,7 +99,9 @@ def history_matrix(histories, rows, length=HISTORY):
 class CandidateFeatures:
     """Computes the chosen groups' columns for batches of windows and their candidates."""
 
-    def __init__(self, groups, retriever, popularity, pairs, device):
+    def __init__(self, groups, retriever, popularity, pairs, device, durations_ms=None, members=None):
+        """popularity (vocab,) counts; pairs (keys, counts) from pair_counts; durations_ms (vocab,)
+        song lengths, for song_length; members from membership_keys, for neighbours."""
         unknown = sorted(set(groups) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown ranker feature groups {unknown}; known: {list(GROUPS)}")
@@ -80,11 +120,18 @@ class CandidateFeatures:
         self.log_popularity = torch.log1p(torch.as_tensor(popularity, dtype=torch.float32)).to(device)
         self.keys = torch.as_tensor(pairs[0], dtype=torch.int64).to(device)
         self.counts = torch.as_tensor(pairs[1], dtype=torch.float32).to(device)
+        if "song_length" in self.groups:  # at least 1 s, so a missing length can't be log(0)
+            self.log_length = torch.log(torch.as_tensor(durations_ms, dtype=torch.float32).clamp(min=1000)).to(device)
+        if "neighbours" in self.groups:
+            self.members = torch.as_tensor(members, dtype=torch.int64).to(device)
+        self.playlists = None  # part-A playlist vectors, set by the ranker when it first finds neighbours
 
-    def __call__(self, context, cands, base, ranks, top, history=None):
+    def __call__(self, context, cands, base, ranks, top, history=None, neighbours=None, playlist_len=None):
         """context (b, L) song IDs; cands (b, C) song IDs; base (b, C) their retriever scores;
         ranks (b, C) their places in the shortlist (K + 1 if not in it); top (b,) the shortlist's
-        best score; history (b, HISTORY) song IDs (history_matrix) if "history" is used.
+        best score; history (b, HISTORY) song IDs (history_matrix) if "history" is used;
+        neighbours (b, NEIGHBOURS) playlist IDs (neighbour_lists) if "neighbours" is used;
+        playlist_len (b,) songs in the playlist so far if "playlist_length" is used.
         Returns (b, C, len(self.names)) float32."""
         cols = []
         if "retriever_score" in self.groups:
@@ -103,6 +150,16 @@ class CandidateFeatures:
             after = self.after_counts(history, cands)
             cols += [artist, album, genre, torch.log1p(after.sum(-1)), (after > 0).float().sum(-1) / n,
                      torch.log1p(n).expand_as(base)]
+        if "neighbours" in self.groups:
+            query = (neighbours.long()[:, None, :] * self.vocab_size + cands[:, :, None]).contiguous()
+            idx = torch.searchsorted(self.members, query).clamp(max=len(self.members) - 1)
+            contains = (self.members[idx] == query).float()  # (b, C, NEIGHBOURS), most alike first
+            cols += [contains.mean(-1), contains[..., :10].mean(-1)]
+        if "song_length" in self.groups:
+            typical = self.log_length[context].mean(-1, keepdim=True)  # (b, 1)
+            cols.append((self.log_length[cands] - typical).abs())
+        if "playlist_length" in self.groups:
+            cols.append(torch.log1p(playlist_len.float())[:, None].expand_as(base))
         return torch.stack(cols, dim=-1).float()
 
     def overlap(self, songs, cands):
