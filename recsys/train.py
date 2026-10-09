@@ -153,6 +153,14 @@ def train(config_path, train_seed):
         negative_gen = torch.Generator().manual_seed(train_seed + 2_000_000)  # random candidates
         probs = random_probs(target_freq, t.negative_power)
         draw_probs = None if t.negative_power == 0 else probs.cpu()  # None: uniform, same draws as before
+
+    def forward_loss(X, N, hidden, Y, candidates, real, correction):
+        """Sampled-softmax forward pass and loss: the part torch.compile fuses (t.compile)."""
+        logits = model(X, N, hidden, all_positions=every_position, candidates=candidates)
+        return sampled_softmax_loss(logits, Y, candidates, real, correction)
+    if t.compile:  # same model and weights; only how the GPU runs the step changes
+        forward_loss = torch.compile(forward_loss)
+
     num_params = sum(p.numel() for p in model.parameters())
     print(f"{run_dir} | device {device} | {len(ds.vocab):,} songs | {n:,} train "
           f"{'chunks' if every_position else 'windows'} ({n_targets:,} targets) | "
@@ -218,9 +226,8 @@ def train(config_path, train_seed):
                 random_songs = draw_random_songs(t.sampled_negatives, vocab_size, negative_gen, draw_probs)
                 candidates, real = candidate_set(Y, t.sampled_negatives, vocab_size, negative_gen, draw_probs,
                                                  random_songs)
-                logits = model(X, N_train[idx], hidden, all_positions=every_position, candidates=candidates)
                 correction = log_q(candidates, (Y != -100).sum(), target_freq, t.sampled_negatives, probs)
-                loss = sampled_softmax_loss(logits, Y, candidates, real, correction)
+                loss = forward_loss(X, N_train[idx], hidden, Y, candidates, real, correction)
             else:
                 logits = model(X, N_train[idx], hidden, all_positions=every_position)
                 # Mean over this batch's real targets; -100 marks chunk padding.

@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--autocast", choices=["bf16", "fp16"], help="run forward and loss in 16-bit (mixed precision)")
     ap.add_argument("--freeze-tables", action="store_true",
                     help="no gradients or updates for the per-ID tables: the most row-only updates could save")
+    ap.add_argument("--negatives", type=int, help="random songs per batch (sampled_negatives) instead of the config's")
+    ap.add_argument("--compile", action="store_true",
+                    help="torch.compile the forward pass and loss (fuses small GPU operations)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -71,6 +74,7 @@ def main():
     song_features = {name: ds.song_features[name][0] for name in model.feature_names}
     X, Y, N = (torch.from_numpy(a).to(device) for a in (ds.Xc_train, ds.Yc_train, ds.Nc_train))
     V, B = len(ds.vocab), args.batch_size or t.batch_size
+    n_random = args.negatives or t.sampled_negatives
     dtype = {"bf16": torch.bfloat16, "fp16": torch.float16}.get(args.autocast)
     autocast = lambda: torch.autocast(device.type, dtype=dtype, enabled=dtype is not None)
     counts = torch.bincount(Y[Y != -100], minlength=V).float()
@@ -86,7 +90,14 @@ def main():
     n_table, n_shared = sum(p.numel() for p in table_params), sum(p.numel() for p in shared_params)
     print(f"{args.config}: {V:,} songs | {sum(p.numel() for p in model.parameters()):,} params: "
           f"{n_table:,} in per-ID tables, {n_shared:,} in shared layers | batch {B} chunks"
+          f" | {n_random:,} negatives{' | compiled' if args.compile else ''}"
           f"{' | autocast ' + args.autocast if args.autocast else ''}{' | tables frozen' if args.freeze_tables else ''}")
+
+    def forward_loss(xb, nb, yb, candidates, real, correction):
+        logits = model(xb, nb, all_positions=True, candidates=candidates)
+        return sampled_softmax_loss(logits.float(), yb, candidates, real, correction)
+    if args.compile:
+        forward_loss = torch.compile(forward_loss)
 
     def step(i, timings=None):
         mark = lambda name: None
@@ -102,15 +113,19 @@ def main():
         start_row = (i * B) % len(X)
         idx = order[start_row:start_row + B]
         xb, yb, nb = X[idx], Y[idx], N[idx]
-        random_songs = draw_random_songs(t.sampled_negatives, V, gen, draw)
-        candidates, real = candidate_set(yb, t.sampled_negatives, V, gen, draw, random_songs)
-        correction = log_q(candidates, (yb != -100).sum(), target_freq, t.sampled_negatives, probs)
+        random_songs = draw_random_songs(n_random, V, gen, draw)
+        candidates, real = candidate_set(yb, n_random, V, gen, draw, random_songs)
+        correction = log_q(candidates, (yb != -100).sum(), target_freq, n_random, probs)
         mark("batch + candidate sampling")
         with autocast():
-            logits = model(xb, nb, all_positions=True, candidates=candidates)
-            mark("forward")
-            loss = sampled_softmax_loss(logits.float(), yb, candidates, real, correction)
-        mark("loss")
+            if args.compile:  # forward and loss are one compiled piece, so they're timed together
+                loss = forward_loss(xb, nb, yb, candidates, real, correction)
+                mark("forward + loss (compiled)")
+            else:
+                logits = model(xb, nb, all_positions=True, candidates=candidates)
+                mark("forward")
+                loss = sampled_softmax_loss(logits.float(), yb, candidates, real, correction)
+                mark("loss")
         optimizer.zero_grad()
         loss.backward()
         mark("backward")
@@ -161,8 +176,8 @@ def main():
     rows = [len(torch.unique(torch.cat([Y[order[i * B:(i + 1) * B]].flatten(), X[order[i * B:(i + 1) * B]].flatten()])))
             for i in range(50)]
     print(f"\nsongs a batch actually uses (context + targets, before random negatives): median {int(np.median(rows)):,} "
-          f"of {V:,} ({np.median(rows) / V:.2%}); with {t.sampled_negatives:,} random negatives at most "
-          f"~{int(np.median(rows)) + t.sampled_negatives:,} ({(np.median(rows) + t.sampled_negatives) / V:.1%})")
+          f"of {V:,} ({np.median(rows) / V:.2%}); with {n_random:,} random negatives at most "
+          f"~{int(np.median(rows)) + n_random:,} ({(np.median(rows) + n_random) / V:.1%})")
 
 
 if __name__ == "__main__":

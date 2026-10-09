@@ -88,10 +88,14 @@ class TrainConfig:
                            # true next songs plus sampled_negatives random ones (see recsys.sampled)
     sampled_negatives: int # random songs added to each batch's candidates (sampled softmax)
     negative_power: float  # random songs drawn by (target frequency)^power; 0 = uniform
+    compile: bool          # torch.compile the training step's forward pass and loss (sampled softmax
+                           # only): fuses many small GPU operations into fewer, same math
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
         _check_choice("softmax", self.softmax, ("full", "sampled"))
+        if self.compile and self.softmax != "sampled":
+            raise ValueError("compile is implemented for the sampled-softmax training step")
 
     @property
     def augmenting(self):

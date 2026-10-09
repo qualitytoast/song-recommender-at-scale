@@ -46,3 +46,4 @@ objective = "every_position"  # was "last_position": predict the next song at ev
 softmax = "sampled"       # was "full": each batch scores its true next songs + random songs
 sampled_negatives = 1024  # was 0: random songs added to each batch's candidates
 negative_power = 0.0      # random negatives drawn uniformly
+compile = false           # torch.compile off: plain PyTorch
