@@ -312,3 +312,16 @@ def test_rank_and_loss_match_the_full_score_matrix():
         np.testing.assert_array_equal(ranks, target_ranks(logits, Y))
         expected = nn.functional.cross_entropy(torch.from_numpy(logits), torch.from_numpy(Y), reduction="none")
         np.testing.assert_allclose(losses, expected.numpy(), rtol=1e-5)
+
+
+def test_lengths_read_each_rows_last_real_song():
+    # Causal attention: a row padded after its real songs, read at its last real song,
+    # gives the same scores as the model run on just those songs.
+    torch.manual_seed(0)
+    model = SongRecommender(vocab_size=7, embed_dim=4, context_length=5, num_layers=2, dropout=0.0,
+                            scale_attention=True, init="pytorch", causal=True).eval()
+    ids, lengths = torch.tensor([[1, 2, 3, 0, 0], [4, 5, 6, 1, 2]]), torch.tensor([3, 5])
+    padded = model(ids, lengths=lengths)
+    for r in range(2):
+        alone = model(ids[r:r + 1, :lengths[r]])
+        torch.testing.assert_close(padded[r:r + 1], alone)

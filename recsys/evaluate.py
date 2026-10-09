@@ -48,7 +48,8 @@ def evaluate(config_path, train_seed):
     device = pick_device()
     model = build_model(cfg, ds).to(device)
     model.load_state_dict(checkpoint["model"])
-    model_score = lambda X, Y, N: score(rank_and_loss(model, X, N, Y, device)[0])
+    # The retriever reads each window's input (data.window_inputs: X itself unless input_length > context_length).
+    model_score = lambda X, Y, N, L: score(rank_and_loss(model, X, N, Y, device, lengths=L)[0])
 
     pop, counts = popularity_scores(ds.Y_train, len(ds.vocab))  # training targets only
 
@@ -60,11 +61,12 @@ def evaluate(config_path, train_seed):
         # v1 style: validation is the first n_val held-out windows, so also report
         # the held-out windows early stopping never saw
         n_val = len(ds.X_val)
-        results["validation subset"] = model_score(ds.X_val, ds.Y_val, ds.N_val)
-        results["held-out minus validation"] = model_score(ds.X_test[n_val:], ds.Y_test[n_val:], ds.N_test[n_val:])
+        results["validation subset"] = model_score(ds.XI_val, ds.Y_val, ds.N_val, ds.LI_val)
+        results["held-out minus validation"] = model_score(ds.XI_test[n_val:], ds.Y_test[n_val:], ds.N_test[n_val:],
+                                                           ds.LI_test[n_val:])
     else:
-        results["validation"] = model_score(ds.X_val, ds.Y_val, ds.N_val)  # separate playlists
-    results["full held-out"] = model_score(ds.X_test, ds.Y_test, ds.N_test)
+        results["validation"] = model_score(ds.XI_val, ds.Y_val, ds.N_val, ds.LI_val)  # separate playlists
+    results["full held-out"] = model_score(ds.XI_test, ds.Y_test, ds.N_test, ds.LI_test)
     results["most-popular (full held-out)"] = score(popularity_ranks(pop, ds.Y_test))
 
     print(f"\n{run_dir}/best.pt (check {best_check})")

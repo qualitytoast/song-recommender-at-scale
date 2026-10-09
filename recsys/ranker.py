@@ -199,13 +199,15 @@ def song_search(rc, vectors, device):
         yield lambda queries, k: worker.search("songs", queries, k)
 
 
-def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000):
+def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, lengths=None):
     """Each window's top-k songs found by `search` (song_search) over `vectors`: (ids
     (n, k) int32, scores (n, k) float32, best first), plus each true song's retriever
-    score (n,). A chunk of windows at a time, so only one chunk's results are in flight."""
+    score (n,). X: the retriever's inputs, with lengths if padded (data.window_inputs).
+    A chunk of windows at a time, so only one chunk's results are in flight."""
     ids, scores, true = [], [], []
     for i in range(0, len(X), chunk):
-        queries = query_vectors(model, X[i:i + chunk], N[i:i + chunk], device)
+        n = None if lengths is None else lengths[i:i + chunk]
+        queries = query_vectors(model, X[i:i + chunk], N[i:i + chunk], device, lengths=n)
         top_ids, top_scores = search(queries, k)
         if (top_ids < 0).any():  # FAISS pads with -1 when the searched clusters hold fewer than k songs
             raise RuntimeError(f"search found fewer than {k} songs for some windows; search more clusters")
@@ -366,10 +368,10 @@ def train_ranker(config_path, seed):
     X_val, N_val, Y_val = ds.X_val[v], ds.N_val[v], ds.Y_val[v]
     vectors = song_vectors(retriever)
     with song_search(rc, vectors, device) as search:
-        train_ids, train_scores, train_true = build_shortlists(retriever, ds.X_rank, ds.N_rank, ds.Y_rank, device,
-                                                               rc.shortlist, search, vectors)
-        val_ids, val_scores, val_true = build_shortlists(retriever, X_val, N_val, Y_val, device, rc.shortlist,
-                                                         search, vectors)
+        train_ids, train_scores, train_true = build_shortlists(retriever, ds.XI_rank, ds.N_rank, ds.Y_rank, device,
+                                                               rc.shortlist, search, vectors, lengths=ds.LI_rank)
+        val_ids, val_scores, val_true = build_shortlists(retriever, ds.XI_val[v], N_val, Y_val, device, rc.shortlist,
+                                                         search, vectors, lengths=ds.LI_val[v])
     in_list = shortlisted(train_ids, ds.Y_rank)
     rows = np.flatnonzero(in_list) if rc.train_windows == "in_shortlist" else np.arange(len(ds.Y_rank))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
@@ -513,8 +515,8 @@ def evaluate_ranker(config_path, seed):
     start = time.perf_counter()
     vectors = song_vectors(retriever)
     with song_search(rc, vectors, device) as search:
-        ids, scores, _ = build_shortlists(retriever, ds.X_test, ds.N_test, ds.Y_test, device, rc.shortlist, search,
-                                          vectors)
+        ids, scores, _ = build_shortlists(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, rc.shortlist, search,
+                                          vectors, lengths=ds.LI_test)
     search_seconds = time.perf_counter() - start
     featurizer = make_featurizer(rc, ds, retriever, device)
     ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0).to(device)
@@ -532,8 +534,8 @@ def evaluate_ranker(config_path, seed):
                f"retriever + ranker (top {rc.shortlist})": scored(ranks),
                "retriever alone": scored(retriever_ranks)}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
-        results["retriever alone, exact search"] = scored(rank_and_loss(retriever, ds.X_test, ds.N_test, ds.Y_test,
-                                                                        device)[0])
+        results["retriever alone, exact search"] = scored(rank_and_loss(retriever, ds.XI_test, ds.N_test, ds.Y_test,
+                                                                        device, lengths=ds.LI_test)[0])
     results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})

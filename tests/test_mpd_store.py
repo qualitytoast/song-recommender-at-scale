@@ -95,9 +95,10 @@ def random_mpd(tmp_path, n_playlists=120, seed=0):
 
 
 def config(folder, genres, max_playlists=1000, validation="separate_playlists", val_split=0.1, val_size=0,
-           val_max_windows=0, ranker_split=0.0):
+           val_max_windows=0, ranker_split=0.0, input_length=3):
     data = DataConfig(folder=str(folder), max_playlists=max_playlists, min_playlist_len=4, min_freq=2,
-                      song_key="track_uri", vocab_from="train", context_length=3, test_split=0.1,
+                      song_key="track_uri", vocab_from="train", context_length=3, input_length=input_length,
+                      test_split=0.1,
                       validation=validation, val_size=val_size, val_split=val_split, genres_file=str(genres),
                       val_max_windows=val_max_windows, ranker_split=ranker_split)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True, init="pytorch",
@@ -130,7 +131,8 @@ def test_store_dataset_equals_json_dataset(tmp_path):
     build_store(raw, tmp_path / "store")
     genres = tmp_path / "genres.jsonl"
     for kwargs in [{}, {"max_playlists": 40}, {"validation": "held_out_prefix", "val_split": 0.0, "val_size": 7},
-                   {"val_max_windows": 15}, {"ranker_split": 0.2}]:
+                   {"val_max_windows": 15}, {"ranker_split": 0.2},
+                   {"input_length": 6, "ranker_split": 0.2, "val_max_windows": 15}]:
         from_json = build_dataset(config(raw, genres, **kwargs))
         from_store = build_dataset(config(tmp_path / "store", genres, **kwargs))
         assert len(from_json.Y_train) > 50 and len(from_json.Yc_train) > 20  # a real test, not empty data
@@ -182,3 +184,29 @@ def test_window_histories_point_at_each_windows_own_context(tmp_path):
             L = X.shape[1]
             assert (begin <= end - L).all()
             np.testing.assert_array_equal(songs[end[:, None] - L + np.arange(L)].reshape(X.shape), X)
+
+
+def test_window_inputs_end_with_the_window_and_stop_at_the_playlist_start_or_an_unknown_song(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    ds = build_dataset(config(tmp_path / "store", tmp_path / "genres.jsonl", ranker_split=0.2, input_length=6))
+    for X, XI, LI, (songs, begin, end) in [(ds.X_rank, ds.XI_rank, ds.LI_rank, ds.H_rank),
+                                          (ds.X_val, ds.XI_val, ds.LI_val, ds.H_val),
+                                          (ds.X_test, ds.XI_test, ds.LI_test, ds.H_test)]:
+        L = X.shape[1]
+        assert XI.shape == (len(X), 6) and ((LI >= L) & (LI <= 6)).all() and (LI > L).any()
+        for r in range(len(X)):
+            n = LI[r]
+            np.testing.assert_array_equal(XI[r, n - L:n], X[r])               # ends with the window's songs
+            np.testing.assert_array_equal(XI[r, :n], songs[end[r] - n:end[r]])  # the songs right before them
+            assert (XI[r, n:] == 0).all()                                      # padded after
+            first = end[r] - n
+            # it stops early only at the playlist's start or right after an unknown song
+            assert n == 6 or first == begin[r] or songs[first - 1] < 0
+
+
+def test_window_inputs_are_the_windows_themselves_at_the_window_length(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    ds = build_dataset(config(tmp_path / "store", tmp_path / "genres.jsonl", ranker_split=0.2))
+    assert ds.XI_test is ds.X_test and ds.XI_rank is ds.X_rank and (ds.LI_test == 3).all()

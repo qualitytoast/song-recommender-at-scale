@@ -85,7 +85,7 @@ def main():
         model.load_state_dict(torch.load(run_dir_for(args.config, args.seed) / "best.pt", weights_only=True)["model"])
         pick = np.sort(rng.choice(len(ds.Y_test), args.queries, replace=False))  # a fixed sample of held-out windows
         vectors = song_vectors(model)
-        queries = query_vectors(model, ds.X_test[pick], ds.N_test[pick], device)
+        queries = query_vectors(model, ds.XI_test[pick], ds.N_test[pick], device, lengths=ds.LI_test[pick])
         targets = ds.Y_test[pick]
         label = f"real_{Path(args.config).stem}_{len(vectors)}"
     latency_queries = queries[:args.latency_queries]

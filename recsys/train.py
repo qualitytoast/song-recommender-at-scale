@@ -177,7 +177,7 @@ def train(config_path, train_seed):
             raise FloatingPointError(f"Training loss became {train_loss} by check {check}. Training diverged.")
         train_seconds = time.perf_counter() - interval_start
         val_start = time.perf_counter()
-        val_ranks, val_losses = rank_and_loss(model, ds.X_val, ds.N_val, ds.Y_val, device)
+        val_ranks, val_losses = rank_and_loss(model, ds.XI_val, ds.N_val, ds.Y_val, device, lengths=ds.LI_val)
         val_loss = float(val_losses.mean())
         val_ndcg = float(gains_from_ranks(val_ranks, k=10).mean())
         val_seconds = time.perf_counter() - val_start

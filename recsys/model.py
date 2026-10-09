@@ -171,15 +171,17 @@ class SongRecommender(nn.Module):
         real = (ids != 0).sum(dim=-1, keepdim=True).clamp(min=1)
         return table(ids).sum(dim=-2) / real
 
-    def forward(self, ids, names=None, hidden=None, all_positions=False, candidates=None):
+    def forward(self, ids, names=None, hidden=None, all_positions=False, candidates=None, lengths=None):
         """ids: (batch, seq) song IDs; names: (batch, width) name word IDs;
         hidden: optional (batch, seq) bool from augmentation, True where a song is
         hidden: its song vector is replaced by mask_vector and its features are dropped.
         Returns (batch, vocab) next-song scores from the last position, or with
         all_positions (batch, seq, vocab) scores from every position. With
-        candidates (1-D song IDs), only those songs are scored: (..., len(candidates))."""
+        candidates (1-D song IDs), only those songs are scored: (..., len(candidates)).
+        lengths: (batch,) real songs per row, for inputs padded after their songs (data.window_inputs):
+        the playlist vector is read at each row's last real song instead of the last position."""
         x = self.hidden_states(ids, names, hidden)
-        h = x if all_positions else x[:, -1, :]
+        h = x if all_positions else last_real(x, lengths)
         if candidates is not None:  # sampled softmax: score only these songs
             vectors = self.output.weight[candidates]
             for name in self.feature_names:
@@ -211,6 +213,14 @@ class SongRecommender(nn.Module):
                 nn.init.zeros_(m.bias)
 
 
+def last_real(x, lengths=None):
+    """x (batch, seq, d) -> (batch, d): each row's vector at its last real song (lengths (batch,)),
+    or at the last position without lengths."""
+    if lengths is None:
+        return x[:, -1, :]
+    return x[torch.arange(len(x), device=x.device), lengths - 1]
+
+
 def build_model(cfg, ds):
     """SongRecommender with the shape and settings from a Config, for Dataset ds."""
     m = cfg.model
@@ -218,25 +228,28 @@ def build_model(cfg, ds):
                      if name not in ("playlist_name", "genre")}
     name_word_count = len(ds.name_words) if "playlist_name" in m.features else None
     song_genres = ds.song_genres if "genre" in m.features else None
-    return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.context_length, m.num_layers,
+    return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.input_length, m.num_layers,
                            m.dropout, m.scale_attention, m.init, song_features, name_word_count,
                            song_genres, mask_token=cfg.train.augmenting,
                            causal=cfg.train.objective == "every_position")
 
 
 @torch.no_grad()
-def rank_and_loss(model, X, N, Y, device, max_scores=2**26):
+def rank_and_loss(model, X, N, Y, device, max_scores=2**26, lengths=None):
     """For each window: the rank of its true next song among all songs (1 = top;
     1 + songs scored strictly higher, as recsys.metrics.target_ranks) and its
     cross-entropy loss. Computed on the device a chunk at a time, keeping only
     ranks and losses, so the full (windows x catalog) score matrix never exists:
-    each chunk holds at most max_scores scores. Returns numpy (ranks, losses)."""
+    each chunk holds at most max_scores scores. lengths: real songs per row of X if
+    it is padded (data.window_inputs). Returns numpy (ranks, losses)."""
     model.eval()
     chunk = max(1, max_scores // model.output.out_features)
     ranks, losses = [], []
     for i in range(0, len(X), chunk):
         y = torch.from_numpy(Y[i:i + chunk]).to(device)
-        logits = model(torch.from_numpy(X[i:i + chunk]).to(device), torch.from_numpy(N[i:i + chunk]).to(device))
+        n = None if lengths is None else torch.from_numpy(lengths[i:i + chunk]).to(device)
+        logits = model(torch.from_numpy(X[i:i + chunk]).to(device), torch.from_numpy(N[i:i + chunk]).to(device),
+                       lengths=n)
         true = logits.gather(1, y[:, None])
         ranks.append(((logits > true).sum(dim=1) + 1).cpu())
         losses.append((torch.logsumexp(logits, dim=1) - true[:, 0]).cpu())

@@ -24,7 +24,9 @@ class DataConfig:
     min_freq: int          # songs seen fewer times are dropped from the vocab
     song_key: str          # "track_name" (v1: same-titled songs merge) or "track_uri"
     vocab_from: str        # count songs over "all" playlists (v1) or "train" only
-    context_length: int    # songs in each input window
+    context_length: int    # songs in each window: windows predict the song after this many known songs
+    input_length: int      # songs the retriever reads (>= context_length): a window's context songs and
+                           # the songs before them, up to this many; training chunks are this long
     test_split: float      # fraction of playlists held out
     validation: str        # "held_out_prefix": first val_size held-out windows (v1)
                            # "separate_playlists": val_split of playlists, never held out
@@ -42,6 +44,9 @@ class DataConfig:
         if (self.validation == "separate_playlists") != (self.val_split > 0):
             raise ValueError("val_split must be > 0 with separate_playlists validation, "
                              "and 0 with held_out_prefix")
+        if self.input_length < self.context_length:
+            raise ValueError(f"input_length ({self.input_length}) can't be below context_length "
+                             f"({self.context_length})")
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,11 @@ class Config:
         # so "the song's artist" isn't well defined.
         if self.model.features and self.data.song_key != "track_uri":
             raise ValueError("song features need song_key = \"track_uri\"")
+        # A last-position model reads exactly the window's songs; only every-position
+        # training (chunks) teaches the retriever to read inputs of any length.
+        if (self.train is not None and self.train.objective == "last_position"
+                and self.data.input_length != self.data.context_length):
+            raise ValueError("input_length must equal context_length with the last_position objective")
 
 
 def load_config(path):

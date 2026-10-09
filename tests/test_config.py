@@ -11,6 +11,7 @@ min_freq = 2
 song_key = "track_name"
 vocab_from = "all"
 context_length = 10
+input_length = 10
 test_split = 0.1
 val_size = 3000
 validation = "held_out_prefix"
@@ -101,3 +102,13 @@ def test_every_position_with_augmentation_loads(tmp_path):
                     .replace("augment_mask = 0.0", "augment_mask = 0.2"))
     cfg = load_config(path)
     assert cfg.train.objective == "every_position" and cfg.train.augmenting
+
+
+def test_input_length_must_be_at_least_the_window_length():
+    from recsys.config import DataConfig
+    settings = dict(folder="data/mpd", max_playlists=10, min_playlist_len=4, min_freq=2, song_key="track_uri",
+                    vocab_from="train", context_length=10, test_split=0.1, validation="separate_playlists",
+                    val_size=0, val_split=0.1, genres_file="g.jsonl", val_max_windows=0, ranker_split=0.0)
+    DataConfig(**settings, input_length=20)  # fine
+    with pytest.raises(ValueError, match="input_length"):
+        DataConfig(**settings, input_length=5)

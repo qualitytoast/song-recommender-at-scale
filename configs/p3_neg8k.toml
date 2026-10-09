@@ -12,6 +12,7 @@ min_freq = 2           # songs seen fewer times than this are dropped
 song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
 vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
 context_length = 10    # predict the 11th song from the previous 10
+input_length = 10      # the retriever reads the window's songs only
 test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
 validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
 val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists

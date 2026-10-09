@@ -164,7 +164,7 @@ def test_split_does_not_modify_input():
 
 def tiny_config(folder, vocab_from, validation, val_split, val_size=2, song_key="track_name", features=()):
     data = DataConfig(folder=str(folder), max_playlists=20, min_playlist_len=4, min_freq=2,
-                      song_key=song_key, vocab_from=vocab_from, context_length=2,
+                      song_key=song_key, vocab_from=vocab_from, context_length=2, input_length=2,
                       test_split=0.1, validation=validation, val_size=val_size, val_split=val_split,
                       genres_file=str(folder / "genres.jsonl"), val_max_windows=0,
                       ranker_split=0.0)

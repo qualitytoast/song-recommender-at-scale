@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from recsys.model import last_real
+
 
 @torch.no_grad()
 def song_vectors(model):
@@ -40,13 +42,15 @@ def song_vectors(model):
 
 
 @torch.no_grad()
-def query_vectors(model, X, N, device, batch=4096):
-    """(windows, embed_dim + 1) float32: each window's playlist vector h with a 1 appended."""
+def query_vectors(model, X, N, device, batch=4096, lengths=None):
+    """(windows, embed_dim + 1) float32: each window's playlist vector h with a 1 appended.
+    lengths: real songs per row of X if it is padded (data.window_inputs)."""
     model.eval()
     out = []
     for i in range(0, len(X), batch):
-        h = model.hidden_states(torch.from_numpy(X[i:i + batch]).to(device),
-                                torch.from_numpy(N[i:i + batch]).to(device))[:, -1, :]
+        n = None if lengths is None else torch.from_numpy(lengths[i:i + batch]).to(device)
+        h = last_real(model.hidden_states(torch.from_numpy(X[i:i + batch]).to(device),
+                                          torch.from_numpy(N[i:i + batch]).to(device)), n)
         out.append(torch.cat([h, torch.ones(len(h), 1, device=device)], dim=1).float().cpu())
     return torch.cat(out).numpy()
 
