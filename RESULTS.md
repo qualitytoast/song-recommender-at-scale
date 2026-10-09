@@ -909,3 +909,22 @@ by up to 11%.
   one seed.
 - Phase B (the ranker: reuse the retriever's exact-search number in its evaluation, cache shortlists per
   retriever) starts from a baseline ranker on `retriever_50k_b256`.
+
+**Speed-ups, phase B: the ranker** (2026-10-09). Same rule (at least 5% faster, held-out within ±0.003).
+Baseline: `ranker_50k_b256`, the best ranker settings (`ranker_50k_v2_mlp`) on the new base retriever
+`retriever_50k_b256`: held-out NDCG@10 **0.1490** (retriever alone on the same filtered shortlists 0.1265;
+on `retriever_50k` the same settings gave 0.1484 over 0.1255), 7.0 min of training (shortlists 24 s of it),
+held-out evaluation 67 s.
+
+| # | Change | Speed | Quality | Kept |
+|---|---|---|---|---|
+| 2 | The ranker's evaluation reads "retriever alone, exact search" from the retriever's own `eval.json` (same windows, newer than its checkpoint) instead of re-ranking every song (`df1089e`) | 50k evaluation 67 -> 35 s; saves the retriever's full held-out ranking each time (200k: 404 s, or 95 s sampled) | identical (the same number, read) | yes |
+| 3 | Shortlists cached per retriever, search settings and windows (`runs/shortlist_cache`, `df1089e`) | building -> loading: 50k 24-36 -> 0.3 s, 200k 113-117 -> 1.0 s (training, validation and held-out sets); 50k evaluation 35 -> 19 s | fresh builds identical to the cached shortlists (all sets, both scales), metrics identical | yes |
+
+- Together at 50k, a ranker run on an already-used retriever goes from ~8.1 to ~6.9 min (-15%) and its
+  evaluation from 67 to 19 s (-71%). At 200k (`ranker_200k_v2`: 10.7 + 8.4 min) the two remove ~2 min of
+  shortlists and the retriever's held-out ranking, roughly 19 -> 11 min. The first ranker run on a new
+  retriever still builds and caches its shortlists. Cache: ~0.4 GB at 50k, ~1.9 GB at 200k.
+- Carried over from phase A: sampled held-out windows (the ranker scores its retriever's held-out windows,
+  so it follows `test_max_windows`). Row-only updates and mixed precision weren't kept, so there was nothing
+  else to carry over.
