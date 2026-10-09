@@ -813,6 +813,9 @@ training windows throughout.
 | playlist length | `ranker_50k_v2_playlistlen` | input: log(1 + songs in the playlist so far) | small network | 0.1230 -> 0.1460 (26) | 0.1483 (0.1255) | 8.7% | 22.3% | no | 4.7 + 0.7 min |
 | wrong answers 15 | `ranker_50k_v2_neg15` | 15 wrong answers per training window instead of 31 | small network | 0.1230 -> 0.1458 (33) | 0.1487 (0.1255) | 8.8% | 22.4% | no | 5.4 + 0.7 min |
 | wrong answers 63 | `ranker_50k_v2_neg63` | 63 wrong answers per training window instead of 31 | small network | 0.1230 -> 0.1459 (41) | 0.1484 (0.1255) | 8.8% | 22.3% | no | 8.0 + 1.3 min |
+| lr A | `ranker_50k_v2_newlr10` | new weights at 1e-3 (10x), copied weights at 1e-4 | small network | 0.1230 -> 0.1459 (11) | 0.1486 (0.1255) | 8.7% | 22.4% | no | 3.6 + 1.4 min |
+| lr B | `ranker_50k_v2_newlr3` | new weights at 3e-4 (3x), copied weights at 1e-4 | small network | 0.1230 -> 0.1465 (23) | 0.1491 (0.1255) | 8.8% | 22.5% | no | 4.8 + 0.7 min |
+| lr C | `ranker_50k_v2_newlr10_slow` | new weights at 1e-3 (10x), copied weights at 3e-5 | small network | 0.1230 -> 0.1452 (6) | 0.1480 (0.1255) | 8.7% | 22.3% | no | 1.8 + 0.7 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -855,3 +858,9 @@ training windows throughout.
   network correction (+0.0022). Not kept: playlist neighbours (+0.0002), song length (-0.0002),
   playlist length (-0.0001), 15 or 63 wrong answers (+0.0003, 0.0000). Next, after discussion: a
   separate learning rate for the ranker's new weights, then the 200k confirmation.
+- Learning rates (2026-10-08, `85fb63d`; new setting new_lr for the ranker's own new weights, the
+  candidate marker and position and the correction network, while lr covers the weights copied from
+  the retriever): A, new weights at 1e-3: held-out 0.1486 (+0.0002), best at check 11 instead of 29;
+  B, 3e-4: 0.1491 (+0.0007, validation +0.0010), a near miss; C, 1e-3 with the copied weights at
+  3e-5: 0.1480 (-0.0004), stopping at check 6. None kept: bigger steps for the new weights reach the
+  same level sooner rather than a higher one; everything stays at 1e-4.
