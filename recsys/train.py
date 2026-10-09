@@ -30,7 +30,6 @@ from recsys.data import build_dataset
 from recsys.augment import augment_plan, ignored_targets
 from recsys.metrics import gains_from_ranks
 from recsys.lazy_adam import LazyAdamW, used_rows
-from recsys.rowwise import RowwiseAdamW
 from recsys.sampled import candidate_set, draw_random_songs, log_q, random_probs, sampled_softmax_loss
 from recsys.model import build_model, rank_and_loss
 
@@ -122,15 +121,11 @@ def train(config_path, train_seed):
     device = pick_device()
     ds = build_dataset(cfg)
     model = build_model(cfg, ds).to(device)
-    lazy = cfg.train.optimizer in ("lazy_adamw", "rowwise_adamw")
+    lazy = cfg.train.optimizer == "lazy_adamw"
     if lazy:  # AdamW on only the table rows each batch uses (recsys/lazy_adam.py)
         assert cfg.train.objective == "every_position" and cfg.train.softmax == "sampled" \
             and not cfg.train.augmenting, "lazy_adamw is implemented for the p3 training setup"
-        if cfg.train.optimizer == "rowwise_adamw":  # ... without full-size table gradients (recsys/rowwise.py)
-            optimizer = RowwiseAdamW(model, cfg.train.lr, cfg.train.weight_decay)
-            model.row_grads = optimizer.grads
-        else:
-            optimizer = LazyAdamW(model, cfg.train.lr, cfg.train.weight_decay)
+        optimizer = LazyAdamW(model, cfg.train.lr, cfg.train.weight_decay)
     else:
         optimizer = make_optimizer(model.parameters(), cfg.train)
     stopper = EarlyStopping(cfg.train.min_checks, cfg.train.patience)
