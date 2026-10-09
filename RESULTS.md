@@ -809,6 +809,7 @@ training windows throughout.
 | input | `ranker_50k_v2_noinput` | leave the retriever's input songs out of every shortlist | base | 0.1230 -> 0.1444 (35) | 0.1462 (0.1255) | 8.7% | 21.9% | yes | 6.0 + 0.7 min |
 | neighbours | `ranker_50k_v2_neighbours` | inputs: share of the 50 / 10 most alike part-A playlists containing the candidate | input | 0.1230 -> 0.1444 (39) | 0.1464 (0.1255) | 8.7% | 21.9% | no | 7.0 + 0.8 min |
 | song length | `ranker_50k_v2_songlength` | input: how far the candidate's length is from the context songs' typical length | input | 0.1230 -> 0.1444 (37) | 0.1460 (0.1255) | 8.7% | 21.9% | no | 6.2 + 0.7 min |
+| small network | `ranker_50k_v2_mlp` | correction as a small network (64 hidden units) instead of a weighted sum | input | 0.1230 -> 0.1455 (29) | 0.1484 (0.1255) | 8.8% | 22.3% | yes | 5.1 + 0.7 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -831,3 +832,9 @@ training windows throughout.
 - `ranker_50k_v2_songlength` (2026-10-08, `4db432c`): input length_gap, |log(the candidate's length)
   - mean log(the context songs' lengths)|: held-out 0.1460 vs 0.1462 (-0.0002), validation 0.1444 vs
   0.1444: not kept. The retriever already reads each song's length bucket.
+- `ranker_50k_v2_mlp` (2026-10-08, `fc81af2`; new setting correction_hidden): the correction is a
+  small network (64 hidden units, then 1 output, its last layer starting at zero; 4,801 new weights)
+  instead of a weighted sum, so it can combine its inputs ("same artist" counting more when the song
+  also often follows the last one): held-out 0.1484 vs 0.1462 (+0.0022), Hits@10 22.3% vs 21.9%,
+  validation 0.1455 vs 0.1444: kept. It learns faster too (validation 0.1373 after the first check,
+  0.2 epochs).
