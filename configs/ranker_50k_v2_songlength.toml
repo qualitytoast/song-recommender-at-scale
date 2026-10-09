@@ -1,0 +1,28 @@
+# Ranker series 2 at 50k, step: song-length closeness, on retriever_50k. Builds on ranker_50k_v2_noinput (0.1462);
+# playlist neighbours weren't kept. Change: extra input length_gap, how far the candidate's length is from the context
+# songs' typical length: |log(its length) - mean log(their lengths)|.
+
+[ranker]
+retriever = "configs/retriever_50k.toml"  # seed s uses runs/retriever_ranker_runs/retriever_50k/seed<s>/best.pt
+train_seeds = [1]          # 1 seed per run
+shortlist = 100            # step 2: rerank the retriever's top 100
+search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)
+ivf_nlist = 2048           # clusters, ~4 x sqrt(166,627 songs) rounded to a power of 2
+ivf_nprobe = 128           # clusters searched per window
+negatives = 31             # per training window: the true song + 31 sampled from its shortlist (the top 100)
+negatives_from = 100       # ... drawn from the whole shortlist
+optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
+lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
+weight_decay = 0.05
+batch_size = 64            # windows per step
+epochs = 20                # maximum passes over the 117,999 part-B windows with the true song in the top 100
+eval_every_examples = 24200  # as in step 2 (~1/5 epoch of the windows trained on)
+min_checks = 5
+patience = 5
+val_windows = 20000        # every window of the retriever's 20,000-window validation sample
+train_windows = "in_shortlist"  # step 1: only windows whose true song is in the shortlist
+freeze_tables = false      # the copied per-ID tables train too
+features = ["overlap", "cooccurrence", "song_length"]  # + length_gap
+correction_hidden = 0      # the correction is a weighted sum of its inputs
+exclude_input = true       # was false: songs in the retriever's input are left out of the shortlist
+val_set = "separate"       # was "retriever": validation windows outside the retriever's sample
