@@ -810,6 +810,7 @@ training windows throughout.
 | neighbours | `ranker_50k_v2_neighbours` | inputs: share of the 50 / 10 most alike part-A playlists containing the candidate | input | 0.1230 -> 0.1444 (39) | 0.1464 (0.1255) | 8.7% | 21.9% | no | 7.0 + 0.8 min |
 | song length | `ranker_50k_v2_songlength` | input: how far the candidate's length is from the context songs' typical length | input | 0.1230 -> 0.1444 (37) | 0.1460 (0.1255) | 8.7% | 21.9% | no | 6.2 + 0.7 min |
 | small network | `ranker_50k_v2_mlp` | correction as a small network (64 hidden units) instead of a weighted sum | input | 0.1230 -> 0.1455 (29) | 0.1484 (0.1255) | 8.8% | 22.3% | yes | 5.1 + 0.7 min |
+| playlist length | `ranker_50k_v2_playlistlen` | input: log(1 + songs in the playlist so far) | small network | 0.1230 -> 0.1460 (26) | 0.1483 (0.1255) | 8.7% | 22.3% | no | 4.7 + 0.7 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -838,3 +839,6 @@ training windows throughout.
   also often follows the last one): held-out 0.1484 vs 0.1462 (+0.0022), Hits@10 22.3% vs 21.9%,
   validation 0.1455 vs 0.1444: kept. It learns faster too (validation 0.1373 after the first check,
   0.2 epochs).
+- `ranker_50k_v2_playlistlen` (2026-10-08, `46bc24f`): input log_playlist_len, tried after the small
+  network because it is the same for every candidate of a window and a weighted sum can't use it:
+  held-out 0.1483 vs 0.1484 (-0.0001), validation 0.1460 vs 0.1455 (+0.0005): not kept.
