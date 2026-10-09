@@ -124,7 +124,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       top-100 reranking, overlap and co-occurrence inputs); 200k confirmation next
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
-- [ ] Personalization to one listener's history
+- [ ] Personalization to one listener's history (add distillation?)
 
 ## Running it
 
