@@ -198,6 +198,17 @@ class SongRecommender(nn.Module):
             logits = logits + h @ sum(candidates).T
         return logits
 
+    def output_vectors(self):
+        """(vectors (vocab, embed_dim), bias (vocab,)): each song's output row plus its feature
+        output vectors, and its bias, so h . vectors[j] + bias[j] is song j's score. Building these
+        once and scoring many playlist vectors against them is what ranking every song needs."""
+        vectors = self.output.weight
+        for name in self.feature_names:
+            vectors = vectors + self.output_features[name](self.song_feature_ids(name))
+        if self.output_genres is not None:
+            vectors = vectors + self.mean_vector(self.output_genres, self.song_genres)
+        return vectors, self.output.bias
+
     def _init_like_v1(self):
         """Replace PyTorch's default starting weights with v1's.
 
@@ -244,12 +255,14 @@ def rank_and_loss(model, X, N, Y, device, max_scores=2**26, lengths=None):
     it is padded (data.window_inputs). Returns numpy (ranks, losses)."""
     model.eval()
     chunk = max(1, max_scores // model.output.out_features)
+    vectors, bias = model.output_vectors()  # once, not once per chunk
     ranks, losses = [], []
     for i in range(0, len(X), chunk):
         y = torch.from_numpy(Y[i:i + chunk]).to(device)
         n = None if lengths is None else torch.from_numpy(lengths[i:i + chunk]).to(device)
-        logits = model(torch.from_numpy(X[i:i + chunk]).to(device), torch.from_numpy(N[i:i + chunk]).to(device),
-                       lengths=n)
+        h = last_real(model.hidden_states(torch.from_numpy(X[i:i + chunk]).to(device),
+                                          torch.from_numpy(N[i:i + chunk]).to(device)), n)
+        logits = h @ vectors.T + bias
         true = logits.gather(1, y[:, None])
         ranks.append(((logits > true).sum(dim=1) + 1).cpu())
         losses.append((torch.logsumexp(logits, dim=1) - true[:, 0]).cpu())

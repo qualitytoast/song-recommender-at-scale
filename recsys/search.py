@@ -33,12 +33,8 @@ from recsys.model import last_real
 def song_vectors(model):
     """(vocab_size, embed_dim + 1) float32: each song's output vector with its bias
     appended, so [h, 1] . vector = the retriever's score for that song."""
-    vectors = model.output.weight.detach().clone()
-    for name in model.feature_names:
-        vectors += model.output_features[name](model.song_feature_ids(name))
-    if model.output_genres is not None:
-        vectors += model.mean_vector(model.output_genres, model.song_genres)
-    return torch.cat([vectors, model.output.bias[:, None]], dim=1).float().cpu().numpy()
+    vectors, bias = model.output_vectors()
+    return torch.cat([vectors, bias[:, None]], dim=1).float().cpu().numpy()
 
 
 @torch.no_grad()

@@ -49,6 +49,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", required=True)
     ap.add_argument("--steps", type=int, default=200)
+    ap.add_argument("--batch-size", type=int, help="chunks per step instead of the config's")
+    ap.add_argument("--autocast", choices=["bf16", "fp16"], help="run forward and loss in 16-bit (mixed precision)")
+    ap.add_argument("--freeze-tables", action="store_true",
+                    help="no gradients or updates for the per-ID tables: the most row-only updates could save")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -59,10 +63,16 @@ def main():
     torch.manual_seed(1)
     model = build_model(cfg, ds).to(device)
     lazy = t.optimizer == "lazy_adamw"
+    if args.freeze_tables:
+        for n, p in model.named_parameters():
+            if per_id_table(n, p, len(ds.vocab)):
+                p.requires_grad_(False)
     optimizer = LazyAdamW(model, t.lr, t.weight_decay) if lazy else make_optimizer(model.parameters(), t)
     song_features = {name: ds.song_features[name][0] for name in model.feature_names}
     X, Y, N = (torch.from_numpy(a).to(device) for a in (ds.Xc_train, ds.Yc_train, ds.Nc_train))
-    V, B = len(ds.vocab), t.batch_size
+    V, B = len(ds.vocab), args.batch_size or t.batch_size
+    dtype = {"bf16": torch.bfloat16, "fp16": torch.float16}.get(args.autocast)
+    autocast = lambda: torch.autocast(device.type, dtype=dtype, enabled=dtype is not None)
     counts = torch.bincount(Y[Y != -100], minlength=V).float()
     target_freq = counts / counts.sum()
     probs = random_probs(target_freq, t.negative_power)
@@ -75,7 +85,8 @@ def main():
     shared_params = [p for n, p in model.named_parameters() if not per_id_table(n, p, V)]
     n_table, n_shared = sum(p.numel() for p in table_params), sum(p.numel() for p in shared_params)
     print(f"{args.config}: {V:,} songs | {sum(p.numel() for p in model.parameters()):,} params: "
-          f"{n_table:,} in per-ID tables, {n_shared:,} in shared layers | batch {B} chunks")
+          f"{n_table:,} in per-ID tables, {n_shared:,} in shared layers | batch {B} chunks"
+          f"{' | autocast ' + args.autocast if args.autocast else ''}{' | tables frozen' if args.freeze_tables else ''}")
 
     def step(i, timings=None):
         mark = lambda name: None
@@ -95,9 +106,10 @@ def main():
         candidates, real = candidate_set(yb, t.sampled_negatives, V, gen, draw, random_songs)
         correction = log_q(candidates, (yb != -100).sum(), target_freq, t.sampled_negatives, probs)
         mark("batch + candidate sampling")
-        logits = model(xb, nb, all_positions=True, candidates=candidates)
-        mark("forward")
-        loss = sampled_softmax_loss(logits, yb, candidates, real, correction)
+        with autocast():
+            logits = model(xb, nb, all_positions=True, candidates=candidates)
+            mark("forward")
+            loss = sampled_softmax_loss(logits.float(), yb, candidates, real, correction)
         mark("loss")
         optimizer.zero_grad()
         loss.backward()
