@@ -1,0 +1,47 @@
+# Retriever improvement series at 50k, test 1 (builds on retriever_50k: held-out NDCG@10 0.1172).
+# Change: 32,768 sampled wrong answers per batch instead of 8,192 (4x), still drawn by popularity^0.75.
+# Carried over from the ranker work: comparing against all 99 shortlist songs was a near miss for the ranker.
+
+data_seed = 42           # playlist split, same as every Phase 1 run
+train_seeds = [1]        # 1 seed per run from now on
+
+[data]
+folder = "data/mpd_store"   # was "data/mpd": the compact store (recsys/mpd_store.py)
+max_playlists = 50000  # was 200000
+min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
+min_freq = 2           # songs seen fewer times than this are dropped
+song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
+vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
+context_length = 10    # predict the 11th song from the previous 10
+test_split = 0.1       # fraction of playlists held out (5,000 at 50k)
+validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
+val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
+genres_file = "data/genres/musicbrainz_all_mpd_artists.jsonl"  # was the API file: dump genres for all MPD artists
+val_max_windows = 20000  # a fixed sample of the validation windows
+ranker_split = 0.2       # the last 20% of training playlists are kept for the ranker
+val_size = 0             # was 3000; unused with separate_playlists
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
+init = "pytorch"         # was "v1": PyTorch's default starting weights
+features = ["artist", "album", "duration", "playlist_name", "genre"]  # was without "genre"
+
+[train]
+optimizer = "lazy_adamw"  # only the table rows a batch uses are updated
+lr = 2e-3             # x2 for 128-chunk batches (p3_50k_lazy_b128_lr2)
+weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
+batch_size = 128       # chunks per step (p3_50k_lazy_b128_lr2)
+epochs = 100           # a cap; early stopping ends the run
+eval_every_targets = 458138  # a quarter of an epoch (1,832,555 part-A targets)
+min_checks = 10          # = 2.5 epochs at a quarter epoch per check
+patience = 5             # was 10 epochs; now counts validation checks
+augment_mask = 0.0      # training-window augmentation off
+augment_crop = 0
+augment_reorder = 0.0
+objective = "every_position"  # was "last_position": predict the next song at every position
+softmax = "sampled"       # was "full": each batch scores its true next songs + random songs
+sampled_negatives = 32768  # was 8192: 4x the random wrong answers per batch
+negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
