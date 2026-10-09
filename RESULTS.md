@@ -808,6 +808,7 @@ training windows throughout.
 | base | `ranker_50k_v2_base` | best ranker so far (`ranker_50k_cooccurrence`), separate validation windows | — | 0.1153 -> 0.1340 (35) | 0.1351 (0.1171) | 7.9% | 20.6% | — | 5.9 + 0.7 min |
 | input | `ranker_50k_v2_noinput` | leave the retriever's input songs out of every shortlist | base | 0.1230 -> 0.1444 (35) | 0.1462 (0.1255) | 8.7% | 21.9% | yes | 6.0 + 0.7 min |
 | neighbours | `ranker_50k_v2_neighbours` | inputs: share of the 50 / 10 most alike part-A playlists containing the candidate | input | 0.1230 -> 0.1444 (39) | 0.1464 (0.1255) | 8.7% | 21.9% | no | 7.0 + 0.8 min |
+| song length | `ranker_50k_v2_songlength` | input: how far the candidate's length is from the context songs' typical length | input | 0.1230 -> 0.1444 (37) | 0.1460 (0.1255) | 8.7% | 21.9% | no | 6.2 + 0.7 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -827,3 +828,6 @@ training windows throughout.
   of the 10 most alike that contain it: held-out 0.1464 vs 0.1462 (+0.0002), validation 0.1444 vs
   0.1444: not kept. The neighbours are picked by the retriever's own scores, so they repeat what it
   and the co-occurrence counts already carry. 7.0 vs 6.0 min of training.
+- `ranker_50k_v2_songlength` (2026-10-08, `4db432c`): input length_gap, |log(the candidate's length)
+  - mean log(the context songs' lengths)|: held-out 0.1460 vs 0.1462 (-0.0002), validation 0.1444 vs
+  0.1444: not kept. The retriever already reads each song's length bucket.
