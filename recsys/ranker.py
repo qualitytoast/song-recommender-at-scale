@@ -486,6 +486,8 @@ def train_ranker(config_path, seed):
         if stop:
             print(f"early stop at check {len(log) - 1}")
             break
+    if not stop and log[-1]["examples"] < seen:
+        validate()  # training ended between checks: validate what it learned since the last one
 
     with open(run_dir / "log.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=log[0].keys())
