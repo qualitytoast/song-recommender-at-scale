@@ -122,7 +122,7 @@ def config(**changes):
                     negatives=31, negatives_from=100, optimizer="lazy_adamw", lr=1e-4, new_lr=1e-4, weight_decay=0.05,
                     batch_size=64, epochs=1, eval_every_examples=10, min_checks=1, patience=1, val_windows=10,
                     train_windows="all", freeze_tables=False, features=[], correction_hidden=0,
-                    exclude_input=False, val_set="retriever")
+                    exclude_input=False, val_set="retriever", compile=False)
     return RankerConfig(**{**settings, **changes})
 
 

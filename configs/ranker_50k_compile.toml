@@ -1,9 +1,9 @@
-# Ranker improvement series at 50k, step 5c, on retriever_50k. Builds on step 2 (ranker_50k_top100, kept: 0.1222);
-# steps 3, 4, 5a and 5b weren't kept. Change: extra inputs against the 10 context songs: same_artist, same_album,
-# genre_match and last_same_artist (recsys/rank_features.py), read by the correction layer.
+# Speed test C1 for the ranker (torch.compile), on retriever_50k_b256. Builds on ranker_50k_b256_batch256 (0.1482).
+# Change: the ranker's forward pass is compiled (training, validation and held-out reranking); same math.
+# Kept if at least 5% faster and held-out stays within +-0.003.
 
 [ranker]
-retriever = "configs/retriever_50k.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k/seed<s>/best.pt
+retriever = "configs/retriever_50k_b256.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k_b256/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 100            # step 2: rerank the retriever's top 100
 search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)
@@ -12,10 +12,10 @@ ivf_nprobe = 128           # clusters searched per window
 negatives = 31             # per training window: the true song + 31 sampled from its shortlist (the top 100)
 negatives_from = 100       # ... drawn from the whole shortlist
 optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
-lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
-new_lr = 1e-4              # the ranker's new weights (candidate marker, position, correction): as lr
+lr = 2e-4                  # was 1e-4: x sqrt(4) for 256-window batches
+new_lr = 2e-4              # was 1e-4: as lr
 weight_decay = 0.05
-batch_size = 64            # windows per step
+batch_size = 256           # was 64: a quarter of the steps per epoch
 epochs = 20                # maximum passes over the 117,999 part-B windows with the true song in the top 100
 eval_every_examples = 24200  # as in step 2 (~1/5 epoch of the windows trained on)
 min_checks = 5
@@ -23,8 +23,8 @@ patience = 5
 val_windows = 20000        # every window of the retriever's 20,000-window validation sample
 train_windows = "in_shortlist"  # step 1: only windows whose true song is in the shortlist
 freeze_tables = false      # the copied per-ID tables train too
-features = ["overlap"]     # was []: same_artist, same_album, genre_match, last_same_artist
-correction_hidden = 0      # the correction is a weighted sum of its inputs
-exclude_input = false      # input songs can be in the shortlist
-val_set = "retriever"      # validate on the retriever's validation sample
-compile = false            # torch.compile off: plain PyTorch
+features = ["overlap", "cooccurrence"]  # step 5c + log_after_last, log_after_context, context_with_pair
+correction_hidden = 64     # was 0: a small network that can combine its inputs
+exclude_input = true       # was false: songs in the retriever's input are left out of the shortlist
+val_set = "separate"       # was "retriever": validation windows outside the retriever's sample
+compile = true             # was false: forward pass compiled
