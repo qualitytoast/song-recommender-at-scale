@@ -703,6 +703,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 5c | `ranker_50k_overlap` | inputs: artist, album and genre overlap with the context songs | step 2 | 0.1179 -> 0.1293 (28) | 0.1276 (0.1171) | 7.3% | 19.7% | yes | 6.0 + 1.3 min |
 | 5d | `ranker_50k_cooccurrence` | inputs: how often the candidate came 1-5 songs after the context songs (part A) | step 5c | 0.1179 -> 0.1352 (34) | 0.1351 (0.1171) | 7.9% | 20.6% | yes | 7.2 + 1.3 min |
 | 5e | `ranker_50k_history` | inputs 5c and 5d also over the playlist so far (up to 100 songs) | step 5d | 0.1179 -> 0.1353 (29) | 0.1357 (0.1171) | 7.9% | 20.7% | no | 7.2 + 1.3 min |
+| 4 again | `ranker_50k_cooccurrence_fulllist` | step 4's change (all 99 as wrong answers) on step 5d | step 5d | 0.1179 -> 0.1343 (20) | 0.1340 (0.1171) | 7.8% | 20.4% | no | 5.2 + 1.3 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -759,3 +760,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   shortlist training windows, and no new information. The ranker reorders only the top 100 (top-100
   recall 41.5%), so it can't lift songs the retriever ranks lower. Next: confirm at 200k on
   `retriever_200k`.
+- `ranker_50k_cooccurrence_fulllist` (2026-10-08, `49dae2e`): step 4's change, a near miss on step
+  2, retried on the best ranker: held-out 0.1340 vs 0.1351 (-0.0011), validation 0.1343 vs 0.1352,
+  best at check 20 (step 5d: 34): not kept. With the overlap and co-occurrence inputs, 31 wrong
+  answers drawn afresh each epoch do better than the same 99 every time.
