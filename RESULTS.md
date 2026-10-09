@@ -811,6 +811,8 @@ training windows throughout.
 | song length | `ranker_50k_v2_songlength` | input: how far the candidate's length is from the context songs' typical length | input | 0.1230 -> 0.1444 (37) | 0.1460 (0.1255) | 8.7% | 21.9% | no | 6.2 + 0.7 min |
 | small network | `ranker_50k_v2_mlp` | correction as a small network (64 hidden units) instead of a weighted sum | input | 0.1230 -> 0.1455 (29) | 0.1484 (0.1255) | 8.8% | 22.3% | yes | 5.1 + 0.7 min |
 | playlist length | `ranker_50k_v2_playlistlen` | input: log(1 + songs in the playlist so far) | small network | 0.1230 -> 0.1460 (26) | 0.1483 (0.1255) | 8.7% | 22.3% | no | 4.7 + 0.7 min |
+| wrong answers 15 | `ranker_50k_v2_neg15` | 15 wrong answers per training window instead of 31 | small network | 0.1230 -> 0.1458 (33) | 0.1487 (0.1255) | 8.8% | 22.4% | no | 5.4 + 0.7 min |
+| wrong answers 63 | `ranker_50k_v2_neg63` | 63 wrong answers per training window instead of 31 | small network | 0.1230 -> 0.1459 (41) | 0.1484 (0.1255) | 8.8% | 22.3% | no | 8.0 + 1.3 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -842,3 +844,14 @@ training windows throughout.
 - `ranker_50k_v2_playlistlen` (2026-10-08, `46bc24f`): input log_playlist_len, tried after the small
   network because it is the same for every candidate of a window and a weighted sum can't use it:
   held-out 0.1483 vs 0.1484 (-0.0001), validation 0.1460 vs 0.1455 (+0.0005): not kept.
+- `ranker_50k_v2_neg15`, `ranker_50k_v2_neg63` (2026-10-08, `7d45093`): 15 or 63 wrong answers per
+  training window instead of 31, still from the top 100: held-out 0.1487 and 0.1484 vs 0.1484
+  (+0.0003, 0.0000), validation 0.1458 and 0.1459 vs 0.1455: neither kept; 31 stays. 63 costs 8.0
+  min of training against 5.1.
+- Result: `ranker_50k_v2_mlp` is the best two-stage model at 50k: held-out NDCG@10 0.1484, Hits@1
+  8.8%, Hits@10 22.3%; 44x most-popular. Against the retriever alone it adds +0.0229 (+18.2%) over
+  the same filtered shortlists (0.1255), and the whole pipeline is +0.0312 (+26.7%) over the
+  unfiltered retriever (0.1172). Kept in series 2: leaving input songs out (+0.0111) and the small-
+  network correction (+0.0022). Not kept: playlist neighbours (+0.0002), song length (-0.0002),
+  playlist length (-0.0001), 15 or 63 wrong answers (+0.0003, 0.0000). Next, after discussion: a
+  separate learning rate for the ranker's new weights, then the 200k confirmation.
