@@ -104,6 +104,7 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Sampled softmax, lazy AdamW, bigger batches | 50,000 | 166,627 | 0.1213 | 36x |
 | Two-stage at 50k: retriever (80% of training playlists) alone → + ranker | 50,000 | 166,627 | 0.1020 → 0.1146 | 34x |
 | Retriever at 50k, current settings (80% of training playlists) | 50,000 | 166,627 | 0.1172 | 34x |
+| Two-stage at 50k: that retriever (IVF shortlist) alone → + improved ranker | 50,000 | 166,627 | 0.1171 → 0.1351 | 40x |
 | Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
 | Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
 
@@ -119,6 +120,8 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       retrievers, two-stage ranking at 50k, faster training, search benchmark
 - [x] Ranker at 200k (with FAISS IVF shortlists): no gain over the retriever, and none
       at 5k or 50k with the same retriever settings (its 50k gain was on an older retriever)
+- [x] Ranker improvements at 50k: +15.4% over the retriever (in-shortlist training windows,
+      top-100 reranking, overlap and co-occurrence inputs); 200k confirmation next
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
 - [ ] Personalization to one listener's history

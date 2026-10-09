@@ -702,6 +702,7 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
 | 5b | `ranker_50k_popularity` | input: popularity in part A | step 2 | 0.1179 -> 0.1236 (32) | 0.1221 (0.1171) | 7.1% | 18.7% | no | 5.9 + 1.2 min |
 | 5c | `ranker_50k_overlap` | inputs: artist, album and genre overlap with the context songs | step 2 | 0.1179 -> 0.1293 (28) | 0.1276 (0.1171) | 7.3% | 19.7% | yes | 6.0 + 1.3 min |
 | 5d | `ranker_50k_cooccurrence` | inputs: how often the candidate came 1-5 songs after the context songs (part A) | step 5c | 0.1179 -> 0.1352 (34) | 0.1351 (0.1171) | 7.9% | 20.6% | yes | 7.2 + 1.3 min |
+| 5e | `ranker_50k_history` | inputs 5c and 5d also over the playlist so far (up to 100 songs) | step 5d | 0.1179 -> 0.1353 (29) | 0.1357 (0.1171) | 7.9% | 20.7% | no | 7.2 + 1.3 min |
 
 - `ranker_50k_inlist` (2026-10-08, `9cbc1cd`): the first ranker to beat this retriever: +0.0037
   held-out NDCG@10 (+3.2%) over the baseline, Hits@1 +0.1 and Hits@10 +0.7 points. It trains on the
@@ -745,3 +746,16 @@ from FAISS IVF (nlist 2048, nprobe 128), as at 200k.
   Hits@1 7.9% vs 7.3%, Hits@10 20.6% vs 19.7%, validation 0.1352 vs 0.1293: kept. +0.0180 (+15.4%)
   over the retriever alone, more than the older ranker added to its weaker retriever (+11.7%).
   Counts are from part A only, so no ranker training window's own transition is in its inputs.
+- `ranker_50k_history` (2026-10-08, `29bb8c1`): the overlap and co-occurrence inputs also over the
+  playlist so far (up to its last 100 songs) plus its length: held-out 0.1357 vs 0.1351 (+0.0006,
+  below the 0.001 bar), validation 0.1353 vs 0.1352: not kept. Once the last 10 songs are covered,
+  earlier songs add little.
+- Result: `ranker_50k_cooccurrence` is the best ranker on `retriever_50k`: held-out NDCG@10 0.1351
+  vs the retriever's 0.1171 (+0.0180, +15.4%), Hits@1 7.9% vs 6.8%, Hits@10 20.6% vs 17.9%. Kept:
+  training only on windows whose true song is in the shortlist (+0.0037), reranking the top 100 so
+  wrong answers come from it (+0.0013), overlap inputs (+0.0054), co-occurrence inputs (+0.0075).
+  Not kept: frozen tables, all 99 as wrong answers (+0.0007, a near miss), retriever score and rank,
+  popularity, whole-playlist inputs (+0.0006). The two failure explanations borne out: the out-of-
+  shortlist training windows, and no new information. The ranker reorders only the top 100 (top-100
+  recall 41.5%), so it can't lift songs the retriever ranks lower. Next: confirm at 200k on
+  `retriever_200k`.
