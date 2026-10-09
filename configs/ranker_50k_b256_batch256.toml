@@ -3,7 +3,7 @@
 # Kept if training is at least 5% faster and held-out stays within +-0.003.
 
 [ranker]
-retriever = "configs/retriever_50k_b256.toml"  # seed s uses runs/retriever_ranker_runs/retriever_50k_b256/seed<s>/best.pt
+retriever = "configs/retriever_50k_b256.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k_b256/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 100            # step 2: rerank the retriever's top 100
 search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)

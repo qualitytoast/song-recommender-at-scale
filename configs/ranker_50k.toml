@@ -2,7 +2,7 @@
 # with exact search (166,627 songs) and checks scaled to its 302,495 part-B windows.
 
 [ranker]
-retriever = "configs/retriever_50k.toml"  # seed s uses runs/retriever_ranker_runs/retriever_50k/seed<s>/best.pt
+retriever = "configs/retriever_50k.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 500            # rerank the retriever's top 500
 search = "exact"           # every song scored (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)

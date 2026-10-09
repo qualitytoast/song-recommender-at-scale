@@ -3,7 +3,7 @@
 # changes: 200k sizes in the comments, and checks every ~1/5 epoch of the windows trained on.
 
 [ranker]
-retriever = "configs/retriever_200k.toml"  # seed s uses runs/retriever_ranker_runs/retriever_200k/seed<s>/best.pt
+retriever = "configs/retriever_200k.toml"  # seed s uses runs/retriever_ranker_runs/200k/retriever_200k/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 100            # step 2: rerank the retriever's top 100
 search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)

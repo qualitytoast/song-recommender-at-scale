@@ -5,7 +5,7 @@ keep the best check.
     python -m recsys.train --config configs/p2_base.toml            # every seed in train_seeds
     python -m recsys.train --config configs/p2_base.toml --seed 1   # one seed
 
-Writes runs/<group>/<config name>/seed<train seed>/ (see run_dir_for):
+Writes runs/<group>/[<size>/]<config name>/seed<train seed>/ (see run_dir_for):
     best.pt       weights at the best check, plus the vocab and config
     log.csv       one row per validation check
     summary.json  best check, training time, git commit, ...
@@ -15,6 +15,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import shutil
 import subprocess
 import time
@@ -103,11 +104,17 @@ def git_state():
 
 def run_dir_for(config_path, train_seed):
     """runs/<group>/<config name>/seed<k>. Two-stage runs, named by what they test
-    (retriever_*, ranker_*, retriever_ranker_*), go in runs/retriever_ranker_runs; the
-    rest by the name's prefix: configs/v1_baseline.toml -> runs/v1_runs/v1_baseline/seed1."""
+    (retriever_*, ranker_*, retriever_ranker_*), go in runs/retriever_ranker_runs/<size>,
+    the size being the name's 5k / 50k / 200k / 1m part:
+    configs/ranker_50k_v2_mlp.toml -> runs/retriever_ranker_runs/50k/ranker_50k_v2_mlp/seed1.
+    The rest go by the name's prefix: configs/v1_baseline.toml -> runs/v1_runs/v1_baseline/seed1."""
     name = Path(config_path).stem
-    group = "retriever_ranker" if name.startswith(("retriever_", "ranker_")) else name.split("_")[0]
-    return Path("runs") / f"{group}_runs" / name / f"seed{train_seed}"
+    if name.startswith(("retriever_", "ranker_")):
+        size = next((part for part in name.split("_") if re.fullmatch(r"\d+[km]", part)), None)
+        if size is None:
+            raise ValueError(f"{name}: retriever and ranker config names need a size (e.g. retriever_50k_...)")
+        return Path("runs") / "retriever_ranker_runs" / size / name / f"seed{train_seed}"
+    return Path("runs") / f"{name.split('_')[0]}_runs" / name / f"seed{train_seed}"
 
 
 def train(config_path, train_seed):

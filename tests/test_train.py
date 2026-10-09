@@ -1,3 +1,5 @@
+import pytest
+
 from recsys.train import EarlyStopping, EvalSchedule
 
 
@@ -58,9 +60,14 @@ def test_a_batch_passing_several_multiples_gives_one_check():
     assert schedule.add(1) is False and schedule.add(1) is True  # 11, then 12
 
 
-def test_run_dir_for_groups_runs_by_config_prefix():
+def test_run_dir_for_groups_runs_by_config_prefix_and_size():
     from pathlib import Path
     from recsys.train import run_dir_for
     assert run_dir_for("configs/v1_baseline.toml", 1) == Path("runs/v1_runs/v1_baseline/seed1")
-    assert run_dir_for("configs/retriever_200k.toml", 2) == Path("runs/retriever_ranker_runs/retriever_200k/seed2")
-    assert run_dir_for("configs/ranker_200k.toml", 1) == Path("runs/retriever_ranker_runs/ranker_200k/seed1")
+    assert run_dir_for("configs/retriever_200k.toml", 2) == Path("runs/retriever_ranker_runs/200k/retriever_200k/seed2")
+    assert run_dir_for("configs/ranker_50k_v2_mlp.toml", 1) == Path("runs/retriever_ranker_runs/50k/ranker_50k_v2_mlp/seed1")
+    assert run_dir_for("configs/retriever_ranker_50k_lazy.toml", 1) == Path(
+        "runs/retriever_ranker_runs/50k/retriever_ranker_50k_lazy/seed1")
+    assert run_dir_for("configs/ranker_1m.toml", 1) == Path("runs/retriever_ranker_runs/1m/ranker_1m/seed1")
+    with pytest.raises(ValueError, match="need a size"):
+        run_dir_for("configs/retriever_personal.toml", 1)

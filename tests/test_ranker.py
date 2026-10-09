@@ -258,13 +258,13 @@ def test_the_retrievers_own_exact_score_is_reused_only_when_it_fits(tmp_path, mo
     import os
     import recsys.ranker as ranker_module
     monkeypatch.chdir(tmp_path)
-    run = tmp_path / "runs" / "retriever_ranker_runs" / "retriever_x" / "seed1"
+    run = tmp_path / "runs" / "retriever_ranker_runs" / "5k" / "retriever_5k_x" / "seed1"
     run.mkdir(parents=True)
     (run / "best.pt").write_bytes(b"w")
     saved = {"n": 5, "ndcg@10": 0.5, "recall@100": 0.9}
     (run / "eval.json").write_text(json.dumps({"full held-out": saved}))
     monkeypatch.setattr(ranker_module, "rank_and_loss", lambda *a, **k: (np.ones(5, dtype=int), None))
-    rc = SimpleNamespace(retriever="configs/retriever_x.toml", shortlist=100)
+    rc = SimpleNamespace(retriever="configs/retriever_5k_x.toml", shortlist=100)
     ds = SimpleNamespace(Y_test=np.zeros(5), XI_test=None, N_test=None, LI_test=None)
     scored = lambda ranks: {"computed": True}
     got = ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", scored)
