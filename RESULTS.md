@@ -941,14 +941,17 @@ held-out within ±0.003). Timed at 1M and 50k with the profiler's new `--compile
 | # | Change | Speed (per epoch) | Quality | Kept |
 |---|---|---|---|---|
 | C1 | `torch.compile` the training step's forward pass and loss (`compile = true`, `bde6144`): many small GPU operations fused into fewer, same math | 1M: 54.9 -> 35.2 ms per step (-36%), 16.2 -> 10.4 min per epoch; 50k: -41%; the real 50k run 21.4 -> 8.9 s of training per check (2.4x) | `retriever_50k_compile` 0.1172 vs 0.1178 (-0.0006), validation 0.1175 vs 0.1187; top 100 42.5% vs 41.9%; training losses match the uncompiled run's at every check | yes |
-| C2 | 4,096 sampled wrong answers instead of 8,192, on top of C1 | 1M: 35.2 -> 26.1 ms per step (-26%; -52% vs no compile); 50k: -27% | `retriever_50k_neg4096` 0.1168 (-0.0004 vs C1, -0.0010 vs `retriever_50k_b256`), validation 0.1173; top 100 41.3% (C1 42.5%, b256 41.9%); peaked at 8.0 epochs (C1 5.0, b256 7.0) | passes the rule; open (see below) |
+| C2 | 4,096 sampled wrong answers instead of 8,192, on top of C1 | 1M: 35.2 -> 26.1 ms per step (-26%; -52% vs no compile); 50k: -27% | `retriever_50k_neg4096` 0.1168 (-0.0004 vs C1, -0.0010 vs `retriever_50k_b256`), validation 0.1173; top 100 41.3% (C1 42.5%, b256 41.9%); peaked at 8.0 epochs (C1 5.0, b256 7.0) | yes (approved without a ranker check) |
 | - | Batch 512 (lr 4e-3) | 50k: +5.4% (slower) | not run | no |
 
 - Batch 512 is slower because the batch's own true songs are also wrong answers for the other predictions:
   doubling the batch more than doubles the table of scores, which outweighs halving the steps.
-- C2's open points: it reached its best later (8.0 vs 5.0 epochs, one seed each), which would eat into the
-  per-epoch gain if it's systematic, and its top-100 recall is lower, which caps what the ranker can fix
-  (the ranker reorders the top 100).
+- C2's caveats, to watch at 1M: it reached its best later (8.0 vs 5.0 epochs, one seed each), which would
+  eat into the per-epoch gain if it's systematic, and its top-100 recall is lower, which caps what the ranker
+  can fix (the ranker reorders the top 100). The 1M retriever uses both C1 and C2.
+- For the ranker, only C1 carries over: phase A's batch 256 and sampled held-out windows are already in it,
+  and it ranks 100 shortlisted songs, not every song. Its own wrong answers (31 from the shortlist) aren't a
+  speed lever: `ranker_50k_v2_neg15` trained 1.6% faster per check than 31 (6.56 vs 6.66 s).
 - **The machine matters more than any of these.** The GPU is shared with other apps: during most of
   today's measurements, Chrome kept it busy (82% with no training running), which roughly doubled step times
   (1M baseline 108-122 ms per step vs 54.9 ms on a quiet machine; 50k validation checks 3.95 vs 2.1 s).
