@@ -214,3 +214,63 @@ def test_score_reports_recall_at_any_shortlist_size():
     from recsys.evaluate import score
     result = score(np.array([1, 120, 300, 600]), (250,))
     assert result["recall@250"] == 0.5 and result["recall@100"] == 0.25 and result["recall@500"] == 0.75
+
+
+def test_shortlists_are_cached_and_reused_without_searching(tmp_path, monkeypatch):
+    import recsys.ranker as ranker_module
+    from recsys.ranker import cached_shortlists
+    model, X, N, Y = big_retriever()
+    vectors = song_vectors(model)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"retriever weights")
+    rc = SimpleNamespace(search="exact", ivf_nlist=0, ivf_nprobe=0, shortlist=20, exclude_input=False,
+                         search_name=lambda: "exact")
+    sets = [(X, N, Y, None), (X[:30], N[:30], Y[:30], None)]
+    built, hits = cached_shortlists(rc, checkpoint, model, vectors, torch.device("cpu"), sets, tmp_path / "cache")
+    assert hits == 0 and len(list((tmp_path / "cache").glob("*.npz"))) == 2
+
+    def no_search(*args, **kwargs):
+        raise AssertionError("searched although every set was cached")
+    monkeypatch.setattr(ranker_module, "song_search", no_search)
+    loaded, hits = cached_shortlists(rc, checkpoint, model, vectors, torch.device("cpu"), sets, tmp_path / "cache")
+    assert hits == 2
+    for b, l in zip(built, loaded):
+        for x, y in zip(b, l):
+            np.testing.assert_array_equal(x, y)
+
+
+def test_shortlist_cache_key_changes_with_anything_that_decides_the_shortlists():
+    from recsys.ranker import shortlist_key
+    _, X, N, Y = big_retriever()
+    rc = lambda **c: SimpleNamespace(**{"shortlist": 20, "exclude_input": False, "search_name": lambda: "exact", **c})
+    base = shortlist_key(rc(), "abc", X, N, Y, None)
+    assert shortlist_key(rc(), "abc", X, N, Y, None) == base
+    for other in (shortlist_key(rc(), "abd", X, N, Y, None), shortlist_key(rc(shortlist=10), "abc", X, N, Y, None),
+                  shortlist_key(rc(exclude_input=True), "abc", X, N, Y, None),
+                  shortlist_key(rc(search_name=lambda: "ivf"), "abc", X, N, Y, None),
+                  shortlist_key(rc(), "abc", X[1:], N[1:], Y[1:], None),
+                  shortlist_key(rc(), "abc", X, N, Y, np.full(len(Y), 3))):
+        assert other != base
+
+
+def test_the_retrievers_own_exact_score_is_reused_only_when_it_fits(tmp_path, monkeypatch):
+    import json
+    import os
+    import recsys.ranker as ranker_module
+    monkeypatch.chdir(tmp_path)
+    run = tmp_path / "runs" / "retriever_ranker_runs" / "retriever_x" / "seed1"
+    run.mkdir(parents=True)
+    (run / "best.pt").write_bytes(b"w")
+    saved = {"n": 5, "ndcg@10": 0.5, "recall@100": 0.9}
+    (run / "eval.json").write_text(json.dumps({"full held-out": saved}))
+    monkeypatch.setattr(ranker_module, "rank_and_loss", lambda *a, **k: (np.ones(5, dtype=int), None))
+    rc = SimpleNamespace(retriever="configs/retriever_x.toml", shortlist=100)
+    ds = SimpleNamespace(Y_test=np.zeros(5), XI_test=None, N_test=None, LI_test=None)
+    scored = lambda ranks: {"computed": True}
+    got = ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", scored)
+    assert got["ndcg@10"] == 0.5 and got["from"].endswith("eval.json")      # reused
+    ds.Y_test = np.zeros(6)                                                  # different windows
+    assert ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", scored) == {"computed": True}
+    ds.Y_test = np.zeros(5)
+    os.utime(run / "eval.json", (1, 1))                                      # older than the checkpoint
+    assert ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", scored) == {"computed": True}

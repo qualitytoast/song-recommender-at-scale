@@ -59,6 +59,7 @@ Options, each a config setting, for making the ranker beat a strong retriever:
 import argparse
 import copy
 import csv
+import hashlib
 import json
 import math
 import shutil
@@ -241,6 +242,53 @@ def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, le
         scores.append(top_scores.astype(np.float32))
         true.append(np.einsum("nd,nd->n", queries, vectors[Y[i:i + chunk]]))
     return np.concatenate(ids), np.concatenate(scores), np.concatenate(true)
+
+
+SHORTLIST_CACHE = Path("runs/shortlist_cache")
+
+
+def file_fingerprint(path, block=1 << 24):
+    """SHA-256 of a file's bytes, read a block at a time."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(block):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def shortlist_key(rc, retriever_print, X, N, Y, lengths):
+    """What decides a set of shortlists: the retriever's weights (its checkpoint's fingerprint),
+    how the search runs, how many songs are kept and whether input songs are dropped, and the
+    windows themselves. Any change gives a different key."""
+    digest = hashlib.sha256(f"shortlists-v1|{retriever_print}|{rc.search_name()}|{rc.shortlist}|"
+                            f"{rc.exclude_input}".encode())
+    for a in (X, N, Y, lengths):
+        digest.update(b"|" if a is None else np.ascontiguousarray(a).tobytes())
+    return digest.hexdigest()[:32]
+
+
+def cached_shortlists(rc, retriever_path, retriever, vectors, device, sets, cache_dir=SHORTLIST_CACHE):
+    """build_shortlists for each window set (X, N, Y, lengths) in sets, as a list of (ids, scores,
+    true), loaded from cache_dir when an identical set was built before (shortlist_key). The
+    search (song_search, which builds the FAISS index) runs only if some set isn't cached.
+    Returns (shortlists, how many were loaded from the cache)."""
+    retriever_print = file_fingerprint(retriever_path)
+    paths = [cache_dir / f"{shortlist_key(rc, retriever_print, *s)}.npz" for s in sets]
+    out = [None] * len(sets)
+    for i, path in enumerate(paths):
+        if path.exists():
+            with np.load(path) as f:
+                out[i] = (f["ids"], f["scores"], f["true"])
+    missing = [i for i, o in enumerate(out) if o is None]
+    if missing:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with song_search(rc, vectors, device) as search:
+            for i in missing:
+                X, N, Y, lengths = sets[i]
+                out[i] = build_shortlists(retriever, X, N, Y, device, rc.shortlist, search, vectors, lengths=lengths,
+                                          exclude_input=rc.exclude_input)
+                np.savez(paths[i], ids=out[i][0], scores=out[i][1], true=out[i][2])
+    return out, len(sets) - len(missing)
 
 
 def drop_input_songs(ids, scores, inputs, lengths, k):
@@ -440,20 +488,16 @@ def train_ranker(config_path, seed):
     start = time.perf_counter()
     X_val, N_val, Y_val, XI_val, LI_val, H_val = ranker_validation(rc, ds)
     vectors = song_vectors(retriever)
-    with song_search(rc, vectors, device) as search:
-        train_ids, train_scores, train_true = build_shortlists(retriever, ds.XI_rank, ds.N_rank, ds.Y_rank, device,
-                                                               rc.shortlist, search, vectors, lengths=ds.LI_rank,
-                                                               exclude_input=rc.exclude_input)
-        val_ids, val_scores, val_true = build_shortlists(retriever, XI_val, N_val, Y_val, device, rc.shortlist,
-                                                         search, vectors, lengths=LI_val,
-                                                         exclude_input=rc.exclude_input)
+    ((train_ids, train_scores, train_true), (val_ids, val_scores, val_true)), from_cache = cached_shortlists(
+        rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever, vectors, device,
+        [(ds.XI_rank, ds.N_rank, ds.Y_rank, ds.LI_rank), (XI_val, N_val, Y_val, LI_val)])
     in_list = shortlisted(train_ids, ds.Y_rank)
     rows = np.flatnonzero(in_list) if rc.train_windows == "in_shortlist" else np.arange(len(ds.Y_rank))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
     train_ids, train_scores, train_true = train_ids[rows], train_scores[rows], train_true[rows]
     print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows ({len(rows):,} trained on), {len(Y_val):,} val windows | "
-          f"shortlists ({rc.search_name()}) in {time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} "
-          f"{in_list.mean():.1%}", flush=True)
+          f"shortlists ({rc.search_name()}{', cached' if from_cache == 2 else ''}) in "
+          f"{time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} {in_list.mean():.1%}", flush=True)
 
     featurizer = make_featurizer(rc, ds, retriever, device)
     ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
@@ -586,6 +630,19 @@ def train_ranker(config_path, seed):
           f"{summary['train_seconds'] / 60:.1f} min")
 
 
+def retriever_exact_score(rc, seed, ds, retriever, device, scored):
+    """The retriever alone ranking every song for the held-out windows: read from its own held-out
+    evaluation (recsys.evaluate's eval.json) when that is newer than its checkpoint, scored the same
+    number of windows and has recall at this shortlist size; otherwise computed here."""
+    run_dir = run_dir_for(rc.retriever, seed)
+    path = run_dir / "eval.json"
+    if path.exists() and path.stat().st_mtime >= (run_dir / "best.pt").stat().st_mtime:
+        saved = json.loads(path.read_text()).get("full held-out")
+        if saved and saved["n"] == len(ds.Y_test) and f"recall@{rc.shortlist}" in saved:
+            return {**saved, "from": str(path)}
+    return scored(rank_and_loss(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, lengths=ds.LI_test)[0])
+
+
 def evaluate_ranker(config_path, seed):
     """Held-out: the retriever's top-k reranked by the best ranker, vs the retriever alone."""
     rc = load_ranker_config(config_path)
@@ -594,9 +651,9 @@ def evaluate_ranker(config_path, seed):
     cfg, ds, retriever = load_retriever(rc, seed, device)
     start = time.perf_counter()
     vectors = song_vectors(retriever)
-    with song_search(rc, vectors, device) as search:
-        ids, scores, _ = build_shortlists(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, rc.shortlist, search,
-                                          vectors, lengths=ds.LI_test, exclude_input=rc.exclude_input)
+    held_out = [(ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test)]
+    ((ids, scores, _),), from_cache = cached_shortlists(rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever,
+                                                       vectors, device, held_out)
     search_seconds = time.perf_counter() - start
     featurizer = make_featurizer(rc, ds, retriever, device)
     ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
@@ -615,13 +672,13 @@ def evaluate_ranker(config_path, seed):
                f"retriever + ranker (top {rc.shortlist})": scored(ranks),
                "retriever alone": scored(retriever_ranks)}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
-        results["retriever alone, exact search"] = scored(rank_and_loss(retriever, ds.XI_test, ds.N_test, ds.Y_test,
-                                                                        device, lengths=ds.LI_test)[0])
+        results["retriever alone, exact search"] = retriever_exact_score(rc, seed, ds, retriever, device, scored)
     results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})
     print(f"\n{run_dir}/best.pt (check {checkpoint['check']}) | held-out {len(ds.Y_test):,} windows | "
-          f"shortlists ({rc.search_name()}) {search_seconds:.0f}s | reranking {rerank_seconds:.0f}s")
+          f"shortlists ({rc.search_name()}{', cached' if from_cache else ''}) {search_seconds:.0f}s | "
+          f"reranking {rerank_seconds:.0f}s")
     print(f"{'':34}{'NDCG@10':>10}{'hits@1':>9}{'hits@5':>9}{'hits@10':>9}{f'top {rc.shortlist}':>10}")
     for name, r in results.items():
         if isinstance(r, dict):
