@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 from recsys.config import load_config  # noqa: E402
 from recsys.data import build_dataset  # noqa: E402
 from recsys.lazy_adam import LazyAdamW, used_rows  # noqa: E402
+from recsys.rowwise import RowwiseAdamW  # noqa: E402
 from recsys.model import build_model  # noqa: E402
 from recsys.sampled import (candidate_set, draw_random_songs, log_q, random_probs,  # noqa: E402
                             sampled_softmax_loss)
@@ -51,6 +52,7 @@ def main():
     ap.add_argument("--steps", type=int, default=200)
     ap.add_argument("--batch-size", type=int, help="chunks per step instead of the config's")
     ap.add_argument("--autocast", choices=["bf16", "fp16"], help="run forward and loss in 16-bit (mixed precision)")
+    ap.add_argument("--optimizer", choices=["lazy_adamw", "rowwise_adamw"], help="instead of the config's")
     ap.add_argument("--freeze-tables", action="store_true",
                     help="no gradients or updates for the per-ID tables: the most row-only updates could save")
     args = ap.parse_args()
@@ -62,12 +64,17 @@ def main():
     device = pick_device()
     torch.manual_seed(1)
     model = build_model(cfg, ds).to(device)
-    lazy = t.optimizer == "lazy_adamw"
+    opt_name = args.optimizer or t.optimizer
+    lazy = opt_name in ("lazy_adamw", "rowwise_adamw")
     if args.freeze_tables:
         for n, p in model.named_parameters():
             if per_id_table(n, p, len(ds.vocab)):
                 p.requires_grad_(False)
-    optimizer = LazyAdamW(model, t.lr, t.weight_decay) if lazy else make_optimizer(model.parameters(), t)
+    if opt_name == "rowwise_adamw":
+        optimizer = RowwiseAdamW(model, t.lr, t.weight_decay)
+        model.row_grads = optimizer.grads
+    else:
+        optimizer = LazyAdamW(model, t.lr, t.weight_decay) if lazy else make_optimizer(model.parameters(), t)
     song_features = {name: ds.song_features[name][0] for name in model.feature_names}
     X, Y, N = (torch.from_numpy(a).to(device) for a in (ds.Xc_train, ds.Yc_train, ds.Nc_train))
     V, B = len(ds.vocab), args.batch_size or t.batch_size
@@ -86,7 +93,8 @@ def main():
     n_table, n_shared = sum(p.numel() for p in table_params), sum(p.numel() for p in shared_params)
     print(f"{args.config}: {V:,} songs | {sum(p.numel() for p in model.parameters()):,} params: "
           f"{n_table:,} in per-ID tables, {n_shared:,} in shared layers | batch {B} chunks"
-          f"{' | autocast ' + args.autocast if args.autocast else ''}{' | tables frozen' if args.freeze_tables else ''}")
+          f"{' | autocast ' + args.autocast if args.autocast else ''}"
+          f"{' | tables frozen' if args.freeze_tables else ''} | {opt_name}")
 
     def step(i, timings=None):
         mark = lambda name: None
@@ -121,7 +129,7 @@ def main():
                                      ds.song_genres if model.input_genres is not None else None, device))
         else:
             optimizer.step()
-        mark(f"optimizer step ({t.optimizer})")
+        mark(f"optimizer step ({opt_name})")
         return loss
 
     for i in range(20):  # warm up

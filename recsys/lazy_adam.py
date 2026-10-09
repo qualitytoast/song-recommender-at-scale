@@ -66,9 +66,11 @@ class LazyAdamW:
         bias1, bias2 = 1 - self.beta1 ** self.steps, 1 - self.beta2 ** self.steps
         for name, p in self.tables.items():
             r = rows[name]
-            if p.grad is None or len(r) == 0:
+            if len(r) == 0:
                 continue
-            g = p.grad[r]
+            g = self.table_gradient(name, p, r)
+            if g is None:
+                continue
             # The same operations, in the same order, as torch.optim.AdamW, on the used rows.
             w = p[r].mul_(1 - self.lr * self.weight_decay)
             m = self.exp_avg[name][r].lerp_(g, 1 - self.beta1)
@@ -76,6 +78,12 @@ class LazyAdamW:
             denom = (v.sqrt() / math.sqrt(bias2)).add_(self.eps)
             w.addcdiv_(m, denom, value=-self.lr / bias1)
             p[r], self.exp_avg[name][r], self.exp_avg_sq[name][r] = w, m, v
+
+
+    def table_gradient(self, name, p, rows):
+        """The gradient of table p's rows `rows`, or None if it got none (recsys/rowwise.py
+        gets them without a full-size .grad)."""
+        return None if p.grad is None else p.grad[rows]
 
 
 def lr_groups(named, lr, lr_of=None):

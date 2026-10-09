@@ -15,6 +15,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from recsys.rowwise import RowLookup
+
+# Tables whose ID 0 is padding (nn.Embedding padding_idx=0): it gets no gradient.
+PADDED = ("input_genres.weight", "output_genres.weight", "name_words.weight")
+
 
 class SelfAttention(nn.Module):
     """Single-head attention: each song pulls in a weighted blend of the others."""
@@ -132,6 +137,20 @@ class SongRecommender(nn.Module):
                 torch.zeros(count, embed_dim), freeze=False, padding_idx=0)
         # Learned stand-in for songs hidden by training-time augmentation (recsys/augment.py).
         self.mask_vector = nn.Parameter(torch.zeros(embed_dim)) if mask_token else None
+        # Set to RowwiseAdamW.grads for row-only table updates (recsys/rowwise.py); None: normal.
+        self.row_grads = None
+
+    def lookup(self, name, ids):
+        """Rows ids (any shape) of the per-ID table parameter `name`, e.g. "song_embedding.weight"
+        or "output.bias". With row_grads set, the backward pass hands the rows' gradients to it
+        instead of building a full-size gradient (recsys/rowwise.py); the values are the same."""
+        if self.row_grads is not None and torch.is_grad_enabled():
+            weight = self.get_parameter(name)
+            if weight.requires_grad:
+                return RowLookup.apply(weight, ids, name, self.row_grads, name in PADDED)
+        if name.startswith("output."):
+            return self.get_parameter(name)[ids]
+        return self.get_submodule(name[:-len(".weight")])(ids)
 
     def hidden_states(self, ids, names=None, hidden=None):
         """The transformer's output at every position, (batch, seq, embed_dim): the
@@ -140,7 +159,7 @@ class SongRecommender(nn.Module):
         positions = torch.arange(ids.shape[1], device=ids.device)
         x = self.embed_songs(ids, hidden) + self.position_embedding(positions)
         if self.name_words is not None:
-            name_vector = self.mean_vector(self.name_words, names)  # (batch, embed_dim)
+            name_vector = self.mean_vector(lambda w: self.lookup("name_words.weight", w), names)  # (batch, d)
             x = x + name_vector[:, None, :]  # same name vector at every position
         x = self.dropout(x)
         for block in self.blocks:
@@ -150,12 +169,13 @@ class SongRecommender(nn.Module):
     def embed_songs(self, ids, hidden=None):
         """Input vectors for song IDs (any shape): song vector + feature vectors.
         Hidden songs (augmentation) become mask_vector with their features dropped."""
-        song = self.song_embedding(ids)
+        song = self.lookup("song_embedding.weight", ids)
         features = torch.zeros_like(song)
         for name in self.feature_names:
-            features = features + self.input_features[name](self.song_feature_ids(name)[ids])
+            features = features + self.lookup(f"input_features.{name}.weight", self.song_feature_ids(name)[ids])
         if self.input_genres is not None:
-            features = features + self.mean_vector(self.input_genres, self.song_genres[ids])
+            features = features + self.mean_vector(lambda g: self.lookup("input_genres.weight", g),
+                                                   self.song_genres[ids])
         if hidden is not None:
             song = torch.where(hidden[..., None], self.mask_vector, song)
             features = features * ~hidden[..., None]
@@ -183,12 +203,14 @@ class SongRecommender(nn.Module):
         x = self.hidden_states(ids, names, hidden)
         h = x if all_positions else last_real(x, lengths)
         if candidates is not None:  # sampled softmax: score only these songs
-            vectors = self.output.weight[candidates]
+            vectors = self.lookup("output.weight", candidates)
             for name in self.feature_names:
-                vectors = vectors + self.output_features[name](self.song_feature_ids(name)[candidates])
+                vectors = vectors + self.lookup(f"output_features.{name}.weight",
+                                                self.song_feature_ids(name)[candidates])
             if self.output_genres is not None:
-                vectors = vectors + self.mean_vector(self.output_genres, self.song_genres[candidates])
-            return h @ vectors.T + self.output.bias[candidates]
+                vectors = vectors + self.mean_vector(lambda g: self.lookup("output_genres.weight", g),
+                                                     self.song_genres[candidates])
+            return h @ vectors.T + self.lookup("output.bias", candidates)
         logits = self.output(h)  # h . output row + bias, per song
         # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
         candidates = [self.output_features[name](self.song_feature_ids(name)) for name in self.feature_names]
