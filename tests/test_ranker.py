@@ -208,3 +208,9 @@ def test_negatives_can_be_drawn_from_the_top_of_the_shortlist_only():
         # top = the whole shortlist draws exactly as before
         assert torch.equal(sample_negatives(short, y, 2, g2, top=6),
                            sample_negatives(short, y, 2, torch.Generator().manual_seed(seed)))
+
+
+def test_score_reports_recall_at_any_shortlist_size():
+    from recsys.evaluate import score
+    result = score(np.array([1, 120, 300, 600]), (250,))
+    assert result["recall@250"] == 0.5 and result["recall@100"] == 0.25 and result["recall@500"] == 0.75

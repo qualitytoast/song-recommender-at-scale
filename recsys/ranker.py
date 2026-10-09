@@ -525,13 +525,14 @@ def evaluate_ranker(config_path, seed):
     rerank_seconds = time.perf_counter() - rerank_start
     retriever_ranks = final_ranks(scores, ids, ds.Y_test)  # its own order within its shortlist = its full ranks
     pop, _ = popularity_scores(ds.Y_train, len(ds.vocab))
+    scored = lambda r: score(r, (rc.shortlist,))  # with recall at the shortlist size, whatever it is
     results = {"best_check": checkpoint["check"], "search": rc.search_name(),
-               f"retriever + ranker (top {rc.shortlist})": score(ranks),
-               "retriever alone": score(retriever_ranks)}
+               f"retriever + ranker (top {rc.shortlist})": scored(ranks),
+               "retriever alone": scored(retriever_ranks)}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
-        results["retriever alone, exact search"] = score(rank_and_loss(retriever, ds.X_test, ds.N_test, ds.Y_test,
-                                                                       device)[0])
-    results.update({"most-popular": score(popularity_ranks(pop, ds.Y_test)),
+        results["retriever alone, exact search"] = scored(rank_and_loss(retriever, ds.X_test, ds.N_test, ds.Y_test,
+                                                                        device)[0])
+    results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})
     print(f"\n{run_dir}/best.pt (check {checkpoint['check']}) | held-out {len(ds.Y_test):,} windows | "

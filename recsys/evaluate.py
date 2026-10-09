@@ -26,12 +26,12 @@ KS = (1, 5, 10)
 RECALL_KS = (100, 500, 1000, 2000, 5000)
 
 
-def score(ranks):
+def score(ranks, recall_ks=()):
     """NDCG@10 and Hits@k for k in KS from target ranks, so the model and the baseline
-    are measured by identical code."""
+    are measured by identical code; recall@K for RECALL_KS and any other recall_ks."""
     result = {"n": len(ranks), "ndcg@10": float(np.mean(gains_from_ranks(ranks, k=10)))}
     result.update({f"hits@{k}": float(np.mean(ranks <= k)) for k in KS})
-    result.update({f"recall@{k}": float(np.mean(ranks <= k)) for k in RECALL_KS})
+    result.update({f"recall@{k}": float(np.mean(ranks <= k)) for k in sorted({*RECALL_KS, *recall_ks})})
     return result
 
 
