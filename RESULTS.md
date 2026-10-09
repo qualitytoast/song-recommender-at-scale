@@ -807,6 +807,7 @@ training windows throughout.
 |---|---|---|---|---|---|---|---|---|---|
 | base | `ranker_50k_v2_base` | best ranker so far (`ranker_50k_cooccurrence`), separate validation windows | — | 0.1153 -> 0.1340 (35) | 0.1351 (0.1171) | 7.9% | 20.6% | — | 5.9 + 0.7 min |
 | input | `ranker_50k_v2_noinput` | leave the retriever's input songs out of every shortlist | base | 0.1230 -> 0.1444 (35) | 0.1462 (0.1255) | 8.7% | 21.9% | yes | 6.0 + 0.7 min |
+| neighbours | `ranker_50k_v2_neighbours` | inputs: share of the 50 / 10 most alike part-A playlists containing the candidate | input | 0.1230 -> 0.1444 (39) | 0.1464 (0.1255) | 8.7% | 21.9% | no | 7.0 + 0.8 min |
 
 - `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
   windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
@@ -821,3 +822,8 @@ training windows throughout.
   playlist, which resemble the rest of it. Only 0.45% of held-out next songs (709 of 159,081) repeat
   an input song, the windows this rule now gets wrong. The ranker adds +0.0207 (+16.5%) over the
   filtered retriever. The "retriever alone, exact search" line in eval.json is unfiltered (0.1172).
+- `ranker_50k_v2_neighbours` (2026-10-08, `44c7fe3`): the 50 part-A playlists most like each one (by
+  the retriever's score for their average song vector), and per candidate the share of those 50 and
+  of the 10 most alike that contain it: held-out 0.1464 vs 0.1462 (+0.0002), validation 0.1444 vs
+  0.1444: not kept. The neighbours are picked by the retriever's own scores, so they repeat what it
+  and the co-occurrence counts already carry. 7.0 vs 6.0 min of training.
