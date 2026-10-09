@@ -928,3 +928,9 @@ held-out evaluation 67 s.
 - Carried over from phase A: sampled held-out windows (the ranker scores its retriever's held-out windows,
   so it follows `test_max_windows`). Row-only updates and mixed precision weren't kept, so there was nothing
   else to carry over.
+- Ranker batch 256 (`ranker_50k_b256_batch256`, 2026-10-09, `ff98de7`): 256 windows per step instead of 64,
+  both learning rates 2e-4 (x sqrt 4). Held-out 0.1482 vs 0.1490 (-0.0008, within ±0.003), validation 0.1451
+  vs 0.1455. Training 2.6x faster per check (2.9 vs 7.5 s) and it peaked sooner (check 21 vs 31): 76 vs 271 s
+  of training, the whole run 158 vs ~397 s (without the baseline's 24 s of shortlist building). Kept: the new
+  base ranker. Unlike the retriever (where a bigger batch also adds in-batch wrong answers), the ranker's
+  gain is speed only, which is why quality moves slightly down.
