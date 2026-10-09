@@ -795,3 +795,20 @@ answers, and the playlist before the window.
   deep in the list (top 500: 64.7% vs 64.2%) but ranks the top 10 worse, and peaks sooner (6.75 epochs).
   Half the training time (9.8 vs 18.9 min). With `input_length` = 10 every earlier result is unchanged
   (`retriever_50k` re-scored: 0.117196 both ways).
+
+**Ranker series 2 at 50k** (on `retriever_50k`, which the retriever tests kept). Stacked like series 1: each
+step adds one change to the best ranker so far, kept if held-out NDCG@10 rises by more than 0.001
+over the best so far and validation agrees. From the baseline on, the ranker validates on 20,000
+validation windows outside the retriever's validation sample (`val_set = "separate"`), so its
+validation numbers aren't comparable with series 1's; held-out numbers are. Checks every 24,200
+training windows throughout.
+
+| Step | Run | Change | Builds on | Val NDCG@10, check 0 -> best (check) | Held-out NDCG@10 (retriever alone) | Hits@1 | Hits@10 | Kept | Time (train + held-out) |
+|---|---|---|---|---|---|---|---|---|---|
+| base | `ranker_50k_v2_base` | best ranker so far (`ranker_50k_cooccurrence`), separate validation windows | — | 0.1153 -> 0.1340 (35) | 0.1351 (0.1171) | 7.9% | 20.6% | — | 5.9 + 0.7 min |
+
+- `ranker_50k_v2_base` (2026-10-08, `7c03d6c`): the best ranker so far on its own validation
+  windows: held-out 0.1351, the same as `ranker_50k_cooccurrence` (best check 35 vs 34). The
+  retriever alone scores 0.1153 on these windows against 0.1179 on the ones that picked its
+  checkpoint: that sample flattered it by ~0.0026. The ranker's validation gain is +0.0187 here
+  (+0.0173 there).
