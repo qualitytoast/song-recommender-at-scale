@@ -26,8 +26,8 @@ measured against the one before it.
 | Data | 5,000 playlists, 33,770 songs | 200,000 playlists, 412,404 songs so far; 1M next |
 | What a song is | Its ID only | ID + artist, album, length, genres (MusicBrainz); plus the playlist's name |
 | Training | One target per 10-song window, full softmax, SGD | Next song predicted at every position (causal attention), sampled softmax, lazy AdamW |
-| Finding recommendations | Score every song | Retriever + FAISS IVF search for the top 500, then a ranker that rescores them |
-| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1257 (39x most-popular; retriever alone, 200k, a 12x bigger catalog) |
+| Finding recommendations | Score every song | Retriever + FAISS IVF search for the top 100 (songs already in the input left out), then a ranker that rescores them |
+| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1567 (49x most-popular; retriever + ranker, 200k, a 12x bigger catalog) |
 
 The v1 model's architecture is still the core: a small Transformer (2 layers,
 64-dimensional, single-head attention), the same metrics (NDCG@10, Hits@k) and
@@ -43,14 +43,15 @@ last 10 songs + playlist name
  │  Retriever   │───────────────────────┐
  └──────────────┘                       ▼
                          ┌───────────────────────────────┐
-                         │  Search (FAISS IVF, separate  │  top 500 of 412,404 songs
-                         │  process): highest h · song   │  (98.6% of the exact top 500)
+                         │  Search (FAISS IVF, separate  │  top 100 of 412,404 songs,
+                         │  process): highest h · song   │  songs in the input left out
                          └───────────────────────────────┘
                                          │
                                          ▼
                                  ┌──────────────┐
-                                 │    Ranker    │  rescores the 500, reading each
-                                 └──────────────┘  candidate next to the 10 songs
+                                 │    Ranker    │  rescores the 100, reading each
+                                 └──────────────┘  candidate next to the 10 songs,
+                                                   plus overlap and co-occurrence counts
                                          │
                                          ▼
                                   top 10 next songs
@@ -80,14 +81,19 @@ FAISS runs in its own process because it and PyTorch each bundle a copy of the
 OpenMP library and can't share one. `scripts/search_benchmark.py` compares exact
 search, FAISS Flat, IVF and HNSW, with and without sharding.
 
-**Ranker** (`recsys/ranker.py`). A copy of the trained retriever that reads the
-10 context songs and the 500 candidates together, so attention can relate each
-candidate to each song in the playlist. Context songs see only earlier context
-songs; each candidate sees the context and itself, never another candidate, so
-candidates are scored independently. Its score is the retriever's score plus a
-learned correction that starts at zero, so before training it reproduces the
-retriever exactly. It trains on 20% of the training playlists that the
-retriever never saw, so its shortlists look like those of new playlists.
+**Ranker** (`recsys/ranker.py`, `recsys/rank_features.py`). A copy of the trained
+retriever that reads the 10 context songs and the 100 candidates together, so
+attention can relate each candidate to each song in the playlist. Context songs
+see only earlier context songs; each candidate sees the context and itself, never
+another candidate, so candidates are scored independently. Its score is the
+retriever's score plus a learned correction: a small network that reads the
+transformer's output for the candidate and a few counts the retriever can't see,
+such as how many of the context songs share its artist, album or genres, and how
+often it came right after them in the retriever's training playlists. The
+correction starts at zero, so before training the ranker reproduces the retriever
+exactly. It trains on the 20% of training playlists that the retriever never saw,
+on the windows whose next song is in the shortlist, each against 31 wrong answers
+drawn from that shortlist.
 
 ## Results
 
@@ -108,6 +114,7 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | + input songs left out of the shortlist, small-network correction | 50,000 | 166,627 | 0.1255 → 0.1484 | 44x |
 | Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
 | Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
+| Two-stage at 200k with the improved ranker: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1344 → 0.1567 | 49x |
 
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
@@ -123,7 +130,9 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       at 5k or 50k with the same retriever settings (its 50k gain was on an older retriever)
 - [x] Ranker improvements at 50k: +15.4% over the retriever (in-shortlist training windows,
       top-100 reranking, overlap and co-occurrence inputs); then input songs left out and a
-      small-network correction: 0.1484 held-out NDCG@10; 200k confirmation next
+      small-network correction: 0.1484 held-out NDCG@10
+- [x] 200k confirmation of the improved ranker: 0.1567 held-out NDCG@10 (49x most-popular),
+      +16.6% over the retriever on the same shortlists
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
 - [ ] Personalization to one listener's history (add distillation?)

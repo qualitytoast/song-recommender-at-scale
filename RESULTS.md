@@ -864,3 +864,24 @@ training windows throughout.
   B, 3e-4: 0.1491 (+0.0007, validation +0.0010), a near miss; C, 1e-3 with the copied weights at
   3e-5: 0.1480 (-0.0004), stopping at check 6. None kept: bigger steps for the new weights reach the
   same level sooner rather than a higher one; everything stays at 1e-4.
+
+**200k confirmation** (`ranker_200k_v2`): `ranker_50k_v2_mlp`'s settings (the best at 50k: top 100 with
+input songs left out, in-shortlist training windows, 31 wrong answers from the top 100, overlap and
+co-occurrence inputs, the small-network correction, separate validation windows) on `retriever_200k`, the
+same recipe as `retriever_50k`. Checks every 117,600 windows (~1/5 epoch).
+
+| Held-out (836,433 windows, 412,404 songs), seed 1 | NDCG@10 | Hits@1 | Hits@10 | Top 100 | × most-popular | Time |
+|---|---|---|---|---|---|---|
+| `retriever_200k` alone, exact search | 0.1257 | 7.5% | 19.0% | 42.3% | 39x | 64.2 min |
+| `ranker_200k` (the old ranker; = the retriever alone with IVF) | 0.1255 | 7.5% | 19.0% | — | 39x | 17.9 + 18.2 min |
+| `retriever_200k` alone, IVF top 100, input songs left out | 0.1344 | 8.2% | 20.0% | 42.6% | 42x | — |
+| **`retriever_200k` + `ranker_200k_v2`** | **0.1567** | **9.5%** | **23.2%** | 42.6% | **49x** | 10.7 + 8.4 min |
+
+- `ranker_200k_v2` (2026-10-08, `fa4575a`): held-out NDCG@10 0.1567, +0.0312 (+24.9%) over the old 200k
+  system (0.1255) and +0.0223 (+16.6%) over the retriever alone on the same filtered shortlists (0.1344).
+  At 50k the same settings added +18.2% over the filtered retriever, so the gains carry over to 4x the
+  data. Validation: 0.1336 (check 0, the retriever) -> 0.1541 (check 12, ~2.3 epochs), stopping at check
+  17.
+- It trained on 607,096 of 1,470,511 part-B windows (41.3% have the true song in the filtered top 100;
+  estimated 588,000 from 50k's share). 10.7 min of training (shortlists 68 s, ~31 s per check);
+  held-out 8.4 min, most of it the exact-search reference line (shortlists 43 s, reranking 70 s).
