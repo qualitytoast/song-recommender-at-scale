@@ -40,11 +40,13 @@ def is_table(name):
 
 
 class LazyAdamW:
-    def __init__(self, model, lr, weight_decay, betas=(0.9, 0.999), eps=1e-8, prefix=""):
+    def __init__(self, model, lr, weight_decay, betas=(0.9, 0.999), eps=1e-8, prefix="", dense_lr=None):
+        """dense_lr: optional function (parameter name) -> learning rate for the non-table
+        parameters; tables, and every parameter without it, use lr."""
         named = dict(model.named_parameters())
         table = lambda n: n.startswith(prefix) and is_table(n[len(prefix):])
         self.tables = {n[len(prefix):]: p for n, p in named.items() if table(n)}
-        self.dense = torch.optim.AdamW([p for n, p in named.items() if not table(n)],
+        self.dense = torch.optim.AdamW(lr_groups([(n, p) for n, p in named.items() if not table(n)], lr, dense_lr),
                                        lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
         self.lr, self.weight_decay, (self.beta1, self.beta2), self.eps = lr, weight_decay, betas, eps
         self.exp_avg = {n: torch.zeros_like(p) for n, p in self.tables.items()}
@@ -74,6 +76,15 @@ class LazyAdamW:
             denom = (v.sqrt() / math.sqrt(bias2)).add_(self.eps)
             w.addcdiv_(m, denom, value=-self.lr / bias1)
             p[r], self.exp_avg[name][r], self.exp_avg_sq[name][r] = w, m, v
+
+
+def lr_groups(named, lr, lr_of=None):
+    """Optimizer parameter groups for (name, parameter) pairs: one per learning rate, each
+    parameter at lr_of(name), or all at lr without lr_of (one group, as a plain list would be)."""
+    groups = {}
+    for name, p in named:
+        groups.setdefault(lr if lr_of is None else lr_of(name), []).append(p)
+    return [{"params": params, "lr": group_lr} for group_lr, params in groups.items()]
 
 
 def used_rows(context, candidates, names, song_features, song_genres, device):

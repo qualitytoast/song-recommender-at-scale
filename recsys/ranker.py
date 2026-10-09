@@ -76,7 +76,7 @@ from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.evaluate import score
-from recsys.lazy_adam import LazyAdamW, is_table, used_rows
+from recsys.lazy_adam import LazyAdamW, is_table, lr_groups, used_rows
 from recsys.model import build_model, rank_and_loss
 from recsys.rank_features import (GROUPS, CandidateFeatures, history_matrix, membership_keys, neighbour_lists,
                                   pair_counts, playlist_vectors)
@@ -97,7 +97,8 @@ class RankerConfig:
     negatives: int         # shortlist songs sampled per training example, besides the true one
     negatives_from: int    # ... drawn from the first this many shortlist songs (= shortlist: all of it)
     optimizer: str         # "adamw" or "lazy_adamw" (only the table rows a batch uses are updated)
-    lr: float
+    lr: float              # the weights copied from the retriever
+    new_lr: float          # the ranker's own new weights (candidate marker and position, correction)
     weight_decay: float
     batch_size: int        # windows per step
     epochs: int            # maximum passes over the ranker's windows
@@ -386,6 +387,12 @@ def set_feature_scale(ranker, features, i, X, cands, base, device, batch=256):
     ranker.feature_std.copy_(torch.where(std < 1e-4, torch.ones_like(std), std))
 
 
+def weight_lr(rc, name):
+    """The learning rate for a ranker parameter: rc.lr for the weights copied from the
+    retriever (named "retriever. ..."), rc.new_lr for the ranker's own new ones."""
+    return rc.lr if name.startswith("retriever.") else rc.new_lr
+
+
 def freeze_tables(ranker):
     """Stop training the ranker's copied per-ID tables (lazy_adam.TABLES: songs, artists,
     albums, genres, name words, ...): they keep the retriever's values."""
@@ -459,9 +466,11 @@ def train_ranker(config_path, seed):
           f"{trained:,} trained", flush=True)
     lazy = rc.optimizer == "lazy_adamw"
     if lazy:  # AdamW on only the table rows each batch uses (recsys/lazy_adam.py); frozen tables get none
-        optimizer = LazyAdamW(ranker, rc.lr, rc.weight_decay, prefix="retriever.")
+        optimizer = LazyAdamW(ranker, rc.lr, rc.weight_decay, prefix="retriever.",
+                              dense_lr=lambda name: weight_lr(rc, name))
     else:
-        optimizer = torch.optim.AdamW([p for p in ranker.parameters() if p.requires_grad], lr=rc.lr,
+        trainable = [(n, p) for n, p in ranker.named_parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(lr_groups(trainable, rc.lr, lambda name: weight_lr(rc, name)), lr=rc.lr,
                                       weight_decay=rc.weight_decay)
     song_features = {name: ds.song_features[name][0] for name in retriever.feature_names}
     song_genres = ds.song_genres if retriever.input_genres is not None else None

@@ -12,6 +12,7 @@ negatives = 31             # per training window: the true song + 31 sampled fro
 negatives_from = 500       # ... drawn from the whole shortlist
 optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
 lr = 1e-4                  # fine-tuning from the retriever's weights: 10x below the retriever's
+new_lr = 1e-4              # the ranker's new weights (candidate marker, position, correction): as lr
 weight_decay = 0.05
 batch_size = 64            # windows per step
 epochs = 20                # maximum passes over the 302,495 part-B windows

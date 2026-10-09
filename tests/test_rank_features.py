@@ -119,7 +119,7 @@ def test_freezing_keeps_the_copied_tables_while_the_layers_train():
 
 def config(**changes):
     settings = dict(retriever="r.toml", train_seeds=[1], shortlist=100, search="exact", ivf_nlist=0, ivf_nprobe=0,
-                    negatives=31, negatives_from=100, optimizer="lazy_adamw", lr=1e-4, weight_decay=0.05,
+                    negatives=31, negatives_from=100, optimizer="lazy_adamw", lr=1e-4, new_lr=1e-4, weight_decay=0.05,
                     batch_size=64, epochs=1, eval_every_examples=10, min_checks=1, patience=1, val_windows=10,
                     train_windows="all", freeze_tables=False, features=[], correction_hidden=0,
                     exclude_input=False, val_set="retriever")
@@ -173,3 +173,18 @@ def test_the_ranker_can_validate_on_windows_outside_the_retrievers_sample():
     ds.Y_rval = np.zeros(0)
     with pytest.raises(ValueError, match="outside the retriever"):
         ranker_validation(config(val_set="separate"), ds)
+
+
+def test_the_rankers_new_weights_can_learn_at_their_own_rate():
+    from recsys.lazy_adam import LazyAdamW
+    from recsys.ranker import weight_lr
+    ranker = CandidateRanker(retriever(), n_features=2, hidden=8)
+    rc = config(lr=3e-5, new_lr=1e-3)
+    opt = LazyAdamW(ranker, rc.lr, 0.05, prefix="retriever.", dense_lr=lambda name: weight_lr(rc, name))
+    by_lr = {g["lr"]: {id(p) for p in g["params"]} for g in opt.dense.param_groups}
+    new = {id(p) for n, p in ranker.named_parameters() if not n.startswith("retriever.")}
+    assert set(by_lr) == {3e-5, 1e-3} and by_lr[1e-3] == new  # marker, position, correction
+    assert id(ranker.retriever.blocks[0].ffn[0].weight) in by_lr[3e-5]  # a copied layer
+    assert opt.lr == 3e-5  # the copied tables
+    plain = LazyAdamW(ranker, 1e-4, 0.05, prefix="retriever.")  # without dense_lr: one group, as before
+    assert [g["lr"] for g in plain.dense.param_groups] == [1e-4]
