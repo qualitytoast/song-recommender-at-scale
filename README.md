@@ -135,6 +135,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       +16.6% over the retriever on the same shortlists
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
+- [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
 ## Running it
