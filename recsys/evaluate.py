@@ -6,9 +6,15 @@
 Rebuilds the dataset from the config (same data seed, same split), loads
 runs/<group>/<config name>/seed<train seed>/best.pt, prints the results and saves
 them to eval.json in the same folder.
+
+    python -m recsys.evaluate --config configs/retriever_1m.toml --all-held-out
+
+scores every held-out window instead of the config's fixed sample (test_max_windows), for
+a final model's headline number, and saves to eval_all.json, leaving eval.json as it was.
 """
 import argparse
 import json
+from dataclasses import replace
 
 import numpy as np
 import torch
@@ -35,8 +41,19 @@ def score(ranks, recall_ks=()):
     return result
 
 
-def evaluate(config_path, train_seed):
-    cfg = load_config(config_path)
+def eval_file(all_held_out):
+    """Where an evaluation is saved: eval.json for the config's held-out windows (day to day, a
+    fixed sample at 200k+), eval_all.json for every held-out window (final numbers)."""
+    return "eval_all.json" if all_held_out else "eval.json"
+
+
+def with_all_held_out(cfg, all_held_out):
+    """cfg, or with all_held_out a copy that keeps every held-out window (test_max_windows = 0)."""
+    return replace(cfg, data=replace(cfg.data, test_max_windows=0)) if all_held_out else cfg
+
+
+def evaluate(config_path, train_seed, all_held_out=False):
+    cfg = with_all_held_out(load_config(config_path), all_held_out)
     run_dir = run_dir_for(config_path, train_seed)
     ds = build_dataset(cfg)
 
@@ -84,13 +101,15 @@ def evaluate(config_path, train_seed):
     pop_ndcg = results["most-popular (full held-out)"]["ndcg@10"]
     print(f"model / most-popular NDCG@10: {model_ndcg / pop_ndcg:.1f}x")
 
-    (run_dir / "eval.json").write_text(json.dumps(results, indent=2))
+    (run_dir / eval_file(all_held_out)).write_text(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Evaluate a trained run on the held-out set.")
     ap.add_argument("--config", required=True)
     ap.add_argument("--seed", type=int, help="evaluate only this seed (default: every seed in train_seeds)")
+    ap.add_argument("--all-held-out", action="store_true",
+                    help="score every held-out window, not the config's sample; saves eval_all.json")
     args = ap.parse_args()
     for seed in [args.seed] if args.seed is not None else load_config(args.config).train_seeds:
-        evaluate(args.config, seed)
+        evaluate(args.config, seed, args.all_held_out)

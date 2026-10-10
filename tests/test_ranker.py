@@ -274,3 +274,29 @@ def test_the_retrievers_own_exact_score_is_reused_only_when_it_fits(tmp_path, mo
     ds.Y_test = np.zeros(5)
     os.utime(run / "eval.json", (1, 1))                                      # older than the checkpoint
     assert ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", scored) == {"computed": True}
+
+
+def test_a_full_held_out_evaluation_reads_the_retrievers_full_held_out_score(tmp_path, monkeypatch):
+    import json
+    import recsys.ranker as ranker_module
+    monkeypatch.chdir(tmp_path)
+    run = tmp_path / "runs" / "retriever_ranker_runs" / "5k" / "retriever_5k_x" / "seed1"
+    run.mkdir(parents=True)
+    (run / "best.pt").write_bytes(b"w")
+    (run / "eval.json").write_text(json.dumps({"full held-out": {"n": 5, "ndcg@10": 0.5, "recall@100": 0.9}}))
+    (run / "eval_all.json").write_text(json.dumps({"full held-out": {"n": 8, "ndcg@10": 0.4, "recall@100": 0.8}}))
+    monkeypatch.setattr(ranker_module, "rank_and_loss", lambda *a, **k: (np.ones(8, dtype=int), None))
+    rc = SimpleNamespace(retriever="configs/retriever_5k_x.toml", shortlist=100)
+    ds = SimpleNamespace(Y_test=np.zeros(8), XI_test=None, N_test=None, LI_test=None)
+    got = ranker_module.retriever_exact_score(rc, 1, ds, None, "cpu", lambda r: {"computed": True}, all_held_out=True)
+    assert got["ndcg@10"] == 0.4 and got["from"].endswith("eval_all.json")
+
+
+def test_all_held_out_keeps_every_window_in_a_copy_of_the_config(tmp_path):
+    from recsys.config import load_config
+    from recsys.evaluate import eval_file, with_all_held_out
+    cfg = load_config("configs/retriever_1m.toml")
+    full = with_all_held_out(cfg, True)
+    assert full.data.test_max_windows == 0 and cfg.data.test_max_windows == 200000
+    assert with_all_held_out(cfg, False) is cfg
+    assert (eval_file(False), eval_file(True)) == ("eval.json", "eval_all.json")

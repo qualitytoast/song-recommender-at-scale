@@ -76,7 +76,7 @@ from torch import nn
 from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
-from recsys.evaluate import score
+from recsys.evaluate import eval_file, score, with_all_held_out
 from recsys.lazy_adam import LazyAdamW, is_table, lr_groups, used_rows
 from recsys.model import build_model, rank_and_loss
 from recsys.rank_features import (GROUPS, CandidateFeatures, history_matrix, membership_keys, neighbour_lists,
@@ -466,8 +466,8 @@ def check_vocab(checkpoint, vocab, path):
         raise ValueError(f"{path} was trained on a different vocab than its config builds now.")
 
 
-def load_retriever(rc, seed, device):
-    cfg = load_config(rc.retriever)
+def load_retriever(rc, seed, device, all_held_out=False):
+    cfg = with_all_held_out(load_config(rc.retriever), all_held_out)
     ds = build_dataset(cfg)
     path = run_dir_for(rc.retriever, seed) / "best.pt"
     checkpoint = torch.load(path, weights_only=True)
@@ -631,12 +631,13 @@ def train_ranker(config_path, seed):
           f"{summary['train_seconds'] / 60:.1f} min")
 
 
-def retriever_exact_score(rc, seed, ds, retriever, device, scored):
+def retriever_exact_score(rc, seed, ds, retriever, device, scored, all_held_out=False):
     """The retriever alone ranking every song for the held-out windows: read from its own held-out
-    evaluation (recsys.evaluate's eval.json) when that is newer than its checkpoint, scored the same
-    number of windows and has recall at this shortlist size; otherwise computed here."""
+    evaluation (recsys.evaluate's eval.json, or eval_all.json for every held-out window) when that is
+    newer than its checkpoint, scored the same number of windows and has recall at this shortlist
+    size; otherwise computed here."""
     run_dir = run_dir_for(rc.retriever, seed)
-    path = run_dir / "eval.json"
+    path = run_dir / eval_file(all_held_out)
     if path.exists() and path.stat().st_mtime >= (run_dir / "best.pt").stat().st_mtime:
         saved = json.loads(path.read_text()).get("full held-out")
         if saved and saved["n"] == len(ds.Y_test) and f"recall@{rc.shortlist}" in saved:
@@ -644,12 +645,13 @@ def retriever_exact_score(rc, seed, ds, retriever, device, scored):
     return scored(rank_and_loss(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, lengths=ds.LI_test)[0])
 
 
-def evaluate_ranker(config_path, seed):
-    """Held-out: the retriever's top-k reranked by the best ranker, vs the retriever alone."""
+def evaluate_ranker(config_path, seed, all_held_out=False):
+    """Held-out: the retriever's top-k reranked by the best ranker, vs the retriever alone. all_held_out:
+    every held-out window instead of the retriever config's sample, saved to eval_all.json."""
     rc = load_ranker_config(config_path)
     run_dir = run_dir_for(config_path, seed)
     device = pick_device()
-    cfg, ds, retriever = load_retriever(rc, seed, device)
+    cfg, ds, retriever = load_retriever(rc, seed, device, all_held_out)
     start = time.perf_counter()
     vectors = song_vectors(retriever)
     held_out = [(ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test)]
@@ -673,7 +675,8 @@ def evaluate_ranker(config_path, seed):
                f"retriever + ranker (top {rc.shortlist})": scored(ranks),
                "retriever alone": scored(retriever_ranks)}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
-        results["retriever alone, exact search"] = retriever_exact_score(rc, seed, ds, retriever, device, scored)
+        results["retriever alone, exact search"] = retriever_exact_score(rc, seed, ds, retriever, device, scored,
+                                                                         all_held_out)
     results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})
@@ -685,7 +688,7 @@ def evaluate_ranker(config_path, seed):
         if isinstance(r, dict):
             print(f"{name:34}{r['ndcg@10']:>10.4f}{r['hits@1']:>9.3f}{r['hits@5']:>9.3f}{r['hits@10']:>9.3f}"
                   f"{r[f'recall@{rc.shortlist}']:>10.3f}")
-    (run_dir / "eval.json").write_text(json.dumps(results, indent=2))
+    (run_dir / eval_file(all_held_out)).write_text(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
@@ -693,8 +696,10 @@ if __name__ == "__main__":
     ap.add_argument("--config", required=True)
     ap.add_argument("--seed", type=int, help="only this seed (default: every seed in train_seeds)")
     ap.add_argument("--evaluate", action="store_true", help="evaluate only, no training")
+    ap.add_argument("--all-held-out", action="store_true", help="evaluate only, on every held-out window instead "
+                    "of the retriever config's sample; saves eval_all.json (run the retriever's first)")
     args = ap.parse_args()
     for seed in [args.seed] if args.seed is not None else load_ranker_config(args.config).train_seeds:
-        if not args.evaluate:
+        if not (args.evaluate or args.all_held_out):
             train_ranker(args.config, seed)
-        evaluate_ranker(args.config, seed)
+        evaluate_ranker(args.config, seed, args.all_held_out)
