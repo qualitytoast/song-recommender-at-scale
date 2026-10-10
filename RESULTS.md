@@ -1171,3 +1171,22 @@ sent one at a time over HTTP as URIs and name text:
   runs on the CPU by default. (A GPU pays off with big batches, as in training and evaluation.)
 - HTTP adds ~0.5 ms. The search process holds 1.4 GB resident (the 283 MB index plus FAISS's working
   memory), the server 2.4 GB on the CPU (the two sets of song vectors, the pair table, song names).
+
+**Finding songs by name** (2026-10-10, `5f5bb15`). Requests can name songs as `"Track - Artist"` text
+instead of Spotify URIs, and `GET /songs?q=...` gives a type-ahead menu: songs whose track or artist name
+starts with what was typed (case and accents ignored; `"nightcall - kav"` narrows by artist), in the
+most playlists first, so the original comes before covers and remixes ("nightcall": Kavinsky's in 2,729
+playlists, then London Grammar's 532, then remixes). Text resolves to the exact track and artist match
+(the most-played if several), or a track name alone to its most-played song; anything else is ignored
+and listed. The bundle adds each song's playlist count (all 1M playlists; for the menu only, no model
+reads it) and song IDs pre-sorted by track and by artist name (new version `f73f0d4e1e71`, export 179 s).
+
+- The menu answers in 0.7-1.0 ms end to end (p50 over 300 requests: "n" 0.99 ms, "nig" 0.76 ms, "kav"
+  0.74 ms): a binary search in the sorted names, then the most-played of the matches. The worst case
+  found, "a - b" (two huge ranges to intersect), takes 13.6 ms, still instant for a person typing.
+- Recommendations are unchanged: the 2,000-request check gives the offline top 10 for all 2,000 again.
+  Its times doubled in this run (2.1 ms p50 of model work, 3.1 ms end to end) on battery power, with
+  every stage slowed equally, including the untouched search.
+- Display names aren't unique: some songs exist twice in the MPD under different URIs (an album and a
+  single version: "Odd Look - Kavinsky" in 871 and 137 playlists). The menu shows both; showing the album
+  would tell them apart.

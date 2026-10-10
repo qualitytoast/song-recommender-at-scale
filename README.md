@@ -177,11 +177,15 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 python -m recsys.export --ranker configs/ranker_1m_any_length.toml   # once: writes bundles/<name>-<version>/ (2.2 GB)
 python -m recsys.serve --device cpu                                   # the newest bundle, on http://127.0.0.1:8000
 curl -s -X POST localhost:8000/recommend -H 'content-type: application/json' \
-  -d '{"songs": ["spotify:track:7KXjTSCq5nL1LoYtL7XAwS", "spotify:track:6HZILIRieu8S0iqY8kIKhj"], "name": "rap caviar"}'
+  -d '{"songs": ["Nightcall - Kavinsky", "spotify:track:6HZILIRieu8S0iqY8kIKhj"], "name": "night drive"}'
+curl -s 'localhost:8000/songs?q=nightc'   # type-ahead: songs starting with "nightc", most-played first
 ```
 
-A request is a playlist's Spotify track URIs (any number; the last 10 known
-ones are read) and optionally its name. The answer is the top 10 songs with
+A request is a playlist's songs, as Spotify track URIs or `"Track - Artist"`
+text (any number; the last 10 known ones are read), and optionally its name.
+`GET /songs` finds songs as the user types: track or artist names starting with
+the text, case and accents ignored, in the most playlists first, so typing
+"nightcall" lists Kavinsky's original before the covers and remixes (~1 ms). The answer is the top 10 songs with
 track, artist and score, plus the songs it left out (not in the catalog), the
 model version, and the time each stage took. The export (`recsys/export.py`)
 writes everything the server needs into one versioned folder: each model's
