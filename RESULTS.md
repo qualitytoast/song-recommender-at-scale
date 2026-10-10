@@ -1135,3 +1135,39 @@ lengths (retriever 0.1190 -> 0.1363, pair 0.1512 -> 0.1681).
   process peaked at a 31.8 GB footprint on the 25.8 GB Mac and swapped), training 22 checks of ~3 min.
   Evaluations: the retriever's exact ranking of all 6.2M cases took ~1 h 55 min (also slowed, partly on
   battery); each ranker's ~10-30 min. At this size, ranker runs need the Mac's memory nearly to themselves.
+
+**Serving, phase A: the 1M pair behind a REST API** (2026-10-10, `e45c01a`, `35ef551`). The pair
+`retriever_1m` + `ranker_1m_any_length` is exported once (`python -m recsys.export`, 69 s) to a 2.2 GB
+bundle, `bundles/ranker_1m_any_length-61dd89c16797`:
+- one precomputed input vector per song for each model (song + artist + album + length + genre vectors
+  added up once), 270 MB each
+- the search vectors (274 MB) and the saved IVF index (283 MB, 4,096 clusters)
+- the appeared-together table (1.02 GB: 101.7M pairs as 8-byte keys and 2-byte counts)
+- song names and URIs (70 MB) and each model's shared layers (2.8 MB each: the transformer, positions,
+  playlist-name words, and the ranker's correction network)
+- a manifest with every file's SHA-256; the version is computed from them
+
+`python -m recsys.serve` (FastAPI, run by uvicorn) loads it in 1-2 s and answers `POST /recommend` (Spotify
+URIs + optional playlist name -> top 10 with track, artist and score; unknown songs left out and listed;
+the last 10 known songs read) and `GET /health`. FAISS runs in its own search process, as in training.
+
+Checked with `scripts/serving_check.py` on 2,000 held-out cases, 200 of each length from 1 to 10 songs,
+sent one at a time over HTTP as URIs and name text:
+
+| Models on | Same top 10 as the offline evaluation | NDCG@10 served / offline | Model work p50 / p99 | End to end p50 / p99 | Server memory |
+|---|---|---|---|---|---|
+| CPU | 2,000 of 2,000, in order (every length) | 0.1524 / 0.1524 | 1.00 / 1.20 ms | 1.50 / 1.78 ms | 2.4 GB |
+| Mac GPU (mps) | 2,000 of 2,000, in order (every length) | 0.1524 / 0.1524 | 6.95 / 13.17 ms | 7.60 / 13.89 ms | (on the GPU's shared memory) |
+
+| Stage (CPU, p50) | Lookup | Retriever | Search | Ranker inputs | Ranker | Total |
+|---|---|---|---|---|---|---|
+| ms | 0.01 | 0.20 | 0.27 | 0.13 | 0.39 | 1.00 |
+
+- Served answers equal the offline evaluation's exactly, so the export, the precomputed vectors, the saved
+  index and the request path change nothing. (The saved index also finds the same shortlists as the one
+  rebuilt for evaluation: FAISS's clustering is repeatable.)
+- One request at a time, the CPU is ~7x faster than the Mac GPU: each request is a handful of tiny
+  computations, and on the GPU the fixed cost of starting and waiting for each one dominates. The server
+  runs on the CPU by default. (A GPU pays off with big batches, as in training and evaluation.)
+- HTTP adds ~0.5 ms. The search process holds 1.4 GB resident (the 283 MB index plus FAISS's working
+  memory), the server 2.4 GB on the CPU (the two sets of song vectors, the pair table, song names).

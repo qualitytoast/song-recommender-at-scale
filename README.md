@@ -165,10 +165,36 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Scaling check: the same settings at 200k give 0.1576, so 5x more data adds +0.015
 - [x] Inputs of any length (1 to 10 songs) in validation and testing, and a ranker retrained on
       them: 0.1692 held-out NDCG@10 over all lengths
-- [ ] Serving, phase A: the 1M pair behind a FastAPI REST API (one process and its search worker)
+- [x] Serving, phase A: the 1M pair behind a FastAPI REST API: the same top 10 as the offline
+      evaluation for 2,000 of 2,000 requests, ~1.5 ms per request on the CPU
 - [ ] Serving, phase B: the song catalog split across shard processes
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
+
+## Serving
+
+```bash
+python -m recsys.export --ranker configs/ranker_1m_any_length.toml   # once: writes bundles/<name>-<version>/ (2.2 GB)
+python -m recsys.serve --device cpu                                   # the newest bundle, on http://127.0.0.1:8000
+curl -s -X POST localhost:8000/recommend -H 'content-type: application/json' \
+  -d '{"songs": ["spotify:track:7KXjTSCq5nL1LoYtL7XAwS", "spotify:track:6HZILIRieu8S0iqY8kIKhj"], "name": "rap caviar"}'
+```
+
+A request is a playlist's Spotify track URIs (any number; the last 10 known
+ones are read) and optionally its name. The answer is the top 10 songs with
+track, artist and score, plus the songs it left out (not in the catalog), the
+model version, and the time each stage took. The export (`recsys/export.py`)
+writes everything the server needs into one versioned folder: each model's
+small shared layers, one precomputed input vector per song (its song, artist,
+album, length and genre vectors added up once), the saved search index, the
+ranker's per-song tables and the appeared-together counts. The server
+(`recsys/serve.py`, FastAPI + uvicorn; the work is in `recsys/recommender.py`)
+loads it in 1-2 s. FastAPI's page at `/docs` lets you try requests in a browser.
+
+Checked on 2,000 held-out requests of every length: the served top 10 equals
+the offline evaluation's in every case, and a request takes ~1.5 ms end to end
+on the CPU (~7x faster than on the Mac GPU, which only pays off with big
+batches).
 
 ## Ideas to revisit after serving (before adding more data)
 
@@ -255,8 +281,9 @@ folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_
 | `recsys/sampled.py`, `recsys/lazy_adam.py`, `recsys/augment.py` | Sampled softmax, lazy AdamW, window augmentation |
 | `recsys/ranker.py` | The second-stage ranker: shortlists, training, evaluation |
 | `recsys/search.py`, `recsys/ann.py`, `recsys/search_worker.py` | Exact search; FAISS indexes in their own process |
+| `recsys/export.py`, `recsys/recommender.py`, `recsys/serve.py` | Serving: the versioned bundle, answering requests from it, the FastAPI server |
 | `recsys/metrics.py`, `recsys/baselines.py` | NDCG@k, Hits@k; most-popular baseline |
-| `scripts/` | v1 equivalence check, genre fetching, profiling, search benchmark |
+| `scripts/` | v1 equivalence check, genre fetching, profiling, search benchmark, short-input test, serving check |
 | `configs/`, `tests/` | One config per run; tests |
 | `RESULTS.md` | Every run, with what changed and what was learned |
 
