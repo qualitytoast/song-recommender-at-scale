@@ -125,3 +125,24 @@ def test_the_version_comes_from_every_file(served, tmp_path):
     (copy / "settings.json").write_text(json.dumps({**settings, "shortlist": 16}))
     assert write_manifest(copy) != rec.version
     assert rec.path.name == f"tiny-{rec.version}"
+
+
+def test_the_http_api(served, tmp_path):
+    from fastapi.testclient import TestClient
+    from recsys.serve import create_app
+    rec = served[0]
+    with TestClient(create_app(rec.path, "cpu")) as client:
+        health = client.get("/health").json()
+        assert health["status"] == "ok" and health["version"] == rec.version and health["songs"] == V
+        out = client.post("/recommend", json={"songs": ["spotify:track:6", "nope", "spotify:track:7"],
+                                              "name": "road trip"})
+        assert out.status_code == 200
+        body = out.json()
+        assert body == {**rec.recommend(["spotify:track:6", "nope", "spotify:track:7"], "road trip"),
+                        "timings_ms": body["timings_ms"]}
+        assert client.post("/recommend", json={"songs": ["spotify:track:6"]}).status_code == 200  # no name
+        empty = client.post("/recommend", json={"songs": []})
+        assert empty.status_code == 400 and "no songs" in empty.json()["detail"]["error"]
+        unknown = client.post("/recommend", json={"songs": ["a", "b"]})
+        assert unknown.status_code == 400 and unknown.json()["detail"]["ignored"] == ["a", "b"]
+        assert client.post("/recommend", json={"name": "x"}).status_code == 422  # malformed: no songs field
