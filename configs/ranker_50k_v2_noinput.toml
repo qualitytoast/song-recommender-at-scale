@@ -27,4 +27,3 @@ features = ["overlap", "cooccurrence"]  # step 5c + log_after_last, log_after_co
 correction_hidden = 0      # the correction is a weighted sum of its inputs
 exclude_input = true       # was false: songs in the retriever's input are left out of the shortlist
 val_set = "separate"       # was "retriever": validation windows outside the retriever's sample
-compile = false            # torch.compile off: plain PyTorch

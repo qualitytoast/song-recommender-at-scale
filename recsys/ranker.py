@@ -115,8 +115,6 @@ class RankerConfig:
     exclude_input: bool    # true: songs in the retriever's input are left out of every shortlist
     val_set: str           # "retriever": the retriever's validation sample; "separate": other validation
                            # windows (data.ranker_validation_keep)
-    compile: bool          # torch.compile the ranker's forward pass (training, validation, evaluation):
-                           # many small GPU operations fused into fewer, same math
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -505,8 +503,6 @@ def train_ranker(config_path, seed):
     ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
     if rc.freeze_tables:
         freeze_tables(ranker)
-    if rc.compile:  # same weights and state_dict; only how the GPU runs the forward pass changes
-        ranker.compile()
     num_params = sum(p.numel() for p in ranker.parameters())
     new_params = num_params - sum(p.numel() for p in retriever.parameters())
     trained = sum(p.numel() for p in ranker.parameters() if p.requires_grad)
@@ -664,8 +660,6 @@ def evaluate_ranker(config_path, seed):
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
     check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])
-    if rc.compile:
-        ranker.compile()
     rerank_start = time.perf_counter()
     nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_test, ds.N_test, ds.LI_test, device)
     features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device, nbrs)

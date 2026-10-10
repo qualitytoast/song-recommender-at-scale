@@ -27,4 +27,3 @@ features = ["popularity"]  # was []: log_popularity (recsys/rank_features.py)
 correction_hidden = 0      # the correction is a weighted sum of its inputs
 exclude_input = false      # input songs can be in the shortlist
 val_set = "retriever"      # validate on the retriever's validation sample
-compile = false            # torch.compile off: plain PyTorch
