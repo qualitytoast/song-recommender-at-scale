@@ -969,3 +969,26 @@ held-out within ±0.003). Timed at 1M and 50k with the profiler's new `--compile
   and 0.1492, stopping after 27, 39 and 54 checks: training on the Mac GPU isn't exactly repeatable (some
   GPU operations add numbers in varying order), and small differences grow into different stopping points.
   Single-run ranker differences of about 0.001 are within this noise.
+
+**Scaling, stage 3: 1,000,000 playlists, part-A retriever.** `retriever_1m` (2026-10-09, `478da8c`):
+`retriever_50k_b256`'s settings at the whole MPD, plus phase C's speed-ups (torch.compile, 4,096 sampled
+wrong answers). 1,053,328 songs; 4,540,091 training chunks, 40,593,868 training targets per epoch;
+200.6M parameters; validation on 20,000 windows every quarter epoch; held-out on the fixed 200,000-window
+sample.
+
+| Config (seed 1) | Songs | Held-out NDCG@10 | Hits@10 | Hits@1 | Top 100 | Top 500 | Most-popular NDCG@10 | Best at | Training time |
+|---|---|---|---|---|---|---|---|---|---|
+| `retriever_50k_b256` (50k) | 166,627 | 0.1178 | 18.0% | 6.9% | 41.9% | 64.6% | 0.0034 | 7.0 epochs | 14.3 min |
+| `retriever_200k` (200k) | 412,404 | 0.1257 (sample: 0.1248) | 19.0% | 7.5% | 42.3% | 64.0% | 0.0032 | 7.75 epochs | 64.2 min |
+| `retriever_1m` (1M) | 1,053,328 | **0.1406** (sample) | 20.6% | 8.9% | 43.8% | 64.9% | 0.0028 | 8.75 epochs | 75.2 min |
+
+- +0.0158 over `retriever_200k` on each scale's 200,000-window sample (0.1406 vs 0.1248), with 2.6x more
+  songs to rank against; 51x most-popular (39x at 200k). Each scale holds out its own playlists, so the
+  windows differ, but they're drawn the same way. Validation agrees (0.1404 vs 0.1219).
+- Top-100 recall is the highest yet (43.8%): the 1M ranker has slightly more true songs to work with.
+- Training: 75.2 min for 10 epochs (best at 8.75, then 5 checks without a new best), of which validation
+  9.9 min (~14 s per check). About 6.7 min per epoch of training on a quiet machine (~87 s per quarter);
+  checks 35-37 took ~2x longer while another app used the GPU. Without phase C, the estimate was 36 min
+  per epoch (with the GPU shared) or 16 min (quiet).
+- The validation score kept creeping up with ±0.001 bounces between checks (0.1361 at 5 epochs, 0.1389 at
+  7.5, 0.1404 at 8.75), so the later bests are partly noise-sized gains.
