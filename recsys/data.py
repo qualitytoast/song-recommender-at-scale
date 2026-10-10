@@ -587,8 +587,9 @@ def build_dataset_from_store(cfg):
     H_val = H_val if keep is None else keep_histories(H_val, keep)
     X_test, Y_test, N_test, H_test = sample_held_out(X_test, Y_test, N_test, H_test, d.test_max_windows,
                                                      cfg.data_seed)
-    # Any-length cases' inputs are X itself, with lengths from their histories.
-    inputs = ((lambda X, H: inputs_from_histories(H, d.input_length)) if d.windows == "any_length"
+    # Any-length cases' inputs are X itself (one array, not a copy: ~1.4 GB at 1M), with lengths from
+    # their histories.
+    inputs = ((lambda X, H: (X, inputs_from_histories(H, d.input_length)[1])) if d.windows == "any_length"
               else (lambda X, H: window_inputs(X, H, d.input_length)))
     (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
         inputs(X, H) for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank), (X_rval, H_rval)))

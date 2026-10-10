@@ -249,7 +249,7 @@ def test_any_length_cases_hold_every_length_and_the_full_windows_are_the_longest
     anyl = build_dataset(config(tmp_path / "store", genres, ranker_split=0.2, windows="any_length"))
     for name in ("test", "rank", "val"):
         X, XI, LI, Y = (getattr(anyl, f"{a}_{name}") for a in ("X", "XI", "LI", "Y"))
-        np.testing.assert_array_equal(XI, X)  # the retriever reads the case's inputs as they are
+        assert XI is X  # the retriever reads the case's inputs as they are (one array)
         assert ((LI >= 1) & (LI <= 3)).all() and set(LI.tolist()) == {1, 2, 3}
         assert all((X[r, LI[r]:] == 0).all() for r in range(len(X)))  # padded after the real songs
         longest = LI == 3  # the cases with 3 songs are exactly the full windows, in order
