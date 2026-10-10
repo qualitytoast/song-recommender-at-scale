@@ -119,12 +119,19 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
 | Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
 | Two-stage at 200k with the improved ranker: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1344 → 0.1567 | 49x |
+| Two-stage at 200k with the 1M settings: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1337 → 0.1576 | 49x |
 | Retriever at 1M (80% of training playlists; faster training settings) | 1,000,000 | 1,053,328 | 0.1397 | 49x |
 | **Two-stage at 1M: retriever alone (input songs left out) → + ranker** | **1,000,000** | **1,053,328** | **0.1479 → 0.1725** | **59x** |
 
 The 1M numbers score all 4,938,520 held-out windows. Day to day, runs at 200k
 and up score a fixed sample of 200,000 of them, which read within 0.001 of the
 full set.
+
+**What scaling to 1M adds.** The same settings trained on 200k playlists give a
+retriever of 0.1245 and a pair of 0.1576 (all 836,433 of its held-out windows).
+At 1M the retriever gains +0.0152 (+12%) and the pair +0.0149 (+9.5%), with 2.6x
+more songs to choose from. The ranker adds about the same at both sizes (+0.024),
+so the gain comes from the better retriever, carried through.
 
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
@@ -146,6 +153,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Training 2x faster before 1M (torch.compile, fewer random negatives), NDCG@10 within 0.001 at 50k
 - [x] All 1M playlists: retriever 0.1397, retriever + ranker 0.1725 held-out NDCG@10
       (59x most-popular), the ranker +16.6% over the retriever on the same shortlists
+- [x] Scaling check: the same settings at 200k give 0.1576, so 5x more data adds +0.015
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
