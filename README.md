@@ -158,6 +158,25 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
+## Ideas to revisit after serving (before adding more data)
+
+Model and serving ideas to test once serving is done, before the ListenBrainz
+data comes in. Each would be a separate run, measured like every other change.
+
+- **Multi-token prediction** (from DeepSeek-V3/V4): train the model to predict
+  the next song *and* the one after it (and so on) from the same playlist
+  vector. More training signal from the same data, and a better fit for
+  recommending a short run of songs. One extra output and loss; test at 50k.
+- **Low-precision song vectors for serving:** store the search index's song
+  vectors in 8 bits instead of 32 (FAISS scalar quantization), about 4x less
+  memory (282 MB → ~70 MB at 1M). Measure what it costs in search recall.
+- **Mixture of experts, only if a bigger model helps:** first test a wider or
+  deeper transformer at 50k (it is still v1's 2 layers, 64 wide). If size
+  helps, a mixture-of-experts layer (several small feed-forward "experts" and
+  a router that picks 1–2 per position) adds that capacity cheaply. Once
+  listening history brings several goals (next song, skips, play length),
+  multi-gate MoE (MMoE) shares experts across them.
+
 ## Notes for later: songs the model doesn't know
 
 A request can include songs outside the catalog. For now they are left out of
