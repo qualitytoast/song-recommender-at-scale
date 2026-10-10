@@ -385,7 +385,8 @@ def make_featurizer(rc, ds, retriever, device):
              if {"cooccurrence", "history"} & set(rc.features) else no_pairs)
     members = (membership_keys(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
                if "neighbours" in rc.features else None)
-    return CandidateFeatures(rc.features, retriever, popularity, pairs, device, ds.song_duration_ms, members)
+    return CandidateFeatures.from_retriever(rc.features, retriever, popularity, pairs, device, ds.song_duration_ms,
+                                            members)
 
 
 def window_neighbours(featurizer, ds, retriever, XI, N, LI, device):

@@ -132,6 +132,14 @@ class SearchWorker:
             times[i] = (time.perf_counter() - start) * 1000
         return times
 
+    def save(self, name, path):
+        """Write a built one-shard index to a file (Index.save)."""
+        self._request(cmd="save", name=name, path=str(path))
+
+    def load(self, name, path, nprobe=None):
+        """Load an index written by save; returns {"build_seconds", "memory_bytes"}."""
+        return self._request(cmd="load", name=name, path=str(path), nprobe=nprobe)
+
     def drop(self, name):
         self._request(cmd="drop", name=name)
 

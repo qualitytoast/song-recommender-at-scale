@@ -45,7 +45,7 @@ def test_every_feature_group_by_hand():
     durations = np.array([180_000, 240_000, 200_000, 300_000, 0, 210_000])  # song 4's length unknown (0)
     # 12 part-A playlists: song 3 in playlists 0 and 11, song 1 in 1-3, song 5 in 4-10.
     members = membership_keys(np.array([3, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 3]), np.arange(13), vocab_size=6)
-    f = CandidateFeatures(list(GROUPS), retriever(), popularity, pairs, torch.device("cpu"), durations, members)
+    f = CandidateFeatures.from_retriever(list(GROUPS), retriever(), popularity, pairs, torch.device("cpu"), durations, members)
     context, cands = torch.tensor([[0, 1, 2]]), torch.tensor([[3, 1, 4]])
     base, ranks, top = torch.tensor([[2.0, 1.0, 0.5]]), torch.tensor([[1, 2, 5]]), torch.tensor([3.0])
     history = torch.tensor([[-1, 0, 1, 2]])  # the playlist so far: the 3 context songs
@@ -73,11 +73,11 @@ def test_every_feature_group_by_hand():
 
 
 def test_groups_come_in_a_fixed_order_and_unknown_groups_are_refused():
-    f = CandidateFeatures(["popularity", "retriever_score"], retriever(), np.zeros(6), (np.zeros(0), np.zeros(0)),
+    f = CandidateFeatures.from_retriever(["popularity", "retriever_score"], retriever(), np.zeros(6), (np.zeros(0), np.zeros(0)),
                           torch.device("cpu"))
     assert f.names == ["score_gap", "log_rank", "log_popularity"]
     with pytest.raises(ValueError, match="unknown"):
-        CandidateFeatures(["vibes"], retriever(), np.zeros(6), (np.zeros(0), np.zeros(0)), torch.device("cpu"))
+        CandidateFeatures.from_retriever(["vibes"], retriever(), np.zeros(6), (np.zeros(0), np.zeros(0)), torch.device("cpu"))
 
 
 def test_with_extra_inputs_the_ranker_still_starts_as_the_retriever_and_then_uses_them():
@@ -195,7 +195,7 @@ def test_padding_after_a_short_context_counts_as_no_song():
     pairs = pair_counts(np.array([2, 3, 1, 3, 4]), np.array([0, 2, 5]), vocab_size=6)
     durations = np.array([180_000, 240_000, 200_000, 300_000, 0, 210_000])
     groups = ["retriever_score", "popularity", "overlap", "cooccurrence", "song_length"]
-    f = CandidateFeatures(groups, retriever(), popularity, pairs, torch.device("cpu"), durations)
+    f = CandidateFeatures.from_retriever(groups, retriever(), popularity, pairs, torch.device("cpu"), durations)
     cands, base, ranks, top = torch.tensor([[3, 1, 4]]), torch.tensor([[2.0, 1.0, 0.5]]), torch.tensor([[1, 2, 5]]), \
         torch.tensor([3.0])
     for short in ([0, 1], [1], [2, 1]):

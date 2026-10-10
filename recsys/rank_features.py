@@ -99,32 +99,46 @@ def history_matrix(histories, rows, length=HISTORY):
 class CandidateFeatures:
     """Computes the chosen groups' columns for batches of windows and their candidates."""
 
-    def __init__(self, groups, retriever, popularity, pairs, device, durations_ms=None, members=None):
-        """popularity (vocab,) counts; pairs (keys, counts) from pair_counts; durations_ms (vocab,)
-        song lengths, for song_length; members from membership_keys, for neighbours."""
+    def __init__(self, groups, vocab_size, popularity, pairs, device, durations_ms=None, members=None,
+                 song_artist=None, song_album=None, song_genres=None):
+        """vocab_size songs; popularity (vocab,) counts, or None if "popularity" isn't used; pairs (keys,
+        counts) from pair_counts; durations_ms (vocab,) song lengths, for song_length; members from
+        membership_keys, for neighbours; song_artist, song_album (vocab,) and song_genres (vocab, k) IDs,
+        for overlap and history (from_retriever reads them from a retriever)."""
         unknown = sorted(set(groups) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown ranker feature groups {unknown}; known: {list(GROUPS)}")
         self.groups = [g for g in GROUPS if g in groups]  # always in GROUPS order
         self.names = [name for g in self.groups for name in GROUPS[g]]
         needs_songs = {"overlap", "history"} & set(self.groups)
-        if needs_songs and not ({"artist", "album"} <= set(retriever.feature_names)
-                                and retriever.song_genres is not None):
+        if needs_songs and any(a is None for a in (song_artist, song_album, song_genres)):
             raise ValueError(f"{sorted(needs_songs)} need a retriever with artist, album and genre features")
         if needs_songs:
-            self.artist = retriever.song_feature_ids("artist").to(device)
-            self.album = retriever.song_feature_ids("album").to(device)
-            self.genres = retriever.song_genres.to(device)
+            self.artist = torch.as_tensor(song_artist, dtype=torch.long).to(device)
+            self.album = torch.as_tensor(song_album, dtype=torch.long).to(device)
+            self.genres = torch.as_tensor(song_genres, dtype=torch.long).to(device)
             self.genre_count = int(self.genres.max()) + 1
-        self.vocab_size = retriever.output.out_features
-        self.log_popularity = torch.log1p(torch.as_tensor(popularity, dtype=torch.float32)).to(device)
+        self.vocab_size = vocab_size
+        if "popularity" in self.groups:
+            self.log_popularity = torch.log1p(torch.as_tensor(popularity, dtype=torch.float32)).to(device)
         self.keys = torch.as_tensor(pairs[0], dtype=torch.int64).to(device)
-        self.counts = torch.as_tensor(pairs[1], dtype=torch.float32).to(device)
+        # Counts are whole numbers: 2 bytes each when they fit (the largest at 1M is 4,795).
+        counts = np.asarray(pairs[1])
+        small = len(counts) == 0 or counts.max() < 2 ** 15
+        self.counts = torch.as_tensor(counts.astype(np.int16 if small else np.int32)).to(device)
         if "song_length" in self.groups:  # at least 1 s, so a missing length can't be log(0)
             self.log_length = torch.log(torch.as_tensor(durations_ms, dtype=torch.float32).clamp(min=1000)).to(device)
         if "neighbours" in self.groups:
             self.members = torch.as_tensor(members, dtype=torch.int64).to(device)
         self.playlists = None  # part-A playlist vectors, set by the ranker when it first finds neighbours
+
+    @classmethod
+    def from_retriever(cls, groups, retriever, popularity, pairs, device, durations_ms=None, members=None):
+        """CandidateFeatures with the song tables (artist, album, genres) a retriever holds."""
+        has = {"artist", "album"} <= set(retriever.feature_names) and retriever.song_genres is not None
+        tables = ((retriever.song_feature_ids("artist"), retriever.song_feature_ids("album"), retriever.song_genres)
+                  if has else (None, None, None))
+        return cls(groups, retriever.output.out_features, popularity, pairs, device, durations_ms, members, *tables)
 
     def __call__(self, context, cands, base, ranks, top, history=None, neighbours=None, playlist_len=None):
         """context (b, L) song IDs (-1 = no song: padding after a short context); cands (b, C) song IDs; base (b, C) their retriever scores;
@@ -197,4 +211,4 @@ class CandidateFeatures:
         query = (songs[:, None, :] * self.vocab_size + cands[:, :, None]).contiguous()
         idx = torch.searchsorted(self.keys, query).clamp(max=len(self.keys) - 1)
         found = (self.keys[idx] == query) & (songs[:, None, :] >= 0)
-        return torch.where(found, self.counts[idx], torch.zeros((), device=cands.device))
+        return torch.where(found, self.counts[idx].float(), torch.zeros((), device=cands.device))

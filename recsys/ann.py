@@ -59,6 +59,24 @@ class Index:
                 self.index.add_shard(part)
         self.build_seconds = time.perf_counter() - start
 
+    def save(self, path):
+        """Write the index to a file (a one-shard index), so it can be loaded instead of rebuilt."""
+        if len(self.parts) != 1:
+            raise ValueError("only a one-shard index can be saved")
+        faiss.write_index(self.index, str(path))
+
+    @classmethod
+    def load(cls, path, nprobe=None):
+        """An Index read from a file written by save; nprobe: clusters searched per query (IVF)."""
+        index = cls.__new__(cls)
+        start = time.perf_counter()
+        index.index = faiss.read_index(str(path))
+        if nprobe is not None:
+            faiss.extract_index_ivf(index.index).nprobe = nprobe
+        index.parts = [index.index]
+        index.build_seconds = time.perf_counter() - start
+        return index
+
     def search(self, queries, k):
         """(ids, scores), each (queries, k), best first."""
         scores, ids = self.index.search(np.ascontiguousarray(queries, dtype=np.float32), k)

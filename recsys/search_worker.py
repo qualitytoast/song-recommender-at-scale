@@ -10,6 +10,8 @@ directions (stdin in, stdout out). Requests:
   {"cmd": "search", "name": str, "queries": array, "k": int}
       -> {"ids": array, "scores": array, "seconds": float}
   {"cmd": "latency", "name": str, "queries": array, "k": int}  -> {"ms": array}
+  {"cmd": "save", "name": str, "path": str}  -> {}
+  {"cmd": "load", "name": str, "path": str, "nprobe": int or None}  -> {"build_seconds": float, "memory_bytes": int}
   {"cmd": "drop", "name": str}  -> {}
   {"cmd": "quit"}
 Errors come back as {"error": message}. pickle is fine here: both ends are this project's code.
@@ -62,6 +64,13 @@ def main():
                 reply = {"ids": ids, "scores": scores, "seconds": time.perf_counter() - start}
             elif cmd == "latency":
                 reply = {"ms": indexes[request["name"]].latency_ms(request["queries"], request["k"])}
+            elif cmd == "save":
+                indexes[request["name"]].save(request["path"])
+                reply = {}
+            elif cmd == "load":
+                name = request["name"]
+                indexes[name] = Index.load(request["path"], request.get("nprobe"))
+                reply = {"build_seconds": indexes[name].build_seconds, "memory_bytes": indexes[name].memory_bytes()}
             elif cmd == "drop":
                 indexes.pop(request["name"], None)
                 reply = {}
