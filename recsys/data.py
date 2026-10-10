@@ -275,6 +275,8 @@ def build_dataset(cfg):
     d = cfg.data
     if is_store(d.folder) and d.song_key == "track_uri":
         return build_dataset_from_store(cfg)  # integer arrays all the way; same result
+    if d.windows == "any_length":
+        raise ValueError("any_length windows are built from the compact store (recsys.mpd_store) only")
     if is_store(d.folder):  # compact store from recsys.mpd_store, else raw MPD JSON slices
         playlists, tracks, playlist_names = playlists_from_store(load_store(d.folder), d.max_playlists,
                                                                  d.min_playlist_len, d.song_key)
@@ -407,19 +409,39 @@ def window_histories(songs, offsets, context_length):
 
 def window_inputs(X, histories, input_length):
     """(inputs, lengths): the retriever's input for each window X (n, context_length) with
-    window_histories histories. A window's input is its context songs and the songs before
-    them, up to input_length songs, never reaching past the playlist's start or back over a
-    song outside the vocab (as training chunks don't); left-aligned, padded with 0 after the
-    real songs (with causal attention no real song sees the padding). lengths (n,) counts the
-    real songs. With input_length equal to the window's length, the inputs are X itself."""
+    window_histories histories (inputs_from_histories). With input_length equal to the window's
+    length, the inputs are X itself."""
     if input_length == X.shape[1]:
         return X, np.full(len(X), input_length, dtype=np.int64)
+    return inputs_from_histories(histories, input_length)
+
+
+def inputs_from_histories(histories, input_length):
+    """(inputs, lengths) for windows or cases whose playlist so far is songs[begin:end]: the songs
+    before each one's target, up to input_length of them, never reaching past the playlist's start
+    or back over a song outside the vocab (as training chunks don't); left-aligned, padded with 0
+    after the real songs (with causal attention no real song sees the padding). lengths (n,)
+    counts the real songs."""
     songs, begin, end = histories
     last_unknown = np.maximum.accumulate(np.where(songs < 0, np.arange(len(songs)), -1))
     start = np.maximum(np.maximum(begin, last_unknown[end - 1] + 1), end - input_length)
     idx = start[:, None] + np.arange(input_length)
     inputs = np.where(idx < end[:, None], songs[np.minimum(idx, len(songs) - 1)], 0)
     return inputs.astype(np.int64), (end - start).astype(np.int64)
+
+
+def any_length_cases(songs, offsets, input_length):
+    """Test cases of any length (windows = "any_length"): every vocab song that has a vocab song
+    right before it in the same playlist, read from up to input_length songs before it
+    (inputs_from_histories). Returns (inputs (n, input_length) padded with 0, targets (n,),
+    playlist (n,), histories), in playlist order; the cases with input_length songs are exactly
+    windows_from_arrays' windows of that length, in the same order."""
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    t = np.arange(1, len(songs))
+    t = t[(songs[t] >= 0) & (songs[t - 1] >= 0) & (playlist[t] == playlist[t - 1])]  # target positions
+    histories = (songs, offsets[playlist[t]], t)
+    inputs, _ = inputs_from_histories(histories, input_length)
+    return inputs, songs[t], playlist[t], histories
 
 
 def keep_histories(histories, keep):
@@ -538,23 +560,26 @@ def build_dataset_from_store(cfg):
     fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
     train_songs, train_offsets = split_arrays(fit_idx)
     test_songs, test_offsets = split_arrays(held_out_idx)
+
+    def cases(songs, offsets):  # (X, Y, playlist, histories): full windows or any-length cases
+        if d.windows == "any_length":
+            return any_length_cases(songs, offsets, d.input_length)
+        X, Y, P = windows_from_arrays(songs, offsets, d.context_length)
+        return X, Y, P, window_histories(songs, offsets, d.context_length)
+
     X_train, Y_train, P_train = windows_from_arrays(train_songs, train_offsets, d.context_length)
     Xc_train, Yc_train, Pc_train = chunks_from_arrays(train_songs, train_offsets, d.input_length)
-    X_test, Y_test, P_test = windows_from_arrays(test_songs, test_offsets, d.context_length)
+    X_test, Y_test, P_test, H_test = cases(test_songs, test_offsets)
     N_train, N_test = encoded[fit_idx][P_train], encoded[held_out_idx][P_test]
     if not last_position_inputs_needed(cfg):
         X_train = N_train = None
-    rank_arrays = split_arrays(rank_idx)
-    X_rank, Y_rank, P_rank = windows_from_arrays(*rank_arrays, d.context_length)
-    H_test = window_histories(test_songs, test_offsets, d.context_length)
+    X_rank, Y_rank, P_rank, H_rank = cases(*split_arrays(rank_idx))
     if d.validation == "held_out_prefix":
         X_val, Y_val, N_val = X_test[:d.val_size], Y_test[:d.val_size], N_test[:d.val_size]
         H_val = keep_histories(H_test, np.arange(len(X_val)))
     else:
-        val_arrays = split_arrays(val_idx)
-        X_val, Y_val, P_val = windows_from_arrays(*val_arrays, d.context_length)
+        X_val, Y_val, P_val, H_val = cases(*split_arrays(val_idx))
         N_val = encoded[val_idx][P_val]
-        H_val = window_histories(*val_arrays, d.context_length)
     keep = validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
     rkeep = ranker_validation_keep(len(X_val), d.val_max_windows, cfg.data_seed)
     X_rval, Y_rval, N_rval, H_rval = X_val[rkeep], Y_val[rkeep], N_val[rkeep], keep_histories(H_val, rkeep)
@@ -562,10 +587,11 @@ def build_dataset_from_store(cfg):
     H_val = H_val if keep is None else keep_histories(H_val, keep)
     X_test, Y_test, N_test, H_test = sample_held_out(X_test, Y_test, N_test, H_test, d.test_max_windows,
                                                      cfg.data_seed)
-    H_rank = window_histories(*rank_arrays, d.context_length)
+    # Any-length cases' inputs are X itself, with lengths from their histories.
+    inputs = ((lambda X, H: inputs_from_histories(H, d.input_length)) if d.windows == "any_length"
+              else (lambda X, H: window_inputs(X, H, d.input_length)))
     (XI_val, LI_val), (XI_test, LI_test), (XI_rank, LI_rank), (XI_rval, LI_rval) = (
-        window_inputs(X, H, d.input_length)
-        for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank), (X_rval, H_rval)))
+        inputs(X, H) for X, H in ((X_val, H_val), (X_test, H_test), (X_rank, H_rank), (X_rval, H_rval)))
 
     artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
     albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])

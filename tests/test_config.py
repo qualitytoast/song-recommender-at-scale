@@ -19,6 +19,7 @@ val_split = 0.0
 genres_file = "data/genres/x.jsonl"
 val_max_windows = 0
 test_max_windows = 0
+windows = "full"
 ranker_split = 0.0
 
 [model]
@@ -111,7 +112,20 @@ def test_input_length_must_be_at_least_the_window_length():
     settings = dict(folder="data/mpd", max_playlists=10, min_playlist_len=4, min_freq=2, song_key="track_uri",
                     vocab_from="train", context_length=10, test_split=0.1, validation="separate_playlists",
                     val_size=0, val_split=0.1, genres_file="g.jsonl", val_max_windows=0, ranker_split=0.0,
-                    test_max_windows=0)
+                    test_max_windows=0, windows="full")
     DataConfig(**settings, input_length=20)  # fine
     with pytest.raises(ValueError, match="input_length"):
         DataConfig(**settings, input_length=5)
+
+
+def test_any_length_windows_need_input_length_equal_to_context_length():
+    from recsys.config import DataConfig
+    settings = dict(folder="d", max_playlists=10, min_playlist_len=4, min_freq=1, song_key="track_uri",
+                    vocab_from="train", context_length=10, test_split=0.1, validation="separate_playlists",
+                    val_size=0, val_split=0.1, genres_file="g.jsonl", val_max_windows=0, ranker_split=0.0,
+                    test_max_windows=0)
+    DataConfig(**settings, input_length=10, windows="any_length")  # fine
+    with pytest.raises(ValueError, match="input_length must equal"):
+        DataConfig(**settings, input_length=20, windows="any_length")
+    with pytest.raises(ValueError, match="windows"):
+        DataConfig(**settings, input_length=10, windows="some")

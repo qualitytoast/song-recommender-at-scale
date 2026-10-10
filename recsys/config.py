@@ -38,6 +38,10 @@ class DataConfig:
                            # against every song, so scores stay unbiased; 0 = all
     ranker_split: float    # fraction of training playlists kept out of retriever training, for
                            # training the second-stage ranker (recsys/ranker.py); 0 = none
+    windows: str           # test cases for validation, held-out and the ranker: "full" = windows of
+                           # context_length known songs and the song after them (before 2026-10-10);
+                           # "any_length" = every song with a known song right before it, reading up
+                           # to input_length songs (needs input_length == context_length)
 
     def __post_init__(self):  # runs right after the dataclass fills in its fields
         _check_choice("song_key", self.song_key, ("track_name", "track_uri"))
@@ -51,6 +55,12 @@ class DataConfig:
         if self.input_length < self.context_length:
             raise ValueError(f"input_length ({self.input_length}) can't be below context_length "
                              f"({self.context_length})")
+        _check_choice("windows", self.windows, ("full", "any_length"))
+        if self.windows == "any_length" and self.input_length != self.context_length:
+            raise ValueError("any_length windows read up to input_length songs, so input_length must equal "
+                             "context_length")
+        if self.windows == "any_length" and self.validation == "held_out_prefix":
+            raise ValueError("any_length windows need separate_playlists validation")
 
 
 @dataclass(frozen=True)

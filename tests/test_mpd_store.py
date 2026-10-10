@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 from recsys.config import Config, DataConfig, ModelConfig
-from recsys.data import (build_dataset, chunks_from_arrays, first_appearance_ids, load_playlists,
+from recsys.data import (any_length_cases, build_dataset, chunks_from_arrays, first_appearance_ids, load_playlists,
                          make_chunks, make_windows, windows_from_arrays)
 from recsys.mpd_store import build_store, is_store, load_store, playlists_from_store
 
@@ -95,13 +95,13 @@ def random_mpd(tmp_path, n_playlists=120, seed=0):
 
 
 def config(folder, genres, max_playlists=1000, validation="separate_playlists", val_split=0.1, val_size=0,
-           val_max_windows=0, ranker_split=0.0, input_length=3, test_max_windows=0):
+           val_max_windows=0, ranker_split=0.0, input_length=3, test_max_windows=0, windows="full"):
     data = DataConfig(folder=str(folder), max_playlists=max_playlists, min_playlist_len=4, min_freq=2,
                       song_key="track_uri", vocab_from="train", context_length=3, input_length=input_length,
                       test_split=0.1,
                       validation=validation, val_size=val_size, val_split=val_split, genres_file=str(genres),
                       val_max_windows=val_max_windows, ranker_split=ranker_split,
-                      test_max_windows=test_max_windows)
+                      test_max_windows=test_max_windows, windows=windows)
     model = ModelConfig(embed_dim=4, num_layers=1, dropout=0.0, scale_attention=True, init="pytorch",
                         features=["artist", "album", "duration", "playlist_name", "genre"])
     return Config(data_seed=42, train_seeds=[1], data=data, model=model, train=None)
@@ -228,3 +228,45 @@ def test_held_out_sample_is_a_fixed_subset_in_order(tmp_path):
     np.testing.assert_array_equal(a.XI_test, full.XI_test[keep])  # each window keeps its retriever input
     np.testing.assert_array_equal(a.H_test[2], full.H_test[2][keep])
     np.testing.assert_array_equal(a.X_val, full.X_val)  # validation is untouched
+
+
+def test_any_length_cases_by_hand():
+    songs = np.array([0, 1, 2, -1, 3, 4, 5, 6, 7, 8])  # playlist A: 8 songs, one unknown; B: 2 songs
+    offsets = np.array([0, 8, 10])
+    X, Y, P, (_, begin, end) = any_length_cases(songs, offsets, input_length=3)
+    np.testing.assert_array_equal(X, [[0, 0, 0], [0, 1, 0], [3, 0, 0], [3, 4, 0], [3, 4, 5], [7, 0, 0]])
+    np.testing.assert_array_equal(Y, [1, 2, 4, 5, 6, 8])  # never an unknown target or a song after one
+    np.testing.assert_array_equal(P, [0, 0, 0, 0, 0, 1])
+    np.testing.assert_array_equal(begin, [0, 0, 0, 0, 0, 8])
+    np.testing.assert_array_equal(end, [1, 2, 5, 6, 7, 9])  # each target's position: songs[begin:end] came before
+
+
+def test_any_length_cases_hold_every_length_and_the_full_windows_are_the_longest(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    genres = tmp_path / "genres.jsonl"
+    full = build_dataset(config(tmp_path / "store", genres, ranker_split=0.2))
+    anyl = build_dataset(config(tmp_path / "store", genres, ranker_split=0.2, windows="any_length"))
+    for name in ("test", "rank", "val"):
+        X, XI, LI, Y = (getattr(anyl, f"{a}_{name}") for a in ("X", "XI", "LI", "Y"))
+        np.testing.assert_array_equal(XI, X)  # the retriever reads the case's inputs as they are
+        assert ((LI >= 1) & (LI <= 3)).all() and set(LI.tolist()) == {1, 2, 3}
+        assert all((X[r, LI[r]:] == 0).all() for r in range(len(X)))  # padded after the real songs
+        longest = LI == 3  # the cases with 3 songs are exactly the full windows, in order
+        np.testing.assert_array_equal(X[longest], getattr(full, f"X_{name}"))
+        np.testing.assert_array_equal(Y[longest], getattr(full, f"Y_{name}"))
+        np.testing.assert_array_equal(getattr(anyl, f"N_{name}")[longest], getattr(full, f"N_{name}"))
+    songs, begin, end = anyl.H_test
+    for r in range(len(anyl.X_test)):  # inputs are the songs right before the target
+        n = anyl.LI_test[r]
+        np.testing.assert_array_equal(anyl.X_test[r, :n], songs[end[r] - n:end[r]])
+        assert songs[end[r]] == anyl.Y_test[r]
+
+
+def test_any_length_validation_samples_draw_from_cases_of_every_length(tmp_path):
+    raw = random_mpd(tmp_path)
+    build_store(raw, tmp_path / "store")
+    ds = build_dataset(config(tmp_path / "store", tmp_path / "genres.jsonl", windows="any_length",
+                              val_max_windows=40, test_max_windows=60))
+    assert len(ds.Y_val) == 40 and len(ds.Y_test) == 60 and len(ds.Y_rval) == 40
+    assert set(ds.LI_val.tolist()) == {1, 2, 3} and set(ds.LI_test.tolist()) == {1, 2, 3}
