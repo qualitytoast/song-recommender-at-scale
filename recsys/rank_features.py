@@ -127,23 +127,27 @@ class CandidateFeatures:
         self.playlists = None  # part-A playlist vectors, set by the ranker when it first finds neighbours
 
     def __call__(self, context, cands, base, ranks, top, history=None, neighbours=None, playlist_len=None):
-        """context (b, L) song IDs; cands (b, C) song IDs; base (b, C) their retriever scores;
+        """context (b, L) song IDs (-1 = no song: padding after a short context); cands (b, C) song IDs; base (b, C) their retriever scores;
         ranks (b, C) their places in the shortlist (K + 1 if not in it); top (b,) the shortlist's
         best score; history (b, HISTORY) song IDs (history_matrix) if "history" is used;
         neighbours (b, NEIGHBOURS) playlist IDs (neighbour_lists) if "neighbours" is used;
         playlist_len (b,) songs in the playlist so far if "playlist_length" is used.
         Returns (b, C, len(self.names)) float32."""
         cols = []
+        n_real = (context >= 0).sum(1).clamp(min=1)  # (b,) real context songs (a full window: all L)
+        last = context.gather(1, (n_real - 1)[:, None])  # (b, 1) the last real one
         if "retriever_score" in self.groups:
             cols += [base - top[:, None], torch.log(ranks.float())]
         if "popularity" in self.groups:
             cols.append(self.log_popularity[cands])
         if "overlap" in self.groups:
             artist, album, genre = self.overlap(context, cands)
-            cols += [artist, album, genre, (self.artist[cands] == self.artist[context[:, -1:]]).float()]
+            cols += [artist, album, genre, (self.artist[cands] == self.artist[last]).float()]
         if "cooccurrence" in self.groups:
-            after = self.after_counts(context, cands)  # (b, C, L)
-            cols += [torch.log1p(after[..., -1]), torch.log1p(after.sum(-1)), (after > 0).float().mean(-1)]
+            after = self.after_counts(context, cands)  # (b, C, L), 0 for no song
+            after_last = after.gather(-1, (n_real - 1)[:, None, None].expand(-1, after.shape[1], 1)).squeeze(-1)
+            cols += [torch.log1p(after_last), torch.log1p(after.sum(-1)),
+                     (after > 0).float().sum(-1) / n_real[:, None]]
         if "history" in self.groups:
             n = (history >= 0).sum(1, keepdim=True).clamp(min=1).float()  # (b, 1) real songs
             artist, album, genre = self.overlap(history, cands)
@@ -156,7 +160,8 @@ class CandidateFeatures:
             contains = (self.members[idx] == query).float()  # (b, C, NEIGHBOURS), most alike first
             cols += [contains.mean(-1), contains[..., :10].mean(-1)]
         if "song_length" in self.groups:
-            typical = self.log_length[context].mean(-1, keepdim=True)  # (b, 1)
+            real = (context >= 0).float()
+            typical = (self.log_length[context.clamp(min=0)] * real).sum(-1, keepdim=True) / n_real[:, None]  # (b, 1)
             cols.append((self.log_length[cands] - typical).abs())
         if "playlist_length" in self.groups:
             cols.append(torch.log1p(playlist_len.float())[:, None].expand_as(base))

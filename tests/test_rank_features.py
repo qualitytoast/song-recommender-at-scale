@@ -188,3 +188,17 @@ def test_the_rankers_new_weights_can_learn_at_their_own_rate():
     assert opt.lr == 3e-5  # the copied tables
     plain = LazyAdamW(ranker, 1e-4, 0.05, prefix="retriever.")  # without dense_lr: one group, as before
     assert [g["lr"] for g in plain.dense.param_groups] == [1e-4]
+
+
+def test_padding_after_a_short_context_counts_as_no_song():
+    popularity = np.array([10, 4, 3, 7, 0, 1])
+    pairs = pair_counts(np.array([2, 3, 1, 3, 4]), np.array([0, 2, 5]), vocab_size=6)
+    durations = np.array([180_000, 240_000, 200_000, 300_000, 0, 210_000])
+    groups = ["retriever_score", "popularity", "overlap", "cooccurrence", "song_length"]
+    f = CandidateFeatures(groups, retriever(), popularity, pairs, torch.device("cpu"), durations)
+    cands, base, ranks, top = torch.tensor([[3, 1, 4]]), torch.tensor([[2.0, 1.0, 0.5]]), torch.tensor([[1, 2, 5]]), \
+        torch.tensor([3.0])
+    for short in ([0, 1], [1], [2, 1]):
+        expected = f(torch.tensor([short]), cands, base, ranks, top)
+        padded = torch.tensor([short + [-1] * (3 - len(short))])
+        torch.testing.assert_close(f(padded, cands, base, ranks, top), expected)

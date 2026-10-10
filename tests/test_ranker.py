@@ -324,3 +324,26 @@ def test_playlist_starts_are_the_windows_beginning_at_their_playlists_first_song
     rows = playlist_starts(histories, 2)
     _, begin, end = histories
     assert len(rows) == 1 and begin[rows[0]] == 0 and end[rows[0]] == 2  # B's start has an unknown song
+
+
+def test_a_padded_short_context_scores_like_the_short_context_itself():
+    ranker = trained_ranker()
+    names, cands, base = torch.tensor([[1, 2], [2, 0]]), torch.tensor([[4, 5, 1], [2, 6, 3]]), torch.randn(2, 3)
+    for k in (1, 2):
+        short = torch.tensor([[0, 3, 6][:k], [5, 1, 2][:k]])
+        padded = torch.cat([short, torch.full((2, 3 - k), 4)], dim=1)  # junk after the real songs
+        expected = ranker(short, names, cands, base)
+        got = ranker(padded, names, cands, base, lengths=torch.tensor([k, k]))
+        torch.testing.assert_close(got, expected)
+    mixed = torch.tensor([[0, 3, 6], [5, 4, 4]])  # lengths 3 and 1 in one batch
+    got = ranker(mixed, names, cands, base, lengths=torch.tensor([3, 1]))
+    torch.testing.assert_close(got[0], ranker(mixed[:1], names[:1], cands[:1], base[:1])[0])
+    torch.testing.assert_close(got[1], ranker(mixed[1:, :1], names[1:], cands[1:], base[1:])[0])
+
+
+def test_the_lazy_optimizer_never_counts_padding_as_a_used_song():
+    from recsys.ranker import ranker_rows
+    context, cands, names = np.array([[2, 0, 0], [3, 4, 0]]), np.array([[5], [6]]), np.array([[1], [1]])
+    rows = ranker_rows(context, cands, names, {}, None, "cpu", lengths=np.array([1, 2]))
+    assert rows["song_embedding.weight"].tolist() == [2, 3, 4, 5, 6]  # no song 0
+    assert 0 in ranker_rows(context, cands, names, {}, None, "cpu")["song_embedding.weight"].tolist()

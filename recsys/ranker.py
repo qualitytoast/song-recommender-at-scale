@@ -172,10 +172,12 @@ class CandidateRanker(nn.Module):
             self.register_buffer("feature_mean", torch.zeros(n_features))
             self.register_buffer("feature_std", torch.ones(n_features))
 
-    def forward(self, ids, names, candidates, base_scores, features=None):
+    def forward(self, ids, names, candidates, base_scores, features=None, lengths=None):
         """ids (b, L) context songs; names (b, w) name word IDs; candidates (b, C) song
         IDs; base_scores (b, C) the retriever's scores for them; features (b, C, n_features)
-        their extra inputs, if the ranker uses them. Returns (b, C) scores."""
+        their extra inputs, if the ranker uses them; lengths (b,) the real context songs per
+        row when ids is padded after them (any-length cases), so candidates never see the
+        padding. Returns (b, C) scores."""
         r = self.retriever
         L = ids.shape[1]
         context = r.embed_songs(ids) + r.position_embedding(torch.arange(L, device=ids.device))
@@ -185,18 +187,21 @@ class CandidateRanker(nn.Module):
             context, cand = context + name, cand + name
         context, cand = r.dropout(context), r.dropout(cand)
         later = torch.triu(torch.ones(L, L, dtype=torch.bool, device=ids.device), diagonal=1)
+        blank = None if lengths is None else torch.arange(L, device=ids.device)[None, :] >= lengths[:, None]
         for block in r.blocks:
-            context, cand = ranker_block(block, context, cand, later)
+            context, cand = ranker_block(block, context, cand, later, blank)
         if features is not None:
             cand = torch.cat([cand, (features - self.feature_mean) / self.feature_std], dim=-1)
         return base_scores + self.correction(cand).squeeze(-1)
 
 
-def ranker_block(block, context, cand, later):
+def ranker_block(block, context, cand, later, blank=None):
     """One TransformerBlock over context (b, L, d) and candidates (b, C, d), computing
     only the allowed attention scores: context position i attends to context <= i
-    (`later` (L, L) marks the rest); each candidate to the L context songs and itself.
-    Returns the new (context, cand)."""
+    (`later` (L, L) marks the rest); each candidate to the L context songs and itself,
+    except context positions marked in blank (b, L), padding after a short context.
+    (A real context song never sees the padding: it comes after it.) Returns the new
+    (context, cand)."""
     a = block.attention
     q, k, v = a.query(context), a.key(context), a.value(context)
     cq, ck, cv = a.query(cand), a.key(cand), a.value(cand)
@@ -205,6 +210,9 @@ def ranker_block(block, context, cand, later):
     context_out = weights @ v
     # Each candidate: scores against the context keys (b, C, L) and its own key (b, C, 1).
     scores = torch.cat([cq @ k.transpose(-2, -1), (cq * ck).sum(dim=-1, keepdim=True)], dim=-1) / scale
+    if blank is not None:
+        scores = scores.masked_fill(torch.cat([blank, torch.zeros_like(blank[:, :1])], dim=1)[:, None, :],
+                                    float("-inf"))
     weights = scores.softmax(dim=-1)
     cand_out = weights[..., :-1] @ v + weights[..., -1:] * cv
     # The rest of the block works on each position alone: the same as the retriever's.
@@ -339,9 +347,10 @@ def final_ranks(rerank_scores, short_ids, y):
 
 
 @torch.no_grad()
-def rerank(ranker, X, N, cands, base, device, batch=64, features=None):
+def rerank(ranker, X, N, cands, base, device, batch=64, features=None, lengths=None):
     """The ranker's scores for each window's candidates cands (n, C), whose retriever scores
-    are base (n, C), as (n, C) numpy. features: feature_fn(...) for the same windows, or None."""
+    are base (n, C), as (n, C) numpy. features: feature_fn(...) for the same windows, or None;
+    lengths (n,): real songs per row of X when it is padded (any-length cases), or None."""
     ranker.eval()
     out = []
     for s in range(0, len(X), batch):
@@ -349,7 +358,7 @@ def rerank(ranker, X, N, cands, base, device, batch=64, features=None):
         t = lambda a: torch.from_numpy(np.ascontiguousarray(a[i])).to(device)
         context, c, b = t(X), t(cands).long(), t(base)
         f = None if features is None else features(i, context, c, b)
-        out.append(ranker(context, t(N), c, b, f).cpu())
+        out.append(ranker(context, t(N), c, b, f, None if lengths is None else t(lengths)).cpu())
     return torch.cat(out).numpy()
 
 
@@ -389,16 +398,21 @@ def window_neighbours(featurizer, ds, retriever, XI, N, LI, device):
     return neighbour_lists(query_vectors(retriever, XI, N, device, lengths=LI), featurizer.playlists, device)
 
 
-def feature_fn(featurizer, short_ids, short_scores, histories, rows, device, neighbours=None):
+def feature_fn(featurizer, short_ids, short_scores, histories, rows, device, neighbours=None, lengths=None):
     """None without a featurizer. Otherwise a function (i, context, cands, base) -> the extra
     inputs for windows i (numpy indices) of a set whose shortlists are short_ids / short_scores
     (numpy, best first), whose playlists so far are entries rows of histories, and whose most
-    alike part-A playlists are neighbours (window_neighbours, aligned with i)."""
+    alike part-A playlists are neighbours (window_neighbours, aligned with i). lengths (aligned
+    with i): real songs per context row when padded (any-length cases); the padding counts as
+    no song."""
     if featurizer is None:
         return None
     songs, begin, end = histories
 
     def features(i, context, cands, base):
+        if lengths is not None:
+            n = torch.from_numpy(lengths[i]).to(device)
+            context = torch.where(torch.arange(context.shape[1], device=device)[None, :] < n[:, None], context, -1)
         ranks = shortlist_ranks(torch.from_numpy(short_ids[i]).to(device), cands)
         top = torch.from_numpy(short_scores[i, 0]).to(device)
         history = (torch.from_numpy(history_matrix(histories, rows[i])).to(device)
@@ -455,10 +469,14 @@ def freeze_tables(ranker):
             p.requires_grad_(False)
 
 
-def ranker_rows(context, candidates, names, song_features, song_genres, device):
+def ranker_rows(context, candidates, names, song_features, song_genres, device, lengths=None):
     """The table rows a ranker batch uses (numpy in), for LazyAdamW. The ranker reads
     context and candidate songs alike through the input-side tables; it never uses
-    the output-side ones (the retriever's score comes in frozen), so those get none."""
+    the output-side ones (the retriever's score comes in frozen), so those get none.
+    lengths: real context songs per row when padded; the padding (song 0) isn't used, so it
+    is counted as the row's first song instead (otherwise song 0 would move with no gradient)."""
+    if lengths is not None:
+        context = np.where(np.arange(context.shape[1]) < lengths[:, None], context, context[:, :1])
     songs = np.concatenate([context, candidates], axis=1)
     return used_rows(songs, np.empty(0, dtype=np.int64), names, song_features, song_genres, device)
 
@@ -502,6 +520,8 @@ def train_ranker(config_path, seed):
     in_list = shortlisted(train_ids, ds.Y_rank)
     rows = np.flatnonzero(in_list) if rc.train_windows == "in_shortlist" else np.arange(len(ds.Y_rank))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
+    any_length = rc.windows == "any_length"  # contexts are then padded after their real songs
+    L_tr, L_val = (ds.LI_rank[rows], LI_val) if any_length else (None, None)
     train_ids, train_scores, train_true = train_ids[rows], train_scores[rows], train_true[rows]
     print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows ({len(rows):,} trained on), {len(Y_val):,} val windows | "
           f"shortlists ({rc.search_name()}{', cached' if from_cache == 2 else ''}) in "
@@ -529,11 +549,12 @@ def train_ranker(config_path, seed):
     stopper = EarlyStopping(rc.min_checks, rc.patience)
     order_gen, negative_gen = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed + 3_000_000)
     X, N, Y = (torch.from_numpy(a) for a in (X_tr, N_tr, Y_tr))
+    lengths = None if L_tr is None else torch.from_numpy(L_tr)
     short_ids, short_scores, true_scores = (torch.from_numpy(a) for a in (train_ids, train_scores, train_true))
     train_nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_rank[rows], N_tr, ds.LI_rank[rows], device)
     val_nbrs = window_neighbours(featurizer, ds, retriever, XI_val, N_val, LI_val, device)
-    train_features = feature_fn(featurizer, train_ids, train_scores, ds.H_rank, rows, device, train_nbrs)
-    val_features = feature_fn(featurizer, val_ids, val_scores, H_val, np.arange(len(Y_val)), device, val_nbrs)
+    train_features = feature_fn(featurizer, train_ids, train_scores, ds.H_rank, rows, device, train_nbrs, L_tr)
+    val_features = feature_fn(featurizer, val_ids, val_scores, H_val, np.arange(len(Y_val)), device, val_nbrs, L_val)
     # Validation loss: the training loss on validation windows of the kind trained on (all, or
     # those with the true song shortlisted), their negatives drawn once (own generator, so
     # training's draws don't change) and reused at every check.
@@ -541,8 +562,9 @@ def train_ranker(config_path, seed):
     val_cands, val_base = (t.numpy() for t in with_negatives(
         *(torch.from_numpy(a[loss_rows]) for a in (val_ids, val_scores, val_true, Y_val)), rc.negatives,
         torch.Generator().manual_seed(seed + 4_000_000), rc.negatives_from))
+    loss_lengths = None if L_val is None else L_val[loss_rows]
     loss_features = feature_fn(featurizer, val_ids[loss_rows], val_scores[loss_rows], H_val, loss_rows, device,
-                               None if val_nbrs is None else val_nbrs[loss_rows])
+                               None if val_nbrs is None else val_nbrs[loss_rows], loss_lengths)
     if featurizer is not None:  # standardize the extra inputs with a fixed sample of training examples
         sample = np.sort(np.random.RandomState(seed).choice(len(Y_tr), min(20000, len(Y_tr)), replace=False))
         cands, base = with_negatives(
@@ -562,11 +584,11 @@ def train_ranker(config_path, seed):
         if not math.isfinite(train_loss):
             raise FloatingPointError(f"Ranker training loss became {train_loss} by check {check}.")
         train_seconds, val_start = time.perf_counter() - interval_start, time.perf_counter()
-        ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features),
-                            val_ids, Y_val)
+        ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features,
+                                   lengths=L_val), val_ids, Y_val)
         result = score(ranks)
         sampled = torch.from_numpy(rerank(ranker, X_val[loss_rows], N_val[loss_rows], val_cands, val_base, device,
-                                          features=loss_features))
+                                          features=loss_features, lengths=loss_lengths))
         val_loss = nn.functional.cross_entropy(sampled, torch.zeros(len(loss_rows), dtype=torch.long)).item()
         val_seconds = time.perf_counter() - val_start
         improved, stop = stopper.update(check, result["ndcg@10"])
@@ -600,13 +622,13 @@ def train_ranker(config_path, seed):
                                               rc.negatives, negative_gen, rc.negatives_from)
             context, cands, base = X[idx].to(device), candidates.to(device), base.to(device)
             f = None if train_features is None else train_features(idx.numpy(), context, cands, base)
-            scores = ranker(context, N[idx].to(device), cands, base, f)
+            scores = ranker(context, N[idx].to(device), cands, base, f, None if lengths is None else lengths[idx].to(device))
             loss = nn.functional.cross_entropy(scores, torch.zeros(len(idx), dtype=torch.long, device=device))
             optimizer.zero_grad()
             loss.backward()
             if lazy:
                 optimizer.step(ranker_rows(X[idx].numpy(), candidates.numpy(), N[idx].numpy(), song_features,
-                                           song_genres, device))
+                                           song_genres, device, None if L_tr is None else L_tr[idx.numpy()]))
             else:
                 optimizer.step()
             loss_sum += loss.detach()
@@ -638,13 +660,13 @@ def train_ranker(config_path, seed):
           f"{summary['train_seconds'] / 60:.1f} min")
 
 
-def retriever_exact_score(rc, seed, ds, retriever, device, scored, all_held_out=False):
+def retriever_exact_score(rc, seed, ds, retriever, device, scored, all_held_out=False, windows="full"):
     """The retriever alone ranking every song for the held-out windows: read from its own held-out
-    evaluation (recsys.evaluate's eval.json, or eval_all.json for every held-out window) when that is
-    newer than its checkpoint, scored the same number of windows and has recall at this shortlist
-    size; otherwise computed here."""
+    evaluation (recsys.evaluate's eval file for the same cases: eval_file) when that is newer than its
+    checkpoint, scored the same number of windows and has recall at this shortlist size; otherwise
+    computed here."""
     run_dir = run_dir_for(rc.retriever, seed)
-    path = run_dir / eval_file(all_held_out)
+    path = run_dir / eval_file(all_held_out, windows)
     if path.exists() and path.stat().st_mtime >= (run_dir / "best.pt").stat().st_mtime:
         saved = json.loads(path.read_text()).get("full held-out")
         if saved and saved["n"] == len(ds.Y_test) and f"recall@{rc.shortlist}" in saved:
@@ -652,18 +674,24 @@ def retriever_exact_score(rc, seed, ds, retriever, device, scored, all_held_out=
     return scored(rank_and_loss(retriever, ds.XI_test, ds.N_test, ds.Y_test, device, lengths=ds.LI_test)[0])
 
 
-def evaluate_ranker(config_path, seed, all_held_out=False):
-    """Held-out: the retriever's top-k reranked by the best ranker, vs the retriever alone. all_held_out:
-    every held-out window instead of the retriever config's sample, saved to eval_all.json."""
+def evaluate_ranker(config_path, seed, all_held_out=False, windows=None):
+    """Held-out: the retriever's top-k reranked by the best ranker, vs the retriever alone, plus the
+    ranker's validation windows. all_held_out: every held-out window instead of the retriever config's
+    sample; windows: other test cases than rc.windows (to re-score a ranker on any-length cases).
+    Saved to eval_file(all_held_out, windows)."""
     rc = load_ranker_config(config_path)
+    windows = windows or rc.windows
+    any_length = windows == "any_length"
     run_dir = run_dir_for(config_path, seed)
     device = pick_device()
-    cfg, ds, retriever = load_retriever(rc, seed, device, all_held_out)
+    cfg, ds, retriever = load_retriever(rc, seed, device, all_held_out, windows)
+    longest = cfg.data.input_length
     start = time.perf_counter()
     vectors = song_vectors(retriever)
-    held_out = [(ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test)]
-    ((ids, scores, _),), from_cache = cached_shortlists(rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever,
-                                                       vectors, device, held_out)
+    X_val, N_val, Y_val, XI_val, LI_val, H_val = ranker_validation(rc, ds)
+    sets = [(ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test), (XI_val, N_val, Y_val, LI_val)]
+    ((ids, scores, _), (val_ids, val_scores, _)), from_cache = cached_shortlists(
+        rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever, vectors, device, sets)
     search_seconds = time.perf_counter() - start
     featurizer = make_featurizer(rc, ds, retriever, device)
     ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
@@ -671,19 +699,32 @@ def evaluate_ranker(config_path, seed, all_held_out=False):
     check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])
     rerank_start = time.perf_counter()
+    lengths, val_lengths = (ds.LI_test, LI_val) if any_length else (None, None)
     nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_test, ds.N_test, ds.LI_test, device)
-    features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device, nbrs)
-    ranks = final_ranks(rerank(ranker, ds.X_test, ds.N_test, ids, scores, device, features=features), ids, ds.Y_test)
+    features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device, nbrs, lengths)
+    ranks = final_ranks(rerank(ranker, ds.X_test, ds.N_test, ids, scores, device, features=features,
+                               lengths=lengths), ids, ds.Y_test)
     rerank_seconds = time.perf_counter() - rerank_start
+    val_nbrs = window_neighbours(featurizer, ds, retriever, XI_val, N_val, LI_val, device)
+    val_features = feature_fn(featurizer, val_ids, val_scores, H_val, np.arange(len(Y_val)), device, val_nbrs,
+                              val_lengths)
+    val_ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features,
+                                   lengths=val_lengths), val_ids, Y_val)
     retriever_ranks = final_ranks(scores, ids, ds.Y_test)  # its own order within its shortlist = its full ranks
     pop, _ = popularity_scores(ds.Y_train, len(ds.vocab))
     scored = lambda r: score(r, (rc.shortlist,))  # with recall at the shortlist size, whatever it is
-    results = {"best_check": checkpoint["check"], "search": rc.search_name(),
-               f"retriever + ranker (top {rc.shortlist})": scored(ranks),
-               "retriever alone": scored(retriever_ranks)}
+    pair = f"retriever + ranker (top {rc.shortlist})"
+    results = {"best_check": checkpoint["check"], "search": rc.search_name(), "windows": windows,
+               pair: scored(ranks), "retriever alone": scored(retriever_ranks)}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
         results["retriever alone, exact search"] = retriever_exact_score(rc, seed, ds, retriever, device, scored,
-                                                                         all_held_out)
+                                                                         all_held_out, windows)
+    if any_length:  # the cases with every song an input can hold: the old full windows
+        full = ds.LI_test == longest
+        results[f"{pair}, {longest} songs"] = scored(ranks[full])
+        results[f"retriever alone, {longest} songs"] = scored(retriever_ranks[full])
+    results["validation: retriever + ranker"] = scored(val_ranks)
+    results["validation: retriever alone"] = scored(final_ranks(val_scores, val_ids, Y_val))
     results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})
@@ -695,7 +736,15 @@ def evaluate_ranker(config_path, seed, all_held_out=False):
         if isinstance(r, dict):
             print(f"{name:34}{r['ndcg@10']:>10.4f}{r['hits@1']:>9.3f}{r['hits@5']:>9.3f}{r['hits@10']:>9.3f}"
                   f"{r[f'recall@{rc.shortlist}']:>10.3f}")
-    (run_dir / eval_file(all_held_out)).write_text(json.dumps(results, indent=2))
+    if any_length:
+        results["by length: retriever + ranker"] = by_length(ranks, lengths, longest, scored)
+        results["by length: retriever alone"] = by_length(retriever_ranks, lengths, longest, scored)
+        print(f"\nheld-out by input length{'':4}{'n':>10}{'alone':>10}{'+ ranker':>10}{'gain':>9}")
+        for label, r in results["by length: retriever + ranker"].items():
+            a = results["by length: retriever alone"][label]
+            print(f"  {label + (' song' if label == '1' else ' songs'):<26}{r['n']:>10,}{a['ndcg@10']:>10.4f}"
+                  f"{r['ndcg@10']:>10.4f}{r['ndcg@10'] - a['ndcg@10']:>+9.4f}")
+    (run_dir / eval_file(all_held_out, windows)).write_text(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
@@ -705,8 +754,10 @@ if __name__ == "__main__":
     ap.add_argument("--evaluate", action="store_true", help="evaluate only, no training")
     ap.add_argument("--all-held-out", action="store_true", help="evaluate only, on every held-out window instead "
                     "of the retriever config's sample; saves eval_all.json (run the retriever's first)")
+    ap.add_argument("--windows", choices=["full", "any_length"], help="evaluate only, on these test cases instead "
+                    "of the config's windows; saves eval_any_length*.json for any_length")
     args = ap.parse_args()
     for seed in [args.seed] if args.seed is not None else load_ranker_config(args.config).train_seeds:
-        if not (args.evaluate or args.all_held_out):
+        if not (args.evaluate or args.all_held_out or args.windows):
             train_ranker(args.config, seed)
-        evaluate_ranker(args.config, seed, args.all_held_out)
+        evaluate_ranker(args.config, seed, args.all_held_out, args.windows)
