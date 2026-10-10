@@ -3,8 +3,8 @@
 A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
 predicts the next one. It is trained on the Spotify Million Playlist Dataset
 (MPD), uses song and playlist features, and works in two stages: a fast
-retriever narrows hundreds of thousands of songs down to 500, then a slower,
-more careful ranker orders those 500.
+retriever narrows a million songs down to 100, then a slower, more careful
+ranker orders those 100.
 
 ## Where it comes from
 
@@ -23,11 +23,11 @@ measured against the one before it.
 | | v1 (NumPy) | v2 (this repo) |
 |---|---|---|
 | Framework | Hand-written autograd in NumPy, CPU | PyTorch, Apple GPU (mps) |
-| Data | 5,000 playlists, 33,770 songs | 200,000 playlists, 412,404 songs so far; 1M next |
+| Data | 5,000 playlists, 33,770 songs | All 1,000,000 playlists, 1,053,328 songs |
 | What a song is | Its ID only | ID + artist, album, length, genres (MusicBrainz); plus the playlist's name |
 | Training | One target per 10-song window, full softmax, SGD | Next song predicted at every position (causal attention), sampled softmax, lazy AdamW |
 | Finding recommendations | Score every song | Retriever + FAISS IVF search for the top 100 (songs already in the input left out), then a ranker that rescores them |
-| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1567 (49x most-popular; retriever + ranker, 200k, a 12x bigger catalog) |
+| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1725 (59x most-popular; retriever + ranker, 1M, a 31x bigger catalog) |
 
 The v1 model's architecture is still the core: a small Transformer (2 layers,
 64-dimensional, single-head attention), the same metrics (NDCG@10, Hits@k) and
@@ -43,7 +43,7 @@ last 10 songs + playlist name
  │  Retriever   │───────────────────────┐
  └──────────────┘                       ▼
                          ┌───────────────────────────────┐
-                         │  Search (FAISS IVF, separate  │  top 100 of 412,404 songs,
+                         │  Search (FAISS IVF, separate  │  top 100 of 1,053,328 songs,
                          │  process): highest h · song   │  songs in the input left out
                          └───────────────────────────────┘
                                          │
@@ -68,15 +68,19 @@ scoring is one dot product per song. Training:
   at every position, with causal attention (each position sees only earlier
   songs). This was the biggest fix for overfitting.
 - *Sampled softmax* (`recsys/sampled.py`): instead of scoring every song for
-  every prediction, each batch scores its own true next songs plus 8,192 random
+  every prediction, each batch scores its own true next songs plus 4,096 random
   songs drawn by popularity, with a correction for how often each song is drawn.
 - *Lazy AdamW* (`recsys/lazy_adam.py`): a batch uses a few thousand of the
-  412k song rows, so only those rows are updated; this made training ~1.7x
+  million song rows, so only those rows are updated; this made training ~1.7x
   faster and better.
+- *Speed-ups for 1M:* `torch.compile` on the training step (it fuses many small
+  GPU operations into fewer) and 4,096 instead of 8,192 random songs cut a 1M
+  epoch from 16 to 7.7 min, with held-out NDCG@10 within 0.001 at 50k.
 
 **Search** (`recsys/search.py`, `recsys/ann.py`, `recsys/search_worker.py`).
-Finding the 500 highest dot products. Exact search scores every song; FAISS IVF
-groups songs into 2,048 clusters and searches only the 128 nearest the query.
+Finding the 100 highest dot products. Exact search scores every song; FAISS IVF
+groups the 1M songs into 4,096 clusters (2,048 at 50k and 200k) and searches only
+the 128 nearest the query, which finds 99.5% of the exact top 100.
 FAISS runs in its own process because it and PyTorch each bundle a copy of the
 OpenMP library and can't share one. `scripts/search_benchmark.py` compares exact
 search, FAISS Flat, IVF and HNSW, with and without sharding.
@@ -115,6 +119,12 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
 | Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
 | Two-stage at 200k with the improved ranker: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1344 → 0.1567 | 49x |
+| Retriever at 1M (80% of training playlists; faster training settings) | 1,000,000 | 1,053,328 | 0.1397 | 49x |
+| **Two-stage at 1M: retriever alone (input songs left out) → + ranker** | **1,000,000** | **1,053,328** | **0.1479 → 0.1725** | **59x** |
+
+The 1M numbers score all 4,938,520 held-out windows. Day to day, runs at 200k
+and up score a fixed sample of 200,000 of them, which read within 0.001 of the
+full set.
 
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
@@ -133,7 +143,9 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       small-network correction: 0.1484 held-out NDCG@10
 - [x] 200k confirmation of the improved ranker: 0.1567 held-out NDCG@10 (49x most-popular),
       +16.6% over the retriever on the same shortlists
-- [ ] All 1M playlists
+- [x] Training 2x faster before 1M (torch.compile, fewer random negatives), NDCG@10 within 0.001 at 50k
+- [x] All 1M playlists: retriever 0.1397, retriever + ranker 0.1725 held-out NDCG@10
+      (59x most-popular), the ranker +16.6% over the retriever on the same shortlists
 - [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
@@ -156,19 +168,22 @@ python scripts/genres_from_dump.py --store data/mpd_store --out data/genres/musi
 **Train and evaluate.** Every run is a config in `configs/` (no hidden
 defaults: a missing setting is an error); results go to
 `runs/<group>/<config>/seed<k>/` (e.g.
-`runs/retriever_ranker_runs/200k/retriever_200k/seed1/`).
+`runs/retriever_ranker_runs/1m/retriever_1m/seed1/`).
 
 ```bash
-python -m recsys.train    --config configs/retriever_200k.toml   # retriever (~1 h on an M-series Mac)
-python -m recsys.evaluate --config configs/retriever_200k.toml   # held-out NDCG@10, Hits@k, recall@K
-python -m recsys.ranker   --config configs/ranker_200k.toml          # ranker: train, then evaluate
-python scripts/search_benchmark.py real --config configs/retriever_200k.toml
-python -m pytest                                                # tests
+python -m recsys.train    --config configs/retriever_1m.toml   # retriever (~75 min on an M-series Mac)
+python -m recsys.evaluate --config configs/retriever_1m.toml   # held-out NDCG@10, Hits@k, recall@K
+python -m recsys.ranker   --config configs/ranker_1m.toml      # ranker: train, then evaluate (~45 min)
+# final numbers on every held-out window instead of the 200,000-window sample (eval_all.json)
+python -m recsys.evaluate --config configs/retriever_1m.toml --all-held-out
+python -m recsys.ranker   --config configs/ranker_1m.toml --all-held-out
+python scripts/search_benchmark.py real --config configs/retriever_1m.toml --k 100
+python -m pytest                                              # tests
 ```
 
 Config names follow the phases: `v1_*` (Phase 1), `p2_*` (features and
 overfitting), `p3_*` (scaling), `retriever_<size>` and `ranker_<size>` (two-stage
-pairs: `ranker_200k` is trained on `retriever_200k`; earlier rankers are
+pairs: `ranker_1m` is trained on `retriever_1m`; earlier rankers are
 `retriever_ranker_*`). Runs go in matching
 folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_ranker_runs/<size>/`
 (`5k/`, `50k/`, `200k/`, `1m/`).
