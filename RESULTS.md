@@ -1083,3 +1083,55 @@ from the serving shortlist (IVF top 100, input songs left out). Saved to `ranker
 - These are playlist starts, so the numbers aren't comparable with the main held-out evaluation (windows
   anywhere in a playlist): early songs are easier to predict (the retriever alone reads 0.1659 after 2 songs
   vs 0.1477 after 10).
+
+**Any-length test cases** (2026-10-10, `5e56c79`..`c21d5b8`). Until now validation, held-out evaluation
+and the ranker used only full windows: 10 known songs and the song after them, so no model was ever scored
+on fewer than 10 songs, though serving takes any number. A test case is now every song with a known song
+right before it, read from up to the last 10 songs before it (`windows = "any_length"`; existing configs
+keep `"full"`, and `--windows any_length` re-scores a trained model). The cases with 10 songs are exactly
+the old windows, so each evaluation also reports a "10 songs" line that matches every earlier number (it
+does, to the last digit, for every model below). The new headline is all lengths together. The retriever
+already trained on every length (every-position training); the ranker didn't, so `ranker_1m_any_length`
+trains, validates and is evaluated on any-length cases (with a mask so candidates never look at the
+padding after a short playlist, and extra inputs that use the last real song).
+
+At 1M, 79% of the 6,242,133 held-out cases have 10 songs; each shorter length is 2.0-2.8%.
+
+| Final models, every held-out case | Cases | All lengths | 10 songs (= before) | x most-popular |
+|---|---|---|---|---|
+| `retriever_200k` | 1,178,608 | 0.1199 | 0.1257 | 40x |
+| `retriever_200k` + `ranker_200k_v2` | 1,178,608 | 0.1503 | 0.1567 | 51x |
+| `retriever_200k_1m_settings` | 1,178,608 | 0.1190 | 0.1245 | 40x |
+| `retriever_200k_1m_settings` + `ranker_200k_1m_settings` | 1,178,608 | 0.1512 | 0.1576 | 51x |
+| `retriever_1m` | 6,242,133 | 0.1363 | 0.1397 | 48x |
+| `retriever_1m` + `ranker_1m` | 6,242,133 | 0.1681 | 0.1725 | 59x |
+| **`retriever_1m` + `ranker_1m_any_length`** | 6,242,133 | **0.1692** | 0.1731 | 59x |
+
+Shorter inputs are harder (the retriever alone: 0.1082 with 1 song, 0.1397 with 10), so every all-lengths
+number sits below its 10-song line. Scaling 200k -> 1M with the same settings still adds +0.017 on all
+lengths (retriever 0.1190 -> 0.1363, pair 0.1512 -> 0.1681).
+
+**`ranker_1m_any_length` vs `ranker_1m`** (same retriever, same shortlists):
+
+| | `ranker_1m` (10-song windows) | `ranker_1m_any_length` | Difference |
+|---|---|---|---|
+| Held-out, all 6,242,133 cases | 0.1681 | 0.1692 | +0.0011 |
+| Held-out, 200,000-case sample | 0.1682 | 0.1691 | +0.0009 |
+| Validation (20,000 any-length cases) | 0.1668 | 0.1680 | +0.0012 |
+| Held-out, 10-song cases only | 0.1725 | 0.1731 | +0.0006 |
+
+| Songs in the input | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Retriever alone (shortlist order) | 0.1088 | 0.1250 | 0.1294 | 0.1318 | 0.1332 | 0.1361 | 0.1369 | 0.1388 | 0.1405 | 0.1479 |
+| + `ranker_1m` | 0.1205 | 0.1429 | 0.1507 | 0.1549 | 0.1561 | 0.1599 | 0.1617 | 0.1625 | 0.1648 | 0.1725 |
+| + `ranker_1m_any_length` | 0.1284 | 0.1487 | 0.1549 | 0.1579 | 0.1584 | 0.1619 | 0.1628 | 0.1638 | 0.1656 | 0.1731 |
+| Any-length gain | +0.0079 | +0.0057 | +0.0043 | +0.0031 | +0.0023 | +0.0020 | +0.0011 | +0.0013 | +0.0008 | +0.0006 |
+
+- It passes the keep rule (+0.0011 held-out, validation +0.0012), and it gains most where `ranker_1m` never
+  trained: +6.6% with 1 song, +4% with 2, shrinking to +0.3% at 10, where it still isn't worse.
+- Per the CLAUDE.md rule (a kept ranker change: can the retriever do the same?): the retriever already
+  trains on every length; new retriever configs will validate on any-length cases.
+- Cost: 99 min. The shortlists for 10,138,543 part-B cases took 27 min (2.5x slower than expected: the
+  process peaked at a 31.8 GB footprint on the 25.8 GB Mac and swapped), training 22 checks of ~3 min.
+  Evaluations: the retriever's exact ranking of all 6.2M cases took ~1 h 55 min (also slowed, partly on
+  battery); each ranker's ~10-30 min. At this size, ranker runs need the Mac's memory nearly to themselves.
