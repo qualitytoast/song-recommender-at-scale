@@ -133,8 +133,8 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       small-network correction: 0.1484 held-out NDCG@10
 - [x] 200k confirmation of the improved ranker: 0.1567 held-out NDCG@10 (49x most-popular),
       +16.6% over the retriever on the same shortlists
-- [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] All 1M playlists
+- [ ] Serving: a search service holding the song catalog, a model that calls it
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
