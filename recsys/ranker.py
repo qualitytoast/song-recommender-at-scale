@@ -76,7 +76,7 @@ from torch import nn
 from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
 from recsys.data import build_dataset
-from recsys.evaluate import eval_file, score, with_all_held_out
+from recsys.evaluate import by_length, eval_file, evaluation_config, print_by_length, score
 from recsys.lazy_adam import LazyAdamW, is_table, lr_groups, used_rows
 from recsys.model import build_model, rank_and_loss
 from recsys.rank_features import (GROUPS, CandidateFeatures, history_matrix, membership_keys, neighbour_lists,
@@ -115,6 +115,9 @@ class RankerConfig:
     exclude_input: bool    # true: songs in the retriever's input are left out of every shortlist
     val_set: str           # "retriever": the retriever's validation sample; "separate": other validation
                            # windows (data.ranker_validation_keep)
+    windows: str           # "full": windows of the retriever's context_length songs; "any_length": every
+                           # song with a known song right before it, 1 up to input_length songs (decides
+                           # the training, validation and held-out cases, whatever the retriever config says)
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -126,6 +129,8 @@ class RankerConfig:
         if not 1 <= self.negatives < self.negatives_from <= self.shortlist:
             raise ValueError(f"need 1 <= negatives < negatives_from <= shortlist, got {self.negatives}, "
                              f"{self.negatives_from}, {self.shortlist}")
+        if self.windows not in ("full", "any_length"):
+            raise ValueError(f"windows must be full or any_length, got {self.windows!r}")
         if self.val_set not in ("retriever", "separate"):
             raise ValueError(f"val_set must be retriever or separate, got {self.val_set!r}")
         if self.correction_hidden < 0:
@@ -466,8 +471,10 @@ def check_vocab(checkpoint, vocab, path):
         raise ValueError(f"{path} was trained on a different vocab than its config builds now.")
 
 
-def load_retriever(rc, seed, device, all_held_out=False):
-    cfg = with_all_held_out(load_config(rc.retriever), all_held_out)
+def load_retriever(rc, seed, device, all_held_out=False, windows=None):
+    """(retriever config, its dataset, the retriever in eval mode). The dataset's test cases are
+    windows (or rc.windows): full windows or any-length cases; all_held_out keeps every held-out one."""
+    cfg = evaluation_config(load_config(rc.retriever), all_held_out, windows or rc.windows)
     ds = build_dataset(cfg)
     path = run_dir_for(rc.retriever, seed) / "best.pt"
     checkpoint = torch.load(path, weights_only=True)

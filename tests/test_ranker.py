@@ -292,14 +292,27 @@ def test_a_full_held_out_evaluation_reads_the_retrievers_full_held_out_score(tmp
     assert got["ndcg@10"] == 0.4 and got["from"].endswith("eval_all.json")
 
 
-def test_all_held_out_keeps_every_window_in_a_copy_of_the_config(tmp_path):
+def test_evaluation_settings_change_a_copy_of_the_config_and_name_their_own_file(tmp_path):
     from recsys.config import load_config
-    from recsys.evaluate import eval_file, with_all_held_out
+    from recsys.evaluate import eval_file, evaluation_config
     cfg = load_config("configs/retriever_1m.toml")
-    full = with_all_held_out(cfg, True)
+    full = evaluation_config(cfg, all_held_out=True)
     assert full.data.test_max_windows == 0 and cfg.data.test_max_windows == 200000
-    assert with_all_held_out(cfg, False) is cfg
-    assert (eval_file(False), eval_file(True)) == ("eval.json", "eval_all.json")
+    anyl = evaluation_config(cfg, windows="any_length")
+    assert anyl.data.windows == "any_length" and anyl.data.test_max_windows == 200000 and cfg.data.windows == "full"
+    assert evaluation_config(cfg) is cfg
+    assert [eval_file(a, w) for w in ("full", "any_length") for a in (False, True)] == [
+        "eval.json", "eval_all.json", "eval_any_length.json", "eval_any_length_all.json"]
+
+
+def test_length_groups_list_each_length_up_to_10_then_ranges():
+    from recsys.evaluate import by_length, length_groups
+    assert [g[0] for g in length_groups(10)] == [str(k) for k in range(1, 11)]
+    assert [g[0] for g in length_groups(100)][9:] == ["10", "11-25", "26-50", "51-100"]
+    assert [g[0] for g in length_groups(30)][10:] == ["11-25", "26-30"]
+    ranks, lengths = np.array([1, 2, 1, 50]), np.array([1, 1, 3, 30])
+    groups = by_length(ranks, lengths, 30, scorer=lambda r: {"n": len(r)})
+    assert groups == {"1": {"n": 2}, "3": {"n": 1}, "26-30": {"n": 1}}
 
 
 def test_playlist_starts_are_the_windows_beginning_at_their_playlists_first_song():
