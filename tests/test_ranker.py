@@ -300,3 +300,14 @@ def test_all_held_out_keeps_every_window_in_a_copy_of_the_config(tmp_path):
     assert full.data.test_max_windows == 0 and cfg.data.test_max_windows == 200000
     assert with_all_held_out(cfg, False) is cfg
     assert (eval_file(False), eval_file(True)) == ("eval.json", "eval_all.json")
+
+
+def test_playlist_starts_are_the_windows_beginning_at_their_playlists_first_song():
+    from recsys.data import window_histories
+    from scripts.short_inputs import playlist_starts
+    songs = np.array([0, 1, 2, 3, 4, 5, 6, -1, 7, 8, 9])  # playlist A: 7 songs; B: 4, one unknown first
+    offsets = np.array([0, 7, 11])
+    histories = window_histories(songs, offsets, context_length=2)
+    rows = playlist_starts(histories, 2)
+    _, begin, end = histories
+    assert len(rows) == 1 and begin[rows[0]] == 0 and end[rows[0]] == 2  # B's start has an unknown song
