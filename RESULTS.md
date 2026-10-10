@@ -1041,3 +1041,23 @@ all 1,053,328 songs.
   (shortlists 347 s, now cached; reranking 369 s), reading the retriever's exact-search score from its
   `eval_all.json` instead of ranking every song again. Ranker memory: 13.0 GB peak resident, 23.0 GB peak
   footprint.
+
+**What scaling to 1M adds, settings fixed** (2026-10-10, `a7ad8ae`). `retriever_200k_1m_settings` and
+`ranker_200k_1m_settings`: the 1M pair's exact settings at 200,000 playlists, so the only difference from the
+1M pair is the amount of data. Every row scores all of its scale's held-out windows.
+
+| Pair | Held-out windows | Retriever, exact search | Retriever alone (same shortlists) | Retriever + ranker | Ranker adds | Hits@1 | Hits@10 | Top 100 | x most-popular |
+|---|---|---|---|---|---|---|---|---|---|
+| `retriever_200k` + `ranker_200k_v2` (older settings) | 836,433 | 0.1257 | 0.1344 | 0.1567 | +0.0223 | 9.5% | 23.2% | 42.6% | 49x |
+| `retriever_200k_1m_settings` + `ranker_200k_1m_settings` | 836,433 | 0.1245 | 0.1337 | 0.1576 | +0.0239 | 9.5% | 23.4% | 43.2% | 49x |
+| `retriever_1m` + `ranker_1m` | 4,938,520 | 0.1397 | 0.1479 | 0.1725 | +0.0246 | 11.1% | 24.7% | 44.0% | 59x |
+
+- Scaling 200k -> 1M with the same settings: retriever +0.0152 (+12.2%), retriever + ranker +0.0149
+  (+9.5%), Hits@1 9.5% -> 11.1%, with 2.6x more songs to choose from. The ranker adds about the same at both
+  sizes (+0.0239 / +0.0246), so the gain comes from the better retriever, carried through.
+- The 1M settings at 200k match the older ones on the same 836,433 windows (retriever -0.0012, pair
+  +0.0009, both near the ~0.001 run-to-run noise), as the 50k speed tests found. So the 1M pair's lead over
+  the old 200k pair (+0.0158) is from the data, not the settings.
+- The 200k pair stopped earlier than at 1M in epochs (retriever best at 5.0 epochs vs 8.75; ranker check 15).
+  Time: 45 min for the whole pair, both evaluations included (retriever 18.3 min of training, ranker 11.1 min
+  with its shortlists).
