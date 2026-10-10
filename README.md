@@ -27,7 +27,7 @@ measured against the one before it.
 | What a song is | Its ID only | ID + artist, album, length, genres (MusicBrainz); plus the playlist's name |
 | Training | One target per 10-song window, full softmax, SGD | Next song predicted at every position (causal attention), sampled softmax, lazy AdamW |
 | Finding recommendations | Score every song | Retriever + FAISS IVF search for the top 100 (songs already in the input left out), then a ranker that rescores them |
-| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1725 (59x most-popular; retriever + ranker, 1M, a 31x bigger catalog) |
+| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1731 on 10-song windows like v1's; 0.1692 on inputs of any length, 1 to 10 songs (59x most-popular; retriever + ranker, 1M, a 31x bigger catalog) |
 
 The v1 model's architecture is still the core: a small Transformer (2 layers,
 64-dimensional, single-head attention), the same metrics (NDCG@10, Hits@k) and
@@ -121,11 +121,20 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Two-stage at 200k with the improved ranker: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1344 → 0.1567 | 49x |
 | Two-stage at 200k with the 1M settings: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1337 → 0.1576 | 49x |
 | Retriever at 1M (80% of training playlists; faster training settings) | 1,000,000 | 1,053,328 | 0.1397 | 49x |
-| **Two-stage at 1M: retriever alone (input songs left out) → + ranker** | **1,000,000** | **1,053,328** | **0.1479 → 0.1725** | **59x** |
+| Two-stage at 1M: retriever alone (input songs left out) → + ranker | 1,000,000 | 1,053,328 | 0.1479 → 0.1725 | 59x |
+| **Two-stage at 1M, ranker trained on inputs of any length** | **1,000,000** | **1,053,328** | **0.1479 → 0.1731** | **59x** |
 
 The 1M numbers score all 4,938,520 held-out windows. Day to day, runs at 200k
 and up score a fixed sample of 200,000 of them, which read within 0.001 of the
 full set.
+
+**Inputs of any length.** Every number in the table is on 10-song windows. A
+request can hold 1 to 10 songs, so held-out cases now also include every song
+with fewer songs before it (6,242,133 cases at 1M; 79% still have 10 songs). On
+all of them the 1M retriever scores 0.1363 and the final pair **0.1692**:
+shorter inputs are harder (the retriever alone: 0.1082 with 1 song, 0.1397 with
+10). The ranker retrained on inputs of every length beats the one trained on
+10-song windows by +0.0079 with 1 song, +0.0011 overall, and isn't worse at 10.
 
 **What scaling to 1M adds.** The same settings trained on 200k playlists give a
 retriever of 0.1245 and a pair of 0.1576 (all 836,433 of its held-out windows).
@@ -154,7 +163,10 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] All 1M playlists: retriever 0.1397, retriever + ranker 0.1725 held-out NDCG@10
       (59x most-popular), the ranker +16.6% over the retriever on the same shortlists
 - [x] Scaling check: the same settings at 200k give 0.1576, so 5x more data adds +0.015
-- [ ] Serving: a search service holding the song catalog, a model that calls it
+- [x] Inputs of any length (1 to 10 songs) in validation and testing, and a ranker retrained on
+      them: 0.1692 held-out NDCG@10 over all lengths
+- [ ] Serving, phase A: the 1M pair behind a FastAPI REST API (one process and its search worker)
+- [ ] Serving, phase B: the song catalog split across shard processes
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
