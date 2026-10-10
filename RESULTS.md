@@ -1061,3 +1061,25 @@ all 1,053,328 songs.
 - The 200k pair stopped earlier than at 1M in epochs (retriever best at 5.0 epochs vs 8.75; ranker check 15).
   Time: 45 min for the whole pair, both evaluations included (retriever 18.3 min of training, ranker 11.1 min
   with its shortlists).
+
+**Short requests: does the ranker help with fewer than 10 songs?** (2026-10-10, `scripts/short_inputs.py`,
+`b298c00`). The retriever learned to predict after any number of songs up to 10; the ranker only trained on
+10-song windows. Test: the 84,192 held-out playlists whose first 11 songs are all known; for k = 1..10, the
+first k songs (and the name) predict song k + 1, so every length uses the same playlists. Both orders come
+from the serving shortlist (IVF top 100, input songs left out). Saved to `ranker_1m`'s `short_inputs.json`.
+
+| Songs so far | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Retriever alone | 0.1549 | 0.1659 | 0.1629 | 0.1597 | 0.1557 | 0.1558 | 0.1535 | 0.1524 | 0.1520 | 0.1477 |
+| Retriever + ranker | 0.1568 | 0.1749 | 0.1767 | 0.1771 | 0.1733 | 0.1750 | 0.1742 | 0.1730 | 0.1734 | 0.1701 |
+| Ranker's gain | +0.0020 | +0.0090 | +0.0138 | +0.0174 | +0.0176 | +0.0193 | +0.0207 | +0.0207 | +0.0215 | +0.0224 |
+
+- The ranker helps at every length (each gain is at least 4 standard errors; the standard error is 0.0005), so
+  serving uses it for any request with 1 or more known songs; no per-length switch and no retraining on
+  short windows needed for now.
+- The gain grows with the songs it can compare candidates against: tiny with 1 song (+1.3%), +8% with 3,
+  +15% at 10. Its extra inputs (artist/album overlap, counts after the playlist's songs) carry more signal
+  with more songs.
+- These are playlist starts, so the numbers aren't comparable with the main held-out evaluation (windows
+  anywhere in a playlist): early songs are easier to predict (the retriever alone reads 0.1659 after 2 songs
+  vs 0.1477 after 10).
