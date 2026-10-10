@@ -1022,3 +1022,22 @@ written into arrays made up front instead of joined from chunks.
   training 22 checks x ~80 s, held-out evaluation 1 min (shortlists 39 s, reranking 21 s).
 - Memory: 14.0 GB peak resident; macOS reported a 28.4 GB peak footprint (it counts GPU memory too) on a
   25.8 GB Mac, with no swapping. Close to the machine's limit: keep other apps closed for 1M ranker runs.
+
+**1M final numbers: every held-out window** (2026-10-09, `--all-held-out`, `e3171dc`; saved to each run's
+`eval_all.json`, next to the day-to-day `eval.json`). All 4,938,520 held-out windows, each ranked against
+all 1,053,328 songs.
+
+| `retriever_1m` + `ranker_1m` | All 4,938,520 windows | 200,000-window sample | Hits@1 | Hits@10 | Top 100 |
+|---|---|---|---|---|---|
+| **Retriever + ranker (top 100)** | **0.1725** | 0.1730 | 11.1% | 24.7% | 44.0% |
+| Retriever alone (same shortlists) | 0.1479 | 0.1489 | 9.4% | 21.5% | 44.0% |
+| Retriever alone, exact search | 0.1397 | 0.1406 | 8.8% | 20.5% | 43.9% |
+| Most-popular | 0.0029 | 0.0028 | 0.1% | 0.6% | 4.2% |
+
+- The sample read 0.0005-0.0010 high on each line, within the ±0.0011 sampling margin measured at 200k, and
+  the ranker's gain is the same on both: +0.0246 (+16.6%) over its retriever on the same shortlists, +0.0328
+  (+23.5%) over exact search. 59x most-popular.
+- Time: the retriever's evaluation ~55 min (ranking 4.9M windows against every song); the ranker's 12.6 min
+  (shortlists 347 s, now cached; reranking 369 s), reading the retriever's exact-search score from its
+  `eval_all.json` instead of ranking every song again. Ranker memory: 13.0 GB peak resident, 23.0 GB peak
+  footprint.
