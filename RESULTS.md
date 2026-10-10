@@ -957,3 +957,14 @@ held-out within ±0.003). Timed at 1M and 50k with the profiler's new `--compile
   (1M baseline 108-122 ms per step vs 54.9 ms on a quiet machine; 50k validation checks 3.95 vs 2.1 s).
   Comparisons measured in alternation still hold, but absolute times from today before C (phase A and B,
   the 1M estimate of 36 min per epoch) were taken with that load. Long runs and timings need a quiet machine.
+- Ranker compile (`ranker_50k_compile`, `3537b12`: the ranker's forward pass compiled for training,
+  validation and held-out reranking), timed in alternation with the base config re-run in a scratch folder:
+  no speed-up. Runs of the same length (39 checks) took 4.0 min with or without compile; training per check
+  2.66-2.84 vs 2.85 s, validation 2.85-3.00 vs 2.83 s, held-out reranking 17-24 vs 18-22 s. Held-out 0.1489 /
+  0.1490 (compile) vs 0.1489 / 0.1492 (base re-runs). Not kept: the ranker's GPU work per step is small (32
+  songs per window), so there is little for compile to fuse; the retriever's gain came from its large
+  scoring-and-loss step.
+- **Run-to-run noise.** The base ranker config, same seed, gave held-out 0.1482 (the original run), 0.1489
+  and 0.1492, stopping after 27, 39 and 54 checks: training on the Mac GPU isn't exactly repeatable (some
+  GPU operations add numbers in varying order), and small differences grow into different stopping points.
+  Single-run ranker differences of about 0.001 are within this noise.
