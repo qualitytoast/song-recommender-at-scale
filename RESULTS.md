@@ -992,3 +992,33 @@ sample.
   per epoch (with the GPU shared) or 16 min (quiet).
 - The validation score kept creeping up with ±0.001 bounces between checks (0.1361 at 5 epochs, 0.1389 at
   7.5, 0.1404 at 8.75), so the later bests are partly noise-sized gains.
+
+**Scaling, stage 3: the 1M ranker.** Search benchmark first (`runs/search_benchmark/real_1m_k100.out`,
+`retriever_1m`'s vectors, 5,000 held-out queries, top 100): exact search finds the true song in the top
+100 for 44.30%; IVF with 4,096 clusters finds 99.5% of the exact top 100 at nprobe 128 (true song 44.18%,
+21,142 queries/s), 98.8% at 64 (43.84%, 39,378/s), 99.8% at 256 (44.28%, 9,223/s). Kept nprobe 128, as at
+50k and 200k: 0.12 points from exact, half the search time of 256.
+
+`ranker_1m` (2026-10-09, `56c2229`): the base ranker's settings (`ranker_50k_b256_batch256`) on
+`retriever_1m`, IVF nlist 4096 / nprobe 128, checks every 654,300 windows. Memory prep before it
+(`0f6309e`): every-position configs no longer keep the last-position training inputs, and shortlists are
+written into arrays made up front instead of joined from chunks.
+
+| Pair | Held-out windows | Retriever + ranker | Retriever alone (same shortlists) | Ranker adds | Retriever, exact search | Hits@1 | Hits@10 |
+|---|---|---|---|---|---|---|---|
+| `retriever_50k_b256` + `ranker_50k_b256_batch256` | all 159,081 | 0.1482 | 0.1265 | +0.0217 (+17.2%) | 0.1178 | 8.8% | 22.2% |
+| `retriever_200k` + `ranker_200k_v2` | all 836,433 | 0.1567 | 0.1344 | +0.0223 (+16.6%) | 0.1257 | 9.5% | 23.2% |
+| **`retriever_1m` + `ranker_1m`** | 200,000 sample | **0.1730** | 0.1489 | **+0.0241 (+16.2%)** | 0.1406 | **11.2%** | **24.7%** |
+
+- The ranker's gain carries over to 1M: +0.0241 over its own retriever on the same shortlists, about the
+  same relative gain as at 50k and 200k. Against the retriever's exact search, the pair is +0.0324 (+23%).
+  62x most-popular (0.0028). (`ranker_200k_v2` used the batch-64 ranker settings; 1M uses batch 256.)
+- Validation: 0.1471 (check 0, the retriever) -> 0.1705 (check 17, ~3.1 epochs of the 3,555,620 windows
+  with the true song in the top 100, 43.2% of 8,234,434 part-B windows), then 5 checks within 0.0005;
+  stopped at check 22.
+- Co-occurrence inputs are much denser at 1M: the average candidate came after 67% of the context songs in
+  some part-A playlist (37% at 50k), so those inputs carry more signal.
+- Time: 41.7 min in all. Shortlists 9.2 min (built once, now cached for any ranker on `retriever_1m`),
+  training 22 checks x ~80 s, held-out evaluation 1 min (shortlists 39 s, reranking 21 s).
+- Memory: 14.0 GB peak resident; macOS reported a 28.4 GB peak footprint (it counts GPU memory too) on a
+  25.8 GB Mac, with no swapping. Close to the machine's limit: keep other apps closed for 1M ranker runs.
