@@ -158,6 +158,24 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
+## Notes for later: songs the model doesn't know
+
+A request can include songs outside the catalog. For now they are left out of
+the input and listed as ignored; a song the model knows nothing about (not the
+song, its artist, album or genres) can't be recommended either. Two things
+make "knows nothing" rare in practice:
+
+- **Spotify can always tell us something.** Any real Spotify song ID has a
+  name, artist and album available through Spotify's API. Once those lookups
+  are in place (planned for the ListenBrainz stage), "nothing known" really
+  means "the artist is also new to us." A song with a known artist or album can
+  get a features-only vector: its artist, album and genre vectors without a
+  song vector of its own.
+- **An "unknown song" placeholder** is a known trick: train the model with one
+  shared vector that stands in for every rare song, so it learns what "some
+  song I don't know" usually means. That's a model change for later, not a fix
+  for now.
+
 ## Running it
 
 Python 3.13; `pip install -r requirements.txt` (PyTorch, NumPy, FAISS).
