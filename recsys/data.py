@@ -225,14 +225,15 @@ class Dataset:
     song_features: dict   # {"artist": (ids, count), ...}: per-song feature IDs, see song_feature_ids
     artist_uris: list     # artist_uris[a] is the Spotify URI of artist ID a
     artist_names: list    # artist_names[a] is its name, for display
-    X_train: np.ndarray   # (n, context_length) song IDs
+    X_train: np.ndarray   # (n, context_length) song IDs; None with the every-position objective, which
+                          # trains on Xc_train instead (see last_position_inputs_needed)
     Y_train: np.ndarray   # (n,) next-song IDs
     X_val: np.ndarray     # used for early stopping
     Y_val: np.ndarray
     X_test: np.ndarray    # held-out set the final numbers are reported on
     Y_test: np.ndarray
     name_words: list      # name_words[i] is the word with ID i + 1 (0 is padding)
-    N_train: np.ndarray   # (n, width) word IDs of each window's playlist name
+    N_train: np.ndarray   # (n, width) word IDs of each window's playlist name (None as for X_train)
     N_val: np.ndarray
     N_test: np.ndarray
     Xc_train: np.ndarray = None   # every-position training chunks, see make_chunks: inputs,
@@ -261,6 +262,13 @@ class Dataset:
     XI_rval: np.ndarray = None
     LI_rval: np.ndarray = None
     song_duration_ms: np.ndarray = None  # (vocab_size,) each song's length in milliseconds
+
+
+def last_position_inputs_needed(cfg):
+    """False when the config trains with the every-position objective: then the last-position
+    training windows' inputs (X_train, N_train; 2.6 GB at 1M) are never read, so they aren't kept.
+    Y_train is kept: the most-popular baseline counts its targets."""
+    return cfg.train is None or cfg.train.objective != "every_position"
 
 
 def build_dataset(cfg):
@@ -293,6 +301,8 @@ def build_dataset(cfg):
     X_rank, Y_rank, P_rank = make_windows(rank, track_to_id, d.context_length)
     X_test, Y_test, P_test = make_windows(held_out, track_to_id, d.context_length)
     N_train = encoded[fit_idx][P_train]
+    if not last_position_inputs_needed(cfg):
+        X_train = N_train = None
     N_test = encoded[held_out_idx][P_test]
     H_test = window_histories(*playlist_arrays(held_out, track_to_id), d.context_length)
     if d.validation == "held_out_prefix":
@@ -532,6 +542,8 @@ def build_dataset_from_store(cfg):
     Xc_train, Yc_train, Pc_train = chunks_from_arrays(train_songs, train_offsets, d.input_length)
     X_test, Y_test, P_test = windows_from_arrays(test_songs, test_offsets, d.context_length)
     N_train, N_test = encoded[fit_idx][P_train], encoded[held_out_idx][P_test]
+    if not last_position_inputs_needed(cfg):
+        X_train = N_train = None
     rank_arrays = split_arrays(rank_idx)
     X_rank, Y_rank, P_rank = windows_from_arrays(*rank_arrays, d.context_length)
     H_test = window_histories(test_songs, test_offsets, d.context_length)
@@ -585,5 +597,5 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Build the dataset and print its sizes.")
     ap.add_argument("--config", required=True)
     ds = build_dataset(load_config(ap.parse_args().config))
-    print(f"songs {len(ds.vocab):,} | train {len(ds.X_train):,} | "
+    print(f"songs {len(ds.vocab):,} | train {len(ds.Y_train):,} | "
           f"validation {len(ds.X_val):,} | held-out {len(ds.X_test):,}")

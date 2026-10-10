@@ -227,8 +227,10 @@ def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, le
     (n, k) int32, scores (n, k) float32, best first), plus each true song's retriever
     score (n,). X: the retriever's inputs, with lengths if padded (data.window_inputs).
     exclude_input: leave the input's songs out (drop_input_songs). A chunk of windows at a
-    time, so only one chunk's results are in flight."""
-    ids, scores, true = [], [], []
+    time, so only one chunk's results are in flight, written into arrays made up front (joining
+    per-chunk pieces at the end would briefly hold two copies: ~5 GB extra at 1M)."""
+    ids, scores = np.empty((len(X), k), dtype=np.int32), np.empty((len(X), k), dtype=np.float32)
+    true = np.empty(len(X), dtype=np.float32)
     extra = X.shape[1] if exclude_input else 0  # search deeper by up to that many songs dropped
     for i in range(0, len(X), chunk):
         n = None if lengths is None else lengths[i:i + chunk]
@@ -238,10 +240,9 @@ def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, le
             raise RuntimeError(f"search found fewer than {k + extra} songs for some windows; search more clusters")
         if exclude_input:
             top_ids, top_scores = drop_input_songs(top_ids, top_scores, X[i:i + chunk], n, k)
-        ids.append(top_ids.astype(np.int32))
-        scores.append(top_scores.astype(np.float32))
-        true.append(np.einsum("nd,nd->n", queries, vectors[Y[i:i + chunk]]))
-    return np.concatenate(ids), np.concatenate(scores), np.concatenate(true)
+        ids[i:i + chunk], scores[i:i + chunk] = top_ids, top_scores
+        true[i:i + chunk] = np.einsum("nd,nd->n", queries, vectors[Y[i:i + chunk]])
+    return ids, scores, true
 
 
 SHORTLIST_CACHE = Path("runs/shortlist_cache")
