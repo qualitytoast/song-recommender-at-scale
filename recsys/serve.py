@@ -2,10 +2,14 @@
 
     python -m recsys.serve --bundle bundles/ranker_1m_any_length-<version> --device cpu
 
-  POST /recommend   {"songs": ["spotify:track:...", ...], "name": "road trip"}  (name optional)
-                    -> {"recommendations": [{"uri", "track", "artist", "score"} x 10], "used": [...],
-                        "ignored": [...], "version": ..., "timings_ms": {...}}
+  POST /recommend   {"songs": ["spotify:track:...", "Nightcall - Kavinsky", ...], "name": "road trip"}
+                    (songs: Spotify URIs or "Track - Artist" text; name optional)
+                    -> {"recommendations": [{"uri", "track", "artist", "score"} x 10],
+                        "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
+  GET  /songs?q=nightc&limit=10
+                    -> {"songs": [{"uri", "track", "artist", "playlists"}]}: songs whose track or artist name
+                       starts with q (or "track - artist"), in the most playlists first, for a type-ahead menu
   GET  /health      -> {"status": "ok", "version", "songs", "device"}
   GET  /docs        FastAPI's page for trying requests in a browser
 
@@ -18,14 +22,14 @@ import argparse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from recsys.recommender import NoKnownSongs, Recommender
 
 
 class RecommendRequest(BaseModel):
-    songs: list[str]          # Spotify track URIs, oldest first; the last 10 known ones are read
+    songs: list[str]          # Spotify track URIs or "Track - Artist" text, oldest first; the last 10 known are read
     name: str | None = None   # the playlist's name, if it has one
 
 
@@ -48,6 +52,10 @@ def create_app(bundle, device="cpu"):
             return app.state.recommender.recommend(request.songs, request.name)
         except NoKnownSongs as e:
             raise HTTPException(400, {"error": str(e), "ignored": e.ignored})
+
+    @app.get("/songs")
+    def songs(q: str, limit: int = Query(10, ge=1, le=50)):
+        return {"songs": app.state.recommender.find_songs(q, limit)}
 
     @app.get("/health")
     def health():

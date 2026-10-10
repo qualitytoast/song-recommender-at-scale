@@ -16,6 +16,12 @@ V, CPU = 40, torch.device("cpu")
 SETTINGS = {"shortlist": 15, "exclude_input": True, "ivf_nlist": 2, "ivf_nprobe": 2,  # every cluster: exact
             "features": ["overlap", "cooccurrence"], "correction_hidden": 4, "windows": "any_length", "sources": {}}
 WORDS = ["chill", "gym", "road", "trip", "mix"]
+ARTISTS = ["Kavinsky", "London Grammar", "Chromatics", "Beyoncé", "Artist 4", "Artist 5"]
+# A few named songs (the rest "Song i"): song i's artist is ARTIST_OF[i]; PLAYLISTS[i] its playlist count.
+NAMED = {0: "Nightcall", 1: "Nightcall", 2: "Nightcall - Breakbot Remix", 3: "Night Drive", 4: "Halo", 5: "Odd Look"}
+ARTIST_OF = [0, 1, 0, 2, 3, 0]
+PLAYLISTS = np.array([50, 5, 3, 20, 30, 10] + [1 + i % 4 for i in range(V - 6)])
+TRACKS = [NAMED.get(i, f"Song {i}") for i in range(V)]
 
 
 def tiny_pair():
@@ -25,7 +31,9 @@ def tiny_pair():
     rng = np.random.RandomState(0)
     genres = rng.randint(0, 5, (V, 2))
     genres[:4] = 0  # some songs with no genres
-    features = {"artist": rng.randint(0, 6, V), "album": rng.randint(0, 12, V), "duration": rng.randint(0, 4, V)}
+    artist = rng.randint(0, 6, V)
+    artist[:6] = ARTIST_OF
+    features = {"artist": artist, "album": rng.randint(0, 12, V), "duration": rng.randint(0, 4, V)}
     retriever = SongRecommender(V, 8, 3, 2, 0.0, True, "pytorch", features, name_word_count=len(WORDS),
                                 song_genres=genres, causal=True).eval()
     with torch.no_grad():
@@ -47,8 +55,7 @@ def tiny_pair():
 def served(tmp_path_factory):
     retriever, ranker, pairs = tiny_pair()
     path = write_bundle(tmp_path_factory.mktemp("bundles"), "tiny", retriever, ranker, SETTINGS,
-                        [f"spotify:track:{i}" for i in range(V)], [f"Song {i}" for i in range(V)],
-                        [f"Artist {a}" for a in range(6)], WORDS, pairs, CPU)
+                        [f"spotify:track:{i}" for i in range(V)], TRACKS, ARTISTS, WORDS, pairs, PLAYLISTS, CPU)
     rec = Recommender(path, "cpu")
     yield rec, retriever, ranker, pairs
     rec.close()
@@ -95,13 +102,14 @@ def test_a_request_skips_unknown_songs_and_reads_the_last_known_ones(served):
     rec = served[0]
     uris = ["spotify:track:5", "spotify:track:nope", "spotify:track:6", "spotify:track:7", "spotify:track:8", "x"]
     out = rec.recommend(uris, name="chill")
-    assert out["used"] == ["spotify:track:6", "spotify:track:7", "spotify:track:8"]  # the last 3 known
+    assert [u["uri"] for u in out["used"]] == ["spotify:track:6", "spotify:track:7", "spotify:track:8"]  # last 3 known
+    assert out["used"][0] == {"uri": "spotify:track:6", "track": "Song 6", "artist": rec.artists[6]}
     assert out["ignored"] == ["spotify:track:nope", "x"]
     assert len(out["recommendations"]) == 10 and out["version"] == rec.version
     first = out["recommendations"][0]
     assert set(first) == {"uri", "track", "artist", "score"}
     j = int(first["uri"].split(":")[-1])
-    assert first["track"] == f"Song {j}" and first["artist"].startswith("Artist ")
+    assert first["track"] == TRACKS[j] and first["artist"] in ARTISTS
     assert out["recommendations"] == rec.recommend(uris[2:5], name="chill")["recommendations"]
     assert len(rec.recommend(["spotify:track:9"])["recommendations"]) == 10  # no name: fine
     with pytest.raises(NoKnownSongs) as error:
@@ -146,3 +154,37 @@ def test_the_http_api(served, tmp_path):
         unknown = client.post("/recommend", json={"songs": ["a", "b"]})
         assert unknown.status_code == 400 and unknown.json()["detail"]["ignored"] == ["a", "b"]
         assert client.post("/recommend", json={"name": "x"}).status_code == 422  # malformed: no songs field
+        menu = client.get("/songs", params={"q": "nightc", "limit": 2}).json()["songs"]
+        assert [(s["track"], s["artist"]) for s in menu] == [("Nightcall", "Kavinsky"), ("Nightcall", "London Grammar")]
+        assert client.get("/songs", params={"q": "x", "limit": 500}).status_code == 422  # at most 50
+
+
+def test_finding_songs_by_name_puts_the_most_played_first(served):
+    rec = served[0]
+    found = lambda q, **k: [(s["track"], s["artist"]) for s in rec.find_songs(q, **k)]
+    assert found("nightcall") == [("Nightcall", "Kavinsky"), ("Nightcall", "London Grammar"),
+                                  ("Nightcall - Breakbot Remix", "Kavinsky")]
+    assert found("NIGHT")[:2] == [("Nightcall", "Kavinsky"), ("Night Drive", "Chromatics")]
+    kav = rec.find_songs("kav")
+    assert [s["track"] for s in kav[:2]] == ["Nightcall", "Odd Look"] and {s["artist"] for s in kav} == {"Kavinsky"}
+    assert [s["playlists"] for s in kav] == sorted((s["playlists"] for s in kav), reverse=True)
+    assert found("nightcall - kav") == [("Nightcall", "Kavinsky"), ("Nightcall - Breakbot Remix", "Kavinsky")]
+    assert found("nightcall - breakbot") == [("Nightcall - Breakbot Remix", "Kavinsky")]
+    assert found("beyonce")[0] == ("Halo", "Beyoncé")  # accents and case don't matter
+    assert found("night", limit=1) == [("Nightcall", "Kavinsky")]
+    assert found("  ") == [] and found("zzz") == []
+    assert rec.find_songs("halo")[0] == {"uri": "spotify:track:4", "track": "Halo", "artist": "Beyoncé", "playlists": 30}
+
+
+def test_songs_can_be_given_as_track_and_artist_text(served):
+    rec = served[0]
+    assert rec.resolve("Nightcall - Kavinsky") == 0
+    assert rec.resolve("nightcall - london grammar") == 1
+    assert rec.resolve("Nightcall") == 0  # a track name alone: the most-played song with that name
+    assert rec.resolve("Nightcall - Breakbot Remix - Kavinsky") == 2  # a " - " inside the track name
+    assert rec.resolve("Halo - Beyonce") == 4
+    assert rec.resolve("spotify:track:7") == 7
+    assert rec.resolve("Nightcall - Nobody") is None and rec.resolve("spotify:track:999") is None
+    out = rec.recommend(["Nightcall - Kavinsky", "nope", "spotify:track:3"])
+    assert [u["uri"] for u in out["used"]] == ["spotify:track:0", "spotify:track:3"] and out["ignored"] == ["nope"]
+    assert out["recommendations"] == rec.recommend(["spotify:track:0", "spotify:track:3"])["recommendations"]

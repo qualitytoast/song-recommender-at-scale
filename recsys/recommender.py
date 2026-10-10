@@ -2,18 +2,22 @@
 data or the full checkpoints.
 
     rec = Recommender("bundles/ranker_1m_any_length-<version>", device="cpu")
-    rec.recommend(["spotify:track:...", ...], name="road trip")   # top 10, as a dict
+    rec.recommend(["spotify:track:...", "Nightcall - Kavinsky"], name="road trip")   # top 10, as a dict
+    rec.find_songs("nightc")   # songs whose name or artist starts with it, in the most playlists first
     rec.close()
 
-A request's songs become song IDs (unknown ones are left out and listed); its last input_length known
+A request's songs (Spotify URIs, or "Track - Artist" text) become song IDs (unknown ones are left out
+and listed); its last input_length known
 songs and the playlist name go through the retriever (playlist vector h), the search process finds the
 top shortlist songs (input songs left out), and the ranker reorders them; the top 10 are the answer.
 Per-song tables are the bundle's precomputed input vectors (one row per song), so the models here hold
 only their small shared layers plus those rows.
 """
+import bisect
 import json
 import threading
 import time
+import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +31,23 @@ from recsys.ranker import CandidateRanker, drop_input_songs
 from recsys.search import SearchWorker, query_vectors
 
 TOP = 10  # recommendations per request
+LAST = "\U0010ffff"  # sorts after every character: keys starting with p lie in [p, p + LAST)
+
+
+def name_key(text):
+    """How song and artist names are compared: accents removed, case folded, spaces collapsed
+    ("Beyoncé  Knowles" -> "beyonce knowles")."""
+    text = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+    return " ".join(text.casefold().split())
+
+
+def splits(key):
+    """(track, artist) for each " - " in a name key: "a - b - c" -> ("a", "b - c"), ("a - b", "c")."""
+    out, i = [], key.find(" - ")
+    while i > 0:
+        out.append((key[:i], key[i + 3:]))
+        i = key.find(" - ", i + 1)
+    return [(t, a) for t, a in out if t and a]
 
 
 class NoKnownSongs(ValueError):
@@ -107,6 +128,14 @@ class Recommender:
         self.uris, self.tracks = songs["uris"], songs["tracks"]
         self.artists = [songs["artist_names"][a] for a in load("song_artist")]
         self.song_id = {uri: i for i, uri in enumerate(self.uris)}
+        # Finding songs by name: song IDs sorted by track name key and by artist name key (each
+        # most-played first among equal names), with the keys in that order for binary search.
+        self.playlists = load("song_playlists")
+        keys = json.loads((self.path / "name_keys.json").read_text())
+        self.by_track, self.by_artist = load("songs_by_track"), load("songs_by_artist")
+        self.track_keys = [keys["tracks"][i] for i in self.by_track]
+        artist_of = load("song_artist")
+        self.artist_keys = [keys["artists"][artist_of[i]] for i in self.by_artist]
         words = json.loads((self.path / "name_words.json").read_text())
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
         self.search = SearchWorker()
@@ -115,6 +144,55 @@ class Recommender:
 
     def close(self):
         self.search.close()
+
+    def _starting(self, keys, order, prefix):
+        """Song IDs whose key (in sorted keys, songs in order) starts with prefix."""
+        return order[bisect.bisect_left(keys, prefix):bisect.bisect_left(keys, prefix + LAST)]
+
+    def _exactly(self, keys, order, key):
+        return order[bisect.bisect_left(keys, key):bisect.bisect_right(keys, key)]
+
+    def _most_played(self, ids, limit):
+        """ids (no repeats) in the most playlists first (then lower ID), at most limit of them."""
+        if len(ids) > limit:
+            ids = ids[np.argpartition(-self.playlists[ids], limit - 1)[:limit]]
+        return ids[np.lexsort((ids, -self.playlists[ids]))]
+
+    def find_songs(self, query, limit=10):
+        """Songs for a menu as the user types: those whose track or artist name starts with query (or,
+        for "track - artist" text, whose track starts with the part before " - " and artist with the
+        part after), in the most playlists first: [{uri, track, artist, playlists}]."""
+        q = name_key(query)
+        if not q:
+            return []
+        parts = [self._most_played(self._starting(self.track_keys, self.by_track, q), limit),
+                 self._most_played(self._starting(self.artist_keys, self.by_artist, q), limit)]
+        for t, a in splits(q):
+            both = np.intersect1d(self._starting(self.track_keys, self.by_track, t),
+                                  self._starting(self.artist_keys, self.by_artist, a))
+            parts.append(self._most_played(both, limit))
+        ids = self._most_played(np.unique(np.concatenate(parts)), limit)
+        return [self.describe(j) for j in ids.tolist()]
+
+    def describe(self, j):
+        return {"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j],
+                "playlists": int(self.playlists[j])}
+
+    def resolve(self, song):
+        """The song ID for a request's song: a Spotify URI in the catalog, or "Track - Artist" text (or
+        just a track name) matching a song's names exactly (ignoring case and accents), the most-played
+        one if several do; None if nothing matches."""
+        if song in self.song_id:
+            return self.song_id[song]
+        q = name_key(song)
+        if not q or song.startswith("spotify:"):
+            return None
+        matches = [np.intersect1d(self._exactly(self.track_keys, self.by_track, t),
+                                  self._exactly(self.artist_keys, self.by_artist, a)) for t, a in splits(q)]
+        found = np.concatenate(matches) if matches else np.zeros(0, dtype=np.int64)
+        if len(found) == 0:  # no "track - artist" match: a track name on its own
+            found = self._exactly(self.track_keys, self.by_track, q)
+        return int(self._most_played(np.unique(found), 1)[0]) if len(found) else None
 
     def encode_name(self, name):
         """(1, width) name-word IDs, as in training: unknown words left out, all padding if none known."""
@@ -151,12 +229,14 @@ class Recommender:
         order = np.argsort(-rerank, kind="stable")[:TOP]
         return ids[0, order], rerank[order], times
 
-    def recommend(self, uris, name=None):
-        """The response to a request: the top 10 songs {uri, track, artist, score}, the songs read
-        and the ones left out (not in the catalog), the bundle version, and the time per stage."""
+    def recommend(self, songs, name=None):
+        """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
+        top 10 songs {uri, track, artist, score}, the songs read {uri, track, artist} and the ones
+        left out (no match in the catalog), the bundle version, and the time per stage."""
         start = time.perf_counter()
-        known = [(u, self.song_id[u]) for u in uris if u in self.song_id]
-        ignored = [u for u in uris if u not in self.song_id]
+        ids = [self.resolve(s) for s in songs]
+        known = [(s, j) for s, j in zip(songs, ids) if j is not None]
+        ignored = [s for s, j in zip(songs, ids) if j is None]
         if not known:
             raise NoKnownSongs(ignored)
         used = known[-self.settings["input_length"]:]
@@ -168,5 +248,6 @@ class Recommender:
         times["total"] = (time.perf_counter() - start) * 1000
         return {"recommendations": [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j],
                                      "score": float(x)} for j, x in zip(ids.tolist(), scores)],
-                "used": [u for u, _ in used], "ignored": ignored, "version": self.version,
+                "used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
+                "ignored": ignored, "version": self.version,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}

@@ -15,6 +15,9 @@ Writes bundles/<ranker config name>-<version>/:
   song_artist.npy, song_album.npy, song_genres.npy   per-song IDs for the ranker's overlap inputs
   pair_keys.npy, pair_counts.npy the appeared-together table (sorted keys a * songs + b; 2-byte counts)
   songs.json                     Spotify URIs, track names and artist names
+  song_playlists.npy             how many of the MPD playlists contain each song (the find-songs menu's order)
+  songs_by_track.npy, songs_by_artist.npy, name_keys.json   song IDs sorted by track / artist name and the
+                                 names as compared (recommender.name_key), for finding songs as the user types
   name_words.json                the playlist-name words (word i has ID i + 1)
   manifest.json                  every file's SHA-256 and size, and the version
 The version is the first 12 hex digits of a SHA-256 over the files' own SHA-256s, so a change to any
@@ -29,9 +32,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from recsys.data import concat_playlists
+from recsys.mpd_store import load_store
 from recsys.rank_features import GROUPS, pair_counts
 from recsys.ranker import CandidateRanker, check_vocab, file_fingerprint, load_ranker_config, load_retriever
-from recsys.recommender import SERVED_GROUPS, shared_state
+from recsys.recommender import SERVED_GROUPS, name_key, shared_state
 from recsys.search import SearchWorker, song_vectors
 from recsys.train import pick_device, run_dir_for
 
@@ -54,12 +59,38 @@ def write_manifest(folder):
     return version
 
 
+def name_index(tracks, artist_names, song_artist, song_playlists):
+    """(songs_by_track, songs_by_artist, name_keys): song IDs sorted by track name key and by artist
+    name key, each in the most playlists first among equal names, and the keys themselves."""
+    track_keys = [name_key(t) for t in tracks]
+    artist_keys = [name_key(a) for a in artist_names]
+    by_track = sorted(range(len(tracks)), key=lambda j: (track_keys[j], -song_playlists[j], j))
+    by_artist = sorted(range(len(tracks)), key=lambda j: (artist_keys[song_artist[j]], -song_playlists[j], j))
+    return (np.array(by_track, dtype=np.int32), np.array(by_artist, dtype=np.int32),
+            {"tracks": track_keys, "artists": artist_keys})
+
+
+def playlist_counts(cfg, vocab):
+    """How many of the config's playlists (all of them, held-out ones too) contain each vocab song:
+    the find-songs menu's popularity order. Display only: no model sees it."""
+    d = cfg.data
+    store = load_store(d.folder)
+    kept = np.flatnonzero(np.diff(store.playlist_offsets) >= d.min_playlist_len)[:d.max_playlists]
+    tracks, offsets = concat_playlists(store, kept)
+    vocab_id = {uri: i for i, uri in enumerate(vocab)}
+    songs = np.array([vocab_id.get(u, -1) for u in store.track_uris], dtype=np.int64)[tracks]
+    playlist = np.repeat(np.arange(len(kept)), np.diff(offsets))
+    known = songs >= 0
+    once = np.unique(playlist[known] * len(vocab) + songs[known])  # each (playlist, song) once
+    return np.bincount(once % len(vocab), minlength=len(vocab))
+
+
 def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, artist_names, name_words, pairs,
-                 device):
+                 song_playlists, device):
     """Write the bundle for a trained retriever and ranker (see the module docstring) to
     out_root/<name>-<version> and return that path. settings: settings.json's contents (see
     export); uris, tracks: per song; artist_names: per artist ID; name_words: the name-word list;
-    pairs: (keys, counts) from rank_features.pair_counts."""
+    pairs: (keys, counts) from rank_features.pair_counts; song_playlists: per song (playlist_counts)."""
     out_root = Path(out_root)
     partial = out_root / f".{name}-partial"
     shutil.rmtree(partial, ignore_errors=True)
@@ -81,7 +112,8 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     with SearchWorker() as worker:
         worker.build("songs", vectors, kind="ivf", nlist=settings["ivf_nlist"], nprobe=settings["ivf_nprobe"])
         worker.save("songs", (partial / "search_index.faiss").resolve())
-    save("song_artist", retriever.song_feature_ids("artist").cpu().numpy().astype(np.int32))
+    song_artist = retriever.song_feature_ids("artist").cpu().numpy().astype(np.int32)
+    save("song_artist", song_artist)
     save("song_album", retriever.song_feature_ids("album").cpu().numpy().astype(np.int32))
     save("song_genres", retriever.song_genres.cpu().numpy().astype(np.int16))
     keys, counts = pairs
@@ -89,6 +121,12 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     save("pair_counts", np.asarray(counts).astype(np.int16 if len(counts) == 0 or counts.max() < 2 ** 15 else np.int32))
     (partial / "songs.json").write_text(json.dumps({"uris": list(uris), "tracks": list(tracks),
                                                     "artist_names": list(artist_names)}))
+    song_playlists = np.asarray(song_playlists, dtype=np.int32)
+    save("song_playlists", song_playlists)
+    by_track, by_artist, keys = name_index(list(tracks), list(artist_names), song_artist, song_playlists)
+    save("songs_by_track", by_track)
+    save("songs_by_artist", by_artist)
+    (partial / "name_keys.json").write_text(json.dumps(keys))
     (partial / "name_words.json").write_text(json.dumps(list(name_words)))
     version = write_manifest(partial)
     final = out_root / f"{name}-{version}"
@@ -118,7 +156,7 @@ def export(ranker_config, seed=1, out_root="bundles"):
                                                    "retriever_checkpoint_sha256": file_fingerprint(retriever_path)}}
     pairs = pair_counts(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
     return write_bundle(out_root, Path(ranker_config).stem, retriever, ranker, settings, ds.vocab, ds.names,
-                        ds.artist_names, ds.name_words, pairs, device)
+                        ds.artist_names, ds.name_words, pairs, playlist_counts(cfg, ds.vocab), device)
 
 
 
