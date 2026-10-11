@@ -1,0 +1,61 @@
+// The messages between the front desk (recsys/frontdesk.py) and the shards (recsys/shard.py).
+// Regenerate the Python code after a change: python scripts/gen_proto.py
+syntax = "proto3";
+
+package shard;
+
+// A numpy array as raw bytes: only data ever crosses the wire, never code (unlike pickle).
+message Array {
+  bytes data = 1;
+  string dtype = 2;        // "float32", "int64", "int32" or "int16"
+  repeated int64 shape = 3;
+}
+
+message InfoRequest {}
+message InfoReply {
+  string version = 1;      // the bundle version this shard loaded
+  int32 index = 2;         // which shard it is: it holds the songs with id % shards == index
+  int32 shards = 3;        // how many shards the catalog is split into
+  int64 songs = 4;         // songs held here
+  int64 catalog = 5;       // songs in the whole catalog
+}
+
+// The top k songs of this shard for each query vector [h, 1], best first, as global song IDs.
+message SearchRequest {
+  string version = 1;
+  Array queries = 2;       // (queries, d + 1) float32
+  int32 k = 3;
+}
+message SearchReply {
+  Array ids = 1;           // (queries, k) int64; -1 where the searched clusters held fewer songs
+  Array scores = 2;        // (queries, k) float32
+}
+
+// Per-song data for songs this shard holds.
+message LookupRequest {
+  string version = 1;
+  Array ids = 2;           // (n,) int64 global song IDs, each with id % shards == index
+}
+message LookupReply {
+  Array retriever_inputs = 1;  // (n, d) float32
+  Array ranker_inputs = 2;     // (n, d) float32
+  Array artist = 3;            // (n,) int32
+  Array album = 4;             // (n,) int32
+  Array genres = 5;            // (n, k) int16
+}
+
+// Appeared-together counts for pairs (a, b) whose later song b this shard holds.
+message CountsRequest {
+  string version = 1;
+  Array keys = 2;          // (n,) int64: a * catalog + b
+}
+message CountsReply {
+  Array counts = 1;        // (n,) int32, 0 for pairs never seen
+}
+
+service Shard {
+  rpc Info(InfoRequest) returns (InfoReply);
+  rpc Search(SearchRequest) returns (SearchReply);
+  rpc Lookup(LookupRequest) returns (LookupReply);
+  rpc Counts(CountsRequest) returns (CountsReply);
+}

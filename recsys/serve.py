@@ -1,6 +1,7 @@
 """The recommender as a REST API (FastAPI, run by uvicorn).
 
     python -m recsys.serve --bundle bundles/ranker_1m_any_length-<version> --device cpu
+    python -m recsys.serve --bundle ... --shards shard-0:50051,shard-1:50051,...   # songs held by shards
 
   POST /recommend   {"songs": ["spotify:track:...", "Nightcall - Kavinsky", ...], "name": "road trip"}
                     (songs: Spotify URIs or "Track - Artist" text; name optional)
@@ -15,7 +16,8 @@
 
 FastAPI turns each request's JSON into a RecommendRequest (refusing malformed ones) and the returned
 dict back into JSON; uvicorn listens on the port and hands requests to it. The work is
-recsys.recommender.Recommender, loaded once when the server starts. Endpoints are plain functions,
+recsys.recommender.Recommender (everything in this process and its search process) or, with --shards,
+recsys.frontdesk.ShardedRecommender (per-song data in the shard servers), loaded once when the server starts. Endpoints are plain functions,
 which FastAPI runs in worker threads; the Recommender answers one request at a time.
 """
 import argparse
@@ -33,12 +35,17 @@ class RecommendRequest(BaseModel):
     name: str | None = None   # the playlist's name, if it has one
 
 
-def create_app(bundle, device="cpu"):
-    """The FastAPI app serving bundle (a recsys.export folder) with the models on device."""
+def create_app(bundle, device="cpu", shards=None, deadline=2.0):
+    """The FastAPI app serving bundle (a recsys.export folder) with the models on device; with shards
+    (their addresses, shard i at position i), the songs' data comes from the shard servers."""
 
     @asynccontextmanager
-    async def lifespan(app):  # load once at startup, close the search process at shutdown
-        app.state.recommender = Recommender(bundle, device)
+    async def lifespan(app):  # load once at startup, close the search process or connections at shutdown
+        if shards:
+            from recsys.frontdesk import ShardedRecommender
+            app.state.recommender = ShardedRecommender(bundle, shards, device, deadline)
+        else:
+            app.state.recommender = Recommender(bundle, device)
         yield
         app.state.recommender.close()
 
@@ -60,7 +67,8 @@ def create_app(bundle, device="cpu"):
     @app.get("/health")
     def health():
         rec = app.state.recommender
-        return {"status": "ok", "version": rec.version, "songs": len(rec.uris), "device": str(rec.device)}
+        return {"status": "ok", "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
+                "shards": len(getattr(rec, "stubs", [])) or None}
 
     return app
 
@@ -81,5 +89,9 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu", help="where the models run: cpu or mps")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--shards", help="comma-separated shard addresses (host:port), shard 0 first")
+    ap.add_argument("--deadline", type=float, default=2.0, help="seconds each call to a shard may take")
     args = ap.parse_args()
-    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device), host=args.host, port=args.port)
+    shards = args.shards.split(",") if args.shards else None
+    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline), host=args.host,
+                port=args.port)

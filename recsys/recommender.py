@@ -106,44 +106,50 @@ def sync(device):
         torch.mps.synchronize()
 
 
-class Recommender:
-    """A loaded bundle: the two models on `device`, the ranker's extra-input tables, the song
-    lookups, and a search process holding the saved IVF index. Requests are answered one at a
-    time (a lock), since the models and the search process serve one request at a time."""
+class Stopwatch:
+    """Milliseconds per stage of a request (waiting for the GPU first, so each stage is its own)."""
+
+    def __init__(self, device):
+        self.device, self.times, self.last = device, {}, time.perf_counter()
+
+    def mark(self, stage):
+        sync(self.device)
+        now = time.perf_counter()
+        self.times[stage] = (now - self.last) * 1000
+        self.last = now
+
+
+class Catalog:
+    """What every recommender front end needs besides the models: the bundle's settings and version,
+    the song lookups (URI <-> ID, track and artist names), finding songs by name, the playlist-name
+    words, and turning a request into a response (recommend). Subclasses answer recommend_ids."""
 
     def __init__(self, bundle, device="cpu"):
         self.path = Path(bundle)
         self.device = torch.device(device)
-        load = lambda name: np.load(self.path / f"{name}.npy")
-        self.settings = s = json.loads((self.path / "settings.json").read_text())
+        self.settings = json.loads((self.path / "settings.json").read_text())
         self.version = json.loads((self.path / "manifest.json").read_text())["version"]
-        self.retriever = serving_retriever(s, load("retriever_song_inputs")).to(self.device)
-        load_shared(self.retriever, torch.load(self.path / "retriever_shared.pt", weights_only=True))
-        self.ranker = serving_ranker(s, load("ranker_song_inputs")).to(self.device)
-        load_shared(self.ranker, torch.load(self.path / "ranker_shared.pt", weights_only=True))
-        self.features = CandidateFeatures(s["features"], s["songs"], None, (load("pair_keys"), load("pair_counts")),
-                                          self.device, song_artist=load("song_artist"), song_album=load("song_album"),
-                                          song_genres=load("song_genres"))
         songs = json.loads((self.path / "songs.json").read_text())
         self.uris, self.tracks = songs["uris"], songs["tracks"]
-        self.artists = [songs["artist_names"][a] for a in load("song_artist")]
+        artist_of = self.load("song_artist")
+        self.artists = [songs["artist_names"][a] for a in artist_of]
         self.song_id = {uri: i for i, uri in enumerate(self.uris)}
         # Finding songs by name: song IDs sorted by track name key and by artist name key (each
         # most-played first among equal names), with the keys in that order for binary search.
-        self.playlists = load("song_playlists")
+        self.playlists = self.load("song_playlists")
         keys = json.loads((self.path / "name_keys.json").read_text())
-        self.by_track, self.by_artist = load("songs_by_track"), load("songs_by_artist")
+        self.by_track, self.by_artist = self.load("songs_by_track"), self.load("songs_by_artist")
         self.track_keys = [keys["tracks"][i] for i in self.by_track]
-        artist_of = load("song_artist")
         self.artist_keys = [keys["artists"][artist_of[i]] for i in self.by_artist]
         words = json.loads((self.path / "name_words.json").read_text())
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
-        self.search = SearchWorker()
-        self.search.load("songs", (self.path / "search_index.faiss").resolve(), s["ivf_nprobe"])
         self.lock = threading.Lock()
 
+    def load(self, name):
+        return np.load(self.path / f"{name}.npy")
+
     def close(self):
-        self.search.close()
+        pass
 
     def _starting(self, keys, order, prefix):
         """Song IDs whose key (in sorted keys, songs in order) starts with prefix."""
@@ -198,36 +204,10 @@ class Recommender:
         """(1, width) name-word IDs, as in training: unknown words left out, all padding if none known."""
         return encode_names([name or ""], self.word_id)
 
-    @torch.no_grad()
     def recommend_ids(self, song_ids, name_ids):
         """The top 10 for a playlist's songs (song IDs, oldest first; the last input_length are read)
         and its name-word IDs (1, width): (song IDs, ranker scores, timings in ms by stage)."""
-        times, clock = {}, [time.perf_counter()]
-
-        def mark(stage):
-            sync(self.device)
-            now = time.perf_counter()
-            times[stage] = (now - clock[0]) * 1000
-            clock[0] = now
-        s, device = self.settings, self.device
-        X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)[None, :]
-        N = np.asarray(name_ids, dtype=np.int64).reshape(1, -1)
-        h = query_vectors(self.retriever, X, N, device)  # (1, d + 1): the playlist vector with a 1 appended
-        mark("retriever")
-        extra = X.shape[1] if s["exclude_input"] else 0  # search deeper by up to that many input songs dropped
-        ids, scores = self.search.search("songs", h, s["shortlist"] + extra)
-        if s["exclude_input"]:
-            ids, scores = drop_input_songs(ids, scores, X, None, s["shortlist"])
-        mark("search")
-        context, cands = torch.from_numpy(X).to(device), torch.from_numpy(ids).long().to(device)
-        base = torch.from_numpy(np.ascontiguousarray(scores, dtype=np.float32)).to(device)
-        ranks = torch.arange(1, cands.shape[1] + 1, device=device)[None, :]  # the shortlist's own order
-        f = self.features(context, cands, base, ranks, base[:, 0], playlist_len=torch.tensor([X.shape[1]], device=device))
-        mark("ranker inputs")
-        rerank = self.ranker(context, torch.from_numpy(N).to(device), cands, base, f).cpu().numpy()[0]
-        mark("ranker")
-        order = np.argsort(-rerank, kind="stable")[:TOP]
-        return ids[0, order], rerank[order], times
+        raise NotImplementedError
 
     def recommend(self, songs, name=None):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
@@ -251,3 +231,48 @@ class Recommender:
                 "used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
                 "ignored": ignored, "version": self.version,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
+
+
+class Recommender(Catalog):
+    """A loaded bundle in one process: the two models on `device`, the ranker's extra-input tables,
+    and a search process holding the saved IVF index. Requests are answered one at a time (a lock),
+    since the models and the search process serve one request at a time."""
+
+    def __init__(self, bundle, device="cpu"):
+        super().__init__(bundle, device)
+        s = self.settings
+        self.retriever = serving_retriever(s, self.load("retriever_song_inputs")).to(self.device)
+        load_shared(self.retriever, torch.load(self.path / "retriever_shared.pt", weights_only=True))
+        self.ranker = serving_ranker(s, self.load("ranker_song_inputs")).to(self.device)
+        load_shared(self.ranker, torch.load(self.path / "ranker_shared.pt", weights_only=True))
+        self.features = CandidateFeatures(s["features"], s["songs"], None, (self.load("pair_keys"),
+                                          self.load("pair_counts")), self.device, song_artist=self.load("song_artist"),
+                                          song_album=self.load("song_album"), song_genres=self.load("song_genres"))
+        self.search = SearchWorker()
+        self.search.load("songs", (self.path / "search_index.faiss").resolve(), s["ivf_nprobe"])
+
+    def close(self):
+        self.search.close()
+
+    @torch.no_grad()
+    def recommend_ids(self, song_ids, name_ids):
+        clock = Stopwatch(self.device)
+        s, device = self.settings, self.device
+        X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)[None, :]
+        N = np.asarray(name_ids, dtype=np.int64).reshape(1, -1)
+        h = query_vectors(self.retriever, X, N, device)  # (1, d + 1): the playlist vector with a 1 appended
+        clock.mark("retriever")
+        extra = X.shape[1] if s["exclude_input"] else 0  # search deeper by up to that many input songs dropped
+        ids, scores = self.search.search("songs", h, s["shortlist"] + extra)
+        if s["exclude_input"]:
+            ids, scores = drop_input_songs(ids, scores, X, None, s["shortlist"])
+        clock.mark("search")
+        context, cands = torch.from_numpy(X).to(device), torch.from_numpy(ids).long().to(device)
+        base = torch.from_numpy(np.ascontiguousarray(scores, dtype=np.float32)).to(device)
+        ranks = torch.arange(1, cands.shape[1] + 1, device=device)[None, :]  # the shortlist's own order
+        f = self.features(context, cands, base, ranks, base[:, 0], playlist_len=torch.tensor([X.shape[1]], device=device))
+        clock.mark("ranker inputs")
+        rerank = self.ranker(context, torch.from_numpy(N).to(device), cands, base, f).cpu().numpy()[0]
+        clock.mark("ranker")
+        order = np.argsort(-rerank, kind="stable")[:TOP]
+        return ids[0, order], rerank[order], clock.times
