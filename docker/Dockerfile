@@ -9,4 +9,5 @@ COPY docker/requirements-serve.txt .
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-serve.txt
 
 COPY recsys ./recsys
+COPY web ./web
 ENV PYTHONUNBUFFERED=1

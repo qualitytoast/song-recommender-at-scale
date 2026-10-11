@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Song recommender</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Song recommender</h1>
+      <p class="lede">Next-song recommendations learned from a million Spotify playlists.</p>
+    </div>
+    <p class="model" id="model"></p>
+  </header>
+
+  <main class="layout">
+    <section class="builder" aria-labelledby="playlist-heading">
+      <h2 id="playlist-heading">Your playlist</h2>
+
+      <div class="search">
+        <label class="visually-hidden" for="search">Add a song</label>
+        <input id="search" type="text" placeholder="Add a song or artist" autocomplete="off" spellcheck="false"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="menu">
+        <ul id="menu" class="menu" role="listbox" hidden></ul>
+      </div>
+
+      <ol id="playlist" class="rows playlist"></ol>
+      <p id="playlist-empty" class="empty">Add a few songs. Any number works; the last ten are used.</p>
+
+      <label class="field" for="name">Playlist name <span class="muted">(optional)</span></label>
+      <input id="name" type="text" placeholder="night drive" autocomplete="off">
+
+      <div class="actions">
+        <button id="go" class="primary" type="button" disabled>Recommend</button>
+        <button id="clear" class="quiet" type="button" hidden>Clear</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="results" aria-labelledby="results-heading">
+      <h2 id="results-heading">Recommendations</h2>
+      <p id="notes" class="notes" aria-live="polite"></p>
+      <ol id="results" class="rows tracks"></ol>
+      <p id="results-empty" class="empty">Recommendations appear here.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Data: Spotify Million Playlist Dataset (2010–2017); genres from MusicBrainz. <a href="/docs">API</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
