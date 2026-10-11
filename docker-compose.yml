@@ -44,6 +44,8 @@ services:
       python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
       --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
     ports: ["8000:8000"]
+    environment:
+      OMP_NUM_THREADS: "1"  # one request's computations are tiny: splitting them over threads costs more
     depends_on:
       shard-0: {condition: service_healthy}
       shard-1: {condition: service_healthy}
