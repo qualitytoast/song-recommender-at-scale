@@ -40,14 +40,33 @@ def wait_healthy(url="http://127.0.0.1:8000/health", timeout=300):
     raise TimeoutError("front desk not healthy")
 
 
+def outcomes(path):
+    """Per endpoint: answered (200) count with p50/p99, busy (503) count with p50 (how fast the refusal
+    came), and other failures."""
+    import numpy as np
+    rows = json.load(open(path))
+    out = {}
+    for name in sorted({r[0] for r in rows}):
+        ok = np.array([ms for n, status, ms in rows if n == name and status == 200])
+        busy = np.array([ms for n, status, ms in rows if n == name and status == 503])
+        out[name] = {"answered": len(ok), "answered_p50_ms": float(np.percentile(ok, 50)) if len(ok) else None,
+                     "answered_p99_ms": float(np.percentile(ok, 99)) if len(ok) else None,
+                     "busy": len(busy), "busy_p50_ms": float(np.percentile(busy, 50)) if len(busy) else None,
+                     "other_failures": sum(1 for n, status, _ in rows if n == name and status not in (200, 503))}
+    return out
+
+
 def run_locust(users, seconds, prefix):
     subprocess.run([sys.executable, "-m", "locust", "-f", "scripts/locustfile.py", "--headless", "-u", str(users),
                     "-r", str(min(users, 100)), "--run-time", f"{seconds}s", "--host", "http://127.0.0.1:8000",
-                    "--csv", prefix, "--only-summary"], cwd=ROOT, env={**ENV, **SETTINGS}, capture_output=True)
+                    "--csv", prefix, "--only-summary"], cwd=ROOT,
+                   env={**ENV, **SETTINGS, "OUTCOMES": f"{prefix}_outcomes.json"}, capture_output=True)
     rows = {r["Name"]: r for r in csv.DictReader(open(f"{prefix}_stats.csv"))}
     pick = lambda r: {"requests": int(r["Request Count"]), "failures": int(r["Failure Count"]),
                       "per_s": float(r["Requests/s"]), "p50_ms": float(r["50%"]), "p99_ms": float(r["99%"])}
-    return {name: pick(rows[name]) for name in ("/recommend", "/songs", "Aggregated") if name in rows}
+    result = {name: pick(rows[name]) for name in ("/recommend", "/songs", "Aggregated") if name in rows}
+    result["outcomes"] = outcomes(f"{prefix}_outcomes.json")
+    return result
 
 
 def main():
@@ -79,6 +98,10 @@ def main():
             print(f"{args.label} {copies} front desk(s), {users:>3} users: /recommend {rec.get('per_s', 0):7.1f}/s p50 {rec.get('p50_ms', 0):5.0f} "
                   f"p99 {rec.get('p99_ms', 0):5.0f} ms | /songs {songs.get('per_s', 0):7.1f}/s p50 {songs.get('p50_ms', 0):5.0f} "
                   f"p99 {songs.get('p99_ms', 0):5.0f} ms | failures {r['Aggregated']['failures']}", flush=True)
+            for name, o in r["outcomes"].items():
+                print(f"    {name:<11} answered {o['answered']:>6,} (p50 {o['answered_p50_ms'] or 0:6.0f}, p99 "
+                      f"{o['answered_p99_ms'] or 0:6.0f} ms) | busy 503 {o['busy']:>6,} (p50 {o['busy_p50_ms'] or 0:4.0f} ms)"
+                      f" | other failures {o['other_failures']}", flush=True)
     Path(args.out).write_text(json.dumps(results, indent=2))
 
 
