@@ -96,14 +96,14 @@ def check_server(args):
     url = args.url.rstrip("/")
     health = json.loads(urllib.request.urlopen(f"{url}/health").read())
     for case in cases[:args.warmup]:  # first requests pay one-off costs (e.g. GPU kernels); not timed
-        post(f"{url}/recommend", {"songs": case["songs"], "name": case["name"], "max_per_artist": 0})
+        post(f"{url}/recommend", {"songs": case["songs"], "name": case["name"], "max_per_artist": 0, "mix": 0})
     same_list, same_set, stages, end_to_end = 0, 0, {}, []
     gains = {"offline": [], "served": []}
     by_length = {}
     for case in cases:
         start = time.perf_counter()
         reply = post(f"{url}/recommend", {"songs": case["songs"], "name": case["name"],
-                                          "max_per_artist": 0})  # the offline top 10 has no artist limit
+                                          "max_per_artist": 0, "mix": 0})  # as offline: no limit, no mixing
         end_to_end.append((time.perf_counter() - start) * 1000)
         served = [r["uri"] for r in reply["recommendations"]]
         same_list += served == case["offline_top10"]

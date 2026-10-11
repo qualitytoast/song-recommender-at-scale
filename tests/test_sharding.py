@@ -81,10 +81,11 @@ def test_sharded_answers_equal_the_single_process_ones(bundle, n):
         try:
             name = single.encode_name("road trip")
             for songs in ([7], [7, 21], [3, 17, 9], [1, 2, 3, 4, 5], [5, 5, 8]):
-                ids, scores, times, notes = rec.recommend_ids(songs, name)
-                expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name)
-                np.testing.assert_array_equal(ids, expected_ids)
-                np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
+                for mix in (0.0, 0.5):
+                    ids, scores, times, notes = rec.recommend_ids(songs, name, mix)
+                    expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name, mix)
+                    np.testing.assert_array_equal(ids, expected_ids)
+                    np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
             assert set(times) == {"shards: input songs", "retriever", "shards: search", "shards: candidates",
                                   "ranker inputs", "ranker"}
             request = (["Nightcall - Kavinsky", "nope", "spotify:track:9"], "drive")

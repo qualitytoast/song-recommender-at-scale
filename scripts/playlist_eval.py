@@ -67,6 +67,44 @@ def make_cases(args):
     print(f"{len(cases):,} cases from {len(playlists):,} held-out playlists -> {out / 'cases.json'}")
 
 
+SETTINGS = [{"max_per_artist": 0, "mix": 0.0},   # the models alone, as trained and evaluated offline
+            {"max_per_artist": 2, "mix": 0.0},
+            {"max_per_artist": 0, "mix": 0.5},
+            {"max_per_artist": 2, "mix": 0.5}]   # the served default
+
+
+def score_cases(args):
+    from recsys.recommender import Recommender
+
+    cases = json.loads((Path(args.cases) / "cases.json").read_text())["cases"]
+    rec = Recommender(args.bundle, args.device)
+    artist = {uri: rec.song_artist[j] for uri, j in rec.song_id.items()}.get
+    results, start = [], time.perf_counter()
+    for setting in SETTINGS:
+        rows = {"all": [], "mixed": []}
+        for c in cases:
+            top = [r["uri"] for r in rec.recommend(c["songs"], c["name"], **setting)["recommendations"]]
+            later = set(c["later"])
+            row = [c["target"] in top, np.mean([u in later for u in top]), len({artist(u) for u in top}),
+                   np.mean([artist(u) == artist(c["songs"][-1]) for u in top])]
+            rows["all"].append(row)
+            if len(c["songs"]) >= 3 and len({artist(u) for u in c["songs"]}) == len(c["songs"]):
+                rows["mixed"].append(row)
+        results.append({**setting, **{group: dict(zip(["next_hit@10", "later_p@10", "artists", "last_artist"],
+                                                      np.mean(r, axis=0).tolist()), cases=len(r))
+                                      for group, r in rows.items()}})
+    rec.close()
+    (Path(args.cases) / f"scores_{rec.version}.json").write_text(json.dumps(results, indent=2))
+    print(f"{len(cases):,} cases ({results[0]['mixed']['cases']:,} mixed) in {time.perf_counter() - start:.0f}s")
+    print(f"{'max/artist':>10} {'mix':>4} | {'next hit@10':>11} {'later p@10':>10} {'artists':>7} {'last artist':>11}"
+          f" | mixed: {'next hit@10':>11} {'later p@10':>10} {'last artist':>11}")
+    for r in results:
+        a, m = r["all"], r["mixed"]
+        print(f"{r['max_per_artist']:>10} {r['mix']:>4} | {a['next_hit@10']:11.1%} {a['later_p@10']:10.1%} "
+              f"{a['artists']:7.1f} {a['last_artist']:11.1%} | mixed: {m['next_hit@10']:11.1%} "
+              f"{m['later_p@10']:10.1%} {m['last_artist']:11.1%}")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -77,6 +115,12 @@ if __name__ == "__main__":
     c.add_argument("--cases", type=int, default=5000)
     c.add_argument("--input-length", type=int, default=10)
     c.add_argument("--seed", type=int, default=0)
+    s = sub.add_parser("score")
+    s.add_argument("--cases", required=True)
+    s.add_argument("--bundle", required=True)
+    s.add_argument("--device", default="cpu")
     args = ap.parse_args()
     if args.mode == "cases":
         make_cases(args)
+    else:
+        score_cases(args)

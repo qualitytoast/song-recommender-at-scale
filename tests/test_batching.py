@@ -26,10 +26,10 @@ def sharded(tmp_path_factory):
 
 def test_a_batch_gives_each_request_its_own_answer(sharded):
     rec, single, _ = sharded
-    requests = [(songs, single.encode_name(name)) for songs, name in REQUESTS]
-    batched = rec.recommend_batch(requests)
-    for (songs, name_ids), (ids, scores, times, notes) in zip(requests, batched):
-        expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name_ids)
+    requests = [(songs, single.encode_name(name), mix) for (songs, name), mix in zip(REQUESTS, [0.0, 0.5, 1.0] * 2)]
+    batched = rec.recommend_batch(requests)  # each request with its own mix
+    for (songs, name_ids, mix), (ids, scores, times, notes) in zip(requests, batched):
+        expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name_ids, mix)
         np.testing.assert_array_equal(ids, expected_ids)
         np.testing.assert_allclose(scores, expected_scores, rtol=1e-4, atol=1e-4)
         assert notes == {"partial": False} and times["batch size"] == len(requests)

@@ -51,6 +51,27 @@ def query_vectors(model, X, N, device, batch=4096, lengths=None):
     return torch.cat(out).numpy()
 
 
+@torch.no_grad()
+def mixed_query_vectors(model, X, N, device, mix, lengths=None):
+    """query_vectors, with each window's playlist vector a weighted average of the transformer's outputs at
+    all its real positions instead of the last one's alone. The output at position i is the model's guess
+    at the song after the first i + 1 songs, so the average mixes the guesses made after every song: the
+    last one weighs 1, the one before it mix, then mix^2, ... (scaled to sum to 1). Scores are dot
+    products, so searching with the average scores each song by the same average of its scores.
+    mix: one value or one per window (n,); 0 gives query_vectors' vectors exactly."""
+    mix = np.broadcast_to(np.asarray(mix, dtype=np.float64), (len(X),))
+    if not mix.any():
+        return query_vectors(model, X, N, device, lengths=lengths)
+    model.eval()
+    n_real = np.full(len(X), X.shape[1]) if lengths is None else np.asarray(lengths)
+    back = n_real[:, None] - 1 - np.arange(X.shape[1])[None, :]  # (n, L) how many songs come after each one
+    w = np.where(back >= 0, mix[:, None] ** np.maximum(back, 0), 0.0)  # 0 ** 0 = 1: mix 0 keeps the last alone
+    w = torch.from_numpy(w / w.sum(1, keepdims=True)).float().to(device)
+    hidden = model.hidden_states(torch.from_numpy(X).to(device), torch.from_numpy(N).to(device))
+    h = torch.einsum("nl,nld->nd", w, hidden)
+    return torch.cat([h, torch.ones(len(h), 1, device=device)], dim=1).float().cpu().numpy()
+
+
 class ExactSearch:
     """Score every song, keep the top k: one matrix multiply per chunk of queries."""
 

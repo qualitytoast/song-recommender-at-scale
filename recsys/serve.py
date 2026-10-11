@@ -5,7 +5,8 @@
 
   POST /recommend   {"songs": ["spotify:track:...", "Nightcall - Kavinsky", ...], "name": "road trip"}
                     (songs: Spotify URIs or "Track - Artist" text; name optional; "max_per_artist": at most
-                    this many of the 10 by one artist, default 2, 0 for no limit)
+                    this many of the 10 by one artist, default 2, 0 for no limit; "mix": how much the
+                    model's guesses after earlier songs count, 0 to 1, default 0.5, 0 for the last song's alone)
                     -> {"recommendations": [{"uri", "track", "artist", "score"} x 10],
                         "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
@@ -38,7 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from recsys.admission import Admission, Overloaded
-from recsys.recommender import MAX_PER_ARTIST, TOP, NoKnownSongs, Recommender
+from recsys.recommender import MAX_PER_ARTIST, MIX, TOP, NoKnownSongs, Recommender
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 
@@ -47,6 +48,7 @@ class RecommendRequest(BaseModel):
     songs: list[str]          # Spotify track URIs or "Track - Artist" text, oldest first; the last 10 known are read
     name: str | None = None   # the playlist's name, if it has one
     max_per_artist: int = Field(MAX_PER_ARTIST, ge=0, le=TOP)  # at most this many of the 10 by one artist (0: any)
+    mix: float = Field(MIX, ge=0.0, le=1.0)  # how much the guesses after earlier songs count (recommender.MIX)
 
 
 def busy(message="busy: too many requests in progress; try again"):
@@ -93,7 +95,8 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         if not admission.enter():
             raise busy()
         try:
-            return app.state.recommender.recommend(request.songs, request.name, arrived, request.max_per_artist)
+            return app.state.recommender.recommend(request.songs, request.name, arrived, request.max_per_artist,
+                                                   request.mix)
         except NoKnownSongs as e:
             raise HTTPException(400, {"error": str(e), "ignored": e.ignored})
         except Overloaded as e:

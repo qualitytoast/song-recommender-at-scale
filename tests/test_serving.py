@@ -9,7 +9,7 @@ from recsys.export import write_manifest
 from recsys.rank_features import CandidateFeatures
 from recsys.ranker import build_shortlists, feature_fn, rerank
 from recsys.recommender import NoKnownSongs, Recommender, pick_top
-from recsys.search import ExactSearch, song_vectors
+from recsys.search import ExactSearch, mixed_query_vectors, query_vectors, song_vectors
 from serving_helpers import ARTISTS, CPU, SETTINGS, TRACKS, V, write_tiny_bundle
 
 @pytest.fixture(scope="module")
@@ -49,12 +49,30 @@ def test_the_serving_models_compute_what_the_trained_ones_do(served):
 def test_recommendations_match_the_offline_pipeline(served, songs):
     rec, retriever, ranker, pairs = served
     name_ids = rec.encode_name("Road trip mix!")[0]
-    ids, scores, times, notes = rec.recommend_ids(songs, name_ids)
+    ids, scores, times, notes = rec.recommend_ids(songs, name_ids, mix=0)  # the offline pipeline's playlist vector
     expected_ids, expected_scores = offline_order(retriever, ranker, pairs, songs[-3:], name_ids)
     np.testing.assert_array_equal(ids, expected_ids)
     np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
     assert not set(ids) & set(songs[-3:])  # the input songs are never recommended
     assert set(times) == {"retriever", "search", "ranker inputs", "ranker"}
+
+
+def test_mixing_averages_the_guesses_made_after_each_song(served):
+    retriever = served[1]
+    X, N = np.array([[3, 17, 9], [5, 8, 0]]), np.array([[2, 4], [1, 0]])  # the tiny model reads 3 songs
+    lengths = np.array([3, 2])
+    np.testing.assert_array_equal(mixed_query_vectors(retriever, X, N, CPU, 0.0, lengths),
+                                  query_vectors(retriever, X, N, CPU, lengths=lengths))  # 0: the last guess alone
+    for mix in (0.5, 1.0):
+        got = mixed_query_vectors(retriever, X, N, CPU, mix, lengths)
+        for r in range(len(X)):  # each prefix on its own, weighted: the last 1, then mix, mix^2, ...
+            n = lengths[r]
+            prefixes = np.vstack([query_vectors(retriever, X[r:r + 1, :i + 1], N[r:r + 1], CPU) for i in range(n)])
+            w = mix ** np.arange(n - 1, -1, -1)
+            np.testing.assert_allclose(got[r], w @ prefixes / w.sum(), rtol=1e-5, atol=1e-5)
+    per_row = mixed_query_vectors(retriever, X, N, CPU, np.array([0.0, 0.5]), lengths)  # one mix per row
+    np.testing.assert_array_equal(per_row[0], query_vectors(retriever, X, N, CPU, lengths=lengths)[0])
+    np.testing.assert_allclose(per_row[1], mixed_query_vectors(retriever, X, N, CPU, 0.5, lengths)[1], rtol=1e-6)
 
 
 def test_pick_top_keeps_at_most_max_per_artist_songs_by_one_artist():
@@ -142,6 +160,9 @@ def test_the_http_api(served, tmp_path):
         any_artist = client.post("/recommend", json={"songs": ["spotify:track:6"], "max_per_artist": 0}).json()
         assert any_artist["recommendations"] == rec.recommend(["spotify:track:6"], max_per_artist=0)["recommendations"]
         assert client.post("/recommend", json={"songs": ["spotify:track:6"], "max_per_artist": 11}).status_code == 422
+        last_only = client.post("/recommend", json={"songs": ["spotify:track:6", "spotify:track:7"], "mix": 0}).json()
+        assert last_only["recommendations"] == rec.recommend(["spotify:track:6", "spotify:track:7"], mix=0)["recommendations"]
+        assert client.post("/recommend", json={"songs": ["spotify:track:6"], "mix": 1.5}).status_code == 422
 
 
 def test_finding_songs_by_name_puts_the_most_played_first(served):
