@@ -1,0 +1,50 @@
+# One complete version "stack" for blue/green updates (scripts/bluegreen.py): 4 shard servers and a front
+# desk for one bundle, as its own compose project. Its front desk joins the shared "recsys-edge" network as
+# <STACK>-frontdesk, where the entrance (edge.yml) can reach it; its shards stay on the stack's own network.
+#   STACK=blue BUNDLE=/abs/path/to/bundle docker compose -p blue -f docker/bluegreen/stack.yml up -d
+x-recommender: &recommender
+  image: song-recommender:latest
+  volumes:
+    - ${BUNDLE}:/bundle:ro
+  restart: unless-stopped
+  init: true
+
+x-shard-health: &shard-health
+  test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
+  interval: 2s
+  timeout: 3s
+  retries: 3
+  start_period: 30s
+
+services:
+  shard-0: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051, healthcheck: *shard-health}
+  shard-1: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051, healthcheck: *shard-health}
+  shard-2: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051, healthcheck: *shard-health}
+  shard-3: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051, healthcheck: *shard-health}
+  frontdesk:
+    <<: *recommender
+    command: >
+      python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
+      --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
+    environment:
+      OMP_NUM_THREADS: "1"
+    depends_on:
+      shard-0: {condition: service_healthy}
+      shard-1: {condition: service_healthy}
+      shard-2: {condition: service_healthy}
+      shard-3: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    networks:
+      default: {}
+      edge:
+        aliases: ["${STACK}-frontdesk"]
+
+networks:
+  edge:
+    external: true
+    name: recsys-edge

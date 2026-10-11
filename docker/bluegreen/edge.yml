@@ -1,0 +1,16 @@
+# The public entrance for blue/green updates: nginx on the shared "recsys-edge" network, sending every
+# request to the active stack's front desk (edge.conf, written by scripts/bluegreen.py).
+#   docker compose -p edge -f docker/bluegreen/edge.yml up -d
+services:
+  edge:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./edge.conf:/etc/nginx/nginx.conf:ro
+    ports: ["8000:80"]
+    networks: [edge]
+    restart: unless-stopped
+
+networks:
+  edge:
+    external: true
+    name: recsys-edge

@@ -6,3 +6,4 @@ __pycache__/
 CLAUDE.md
 runs/
 bundles/
+docker/bluegreen/edge.conf
