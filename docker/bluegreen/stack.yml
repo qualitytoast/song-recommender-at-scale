@@ -34,7 +34,7 @@ services:
       shard-2: {condition: service_healthy}
       shard-3: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
       interval: 2s
       timeout: 3s
       retries: 3

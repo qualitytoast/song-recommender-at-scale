@@ -8,6 +8,8 @@ import threading
 import time
 from concurrent.futures import Future
 
+from recsys.admission import Overloaded
+
 
 class Batcher:
     def __init__(self, run_batch, max_batch=16, wait_ms=2.0):
@@ -15,12 +17,14 @@ class Batcher:
         self.run_batch, self.max_batch, self.wait = run_batch, max_batch, wait_ms / 1000
         self.queue = queue.Queue()
         self.sizes = []  # every batch's size, for reports
+        self.dropped = 0  # requests that waited past their deadline: never computed
         threading.Thread(target=self._loop, daemon=True).start()
 
-    def submit(self, request):
-        """The request's result (waits for its batch); raises the request's own error, if it had one."""
+    def submit(self, request, deadline=None):
+        """The request's result (waits for its batch); raises the request's own error, if it had one, or
+        Overloaded if it couldn't start by `deadline` (time.monotonic())."""
         future = Future()
-        self.queue.put((request, future))
+        self.queue.put((request, future, deadline))
         return future.result()
 
     def _loop(self):
@@ -32,6 +36,14 @@ class Batcher:
                     batch.append(self.queue.get(timeout=left))
                 except queue.Empty:
                     break
+            now = time.monotonic()
+            stale = [(r, f) for r, f, d in batch if d is not None and now > d]  # waited too long: dropped
+            batch = [(r, f) for r, f, d in batch if d is None or now <= d]
+            for _, future in stale:
+                self.dropped += 1
+                future.set_exception(Overloaded("busy: waited too long to start; try again"))
+            if not batch:
+                continue
             self.sizes.append(len(batch))
             try:
                 results = self.run_batch([request for request, _ in batch])
@@ -42,4 +54,4 @@ class Batcher:
 
     def report(self):
         return {"batches": len(self.sizes), "mean_size": round(sum(self.sizes) / len(self.sizes), 2) if self.sizes else None,
-                "largest": max(self.sizes, default=None)}
+                "largest": max(self.sizes, default=None), "dropped_waited_too_long": self.dropped}

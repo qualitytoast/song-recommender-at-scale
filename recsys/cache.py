@@ -6,7 +6,8 @@ song given by URI or by "Track - Artist" text is the same entry). The version is
 an update old answers are never served; entries also expire after `ttl` seconds. Partial answers (a
 shard was missing) are never stored.
 
-Redis must never make a request fail: every call has a short timeout, any Redis error counts as a miss
+Redis must never make a request fail: every call has a short timeout (100 ms; Redis answers in well
+under 1 ms, so it only matters when Redis or the machine is in trouble), any Redis error counts as a miss
 (the answer is computed as usual), and after an error the cache is skipped for `cooldown` seconds, so a
 down or slow Redis costs one timeout, not one per request.
 """
@@ -17,7 +18,7 @@ import redis
 
 
 class Cache:
-    def __init__(self, url, ttl=3600, timeout=0.05, cooldown=1.0, client=None):
+    def __init__(self, url, ttl=3600, timeout=0.1, cooldown=1.0, client=None):
         self.client = client or redis.Redis.from_url(url, socket_timeout=timeout, socket_connect_timeout=timeout)
         self.ttl, self.cooldown = ttl, cooldown
         self.skip_until = 0.0

@@ -16,12 +16,14 @@ x-recommender: &recommender
     - ${BUNDLE:-./bundles/ranker_1m_any_length-f73f0d4e1e71}:/bundle:ro
   restart: unless-stopped   # a crashed container is started again
   init: true                # a small init process runs the program, so the program's crash ends the container
+  labels:
+    recsys.autoheal: "true"  # a frozen (unhealthy) container is restarted by the autoheal service
 
 x-shard-health: &shard-health
   test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
-  interval: 5s
-  timeout: 3s
-  retries: 3
+  interval: 2s              # checked every 2 s; 2 misses in a row = unhealthy (then autoheal restarts it)
+  timeout: 2s
+  retries: 2
   start_period: 30s
 
 services:
@@ -56,10 +58,10 @@ services:
       shard-1: {condition: service_healthy}
       shard-2: {condition: service_healthy}
       shard-3: {condition: service_healthy}
-    healthcheck:
-      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/health"]
-      interval: 5s
-      timeout: 3s
+    healthcheck:  # /live, never stuck behind busy requests: a busy front desk mustn't be restarted
+      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
+      interval: 2s
+      timeout: 2s
       retries: 3
       start_period: 60s
 
@@ -70,6 +72,23 @@ services:
     ports: ["8000:80"]
     depends_on:
       frontdesk: {condition: service_healthy}
+    restart: unless-stopped
+
+  autoheal:  # restarts containers whose health check fails (Docker itself only restarts ones that exit)
+    image: docker:27-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # lets it manage this machine's containers
+    command:
+      - sh
+      - -c
+      - |
+        while true; do
+          for c in $$(docker ps -q --filter health=unhealthy --filter label=recsys.autoheal=true); do
+            echo "$$(date -u +%T) restarting unhealthy $$(docker inspect -f '{{.Name}}' $$c)"
+            docker restart -t 2 $$c
+          done
+          sleep 2
+        done
     restart: unless-stopped
 
   redis:

@@ -24,6 +24,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from recsys.admission import Overloaded  # noqa: F401  (raised through compute)
 from recsys.data import encode_names
 from recsys.model import SongRecommender
 from recsys.rank_features import CandidateFeatures
@@ -147,6 +148,7 @@ class Catalog:
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
         self.batcher = None  # a recsys.batching.Batcher, if requests are answered in batches
         self.answers = {"total": 0, "partial": 0, "cached": 0}  # counts for /health
+        self.admission = None  # a recsys.admission.Admission: requests that waited too long are dropped
 
     def load(self, name):
         return np.load(self.path / f"{name}.npy")
@@ -223,11 +225,13 @@ class Catalog:
         response: {"partial": bool} and, if partial, "missing_shards")."""
         raise NotImplementedError
 
-    def recommend(self, songs, name=None):
+    def recommend(self, songs, name=None, arrived=None):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
         top 10 songs {uri, track, artist, score}, the songs read {uri, track, artist} and the ones
-        left out (no match in the catalog), the bundle version, and the time per stage."""
+        left out (no match in the catalog), the bundle version, and the time per stage. arrived: when the
+        request came in (time.monotonic()), for dropping it if it waits too long (Overloaded)."""
         start = time.perf_counter()
+        arrived = time.monotonic() if arrived is None else arrived
         ids = [self.resolve(s) for s in songs]
         known = [(s, j) for s, j in zip(songs, ids) if j is not None]
         ignored = [s for s, j in zip(songs, ids) if j is None]
@@ -244,7 +248,7 @@ class Catalog:
             self.answers["cached"] += 1
             return {"recommendations": cached, **answer, "partial": False, "cached": True,
                     "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
-        times, recommendations, notes = self.compute(used, name_ids)
+        times, recommendations, notes = self.compute(used, name_ids, arrived)
         self.answers["partial"] += notes["partial"]
         if self.cache and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
             self.cache.set(key, recommendations)
@@ -253,13 +257,18 @@ class Catalog:
         return {"recommendations": recommendations, **answer, **notes, "cached": False,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
 
-    def compute(self, used, name_ids):
+    def compute(self, used, name_ids, arrived=None):
         """(timings, the top 10 as dicts, notes) for the resolved songs `used` and name-word IDs; in a batch
-        with other requests if a batcher is set, else one request at a time."""
+        with other requests if a batcher is set, else one request at a time. With an admission policy, a
+        request that waited too long to start raises Overloaded instead."""
+        arrived = time.monotonic() if arrived is None else arrived
         if self.batcher is not None:
-            ids, scores, times, notes = self.batcher.submit(([i for _, i in used], name_ids))
+            deadline = self.admission.deadline(arrived) if self.admission else None
+            ids, scores, times, notes = self.batcher.submit(([i for _, i in used], name_ids), deadline)
         else:
             with self.lock:
+                if self.admission:
+                    self.admission.check_started(arrived)
                 ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
         return times, [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j], "score": float(x)}
                        for j, x in zip(ids.tolist(), scores)], notes
