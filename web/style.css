@@ -46,9 +46,10 @@ a { color: var(--accent); text-underline-offset: 2px; }
 
 .top, .layout, .foot { max-width: 1080px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
 
-.top {
+.top { padding-top: 40px; }
+.top-inner {
   display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
-  padding-top: 40px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
+  padding-bottom: 20px; border-bottom: 1px solid var(--line);
 }
 h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .lede { color: var(--muted); margin-top: 2px; }
@@ -132,7 +133,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .notes:not(:empty) { margin-bottom: 12px; }
 
 @media (max-width: 760px) {
-  .top { flex-direction: column; align-items: flex-start; padding-top: 28px; }
+  .top { padding-top: 28px; }
+  .top-inner { flex-direction: column; align-items: flex-start; }
   .model { text-align: left; }
   .layout { grid-template-columns: 1fr; gap: 36px; }
 }
