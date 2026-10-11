@@ -67,6 +67,7 @@ def main():
         compose("up", "-d", extra=scale)
         compose("restart", "nginx")  # nginx looks up the copies' addresses when it starts
         wait_healthy()
+        compose("exec", "-T", "redis", "redis-cli", "FLUSHALL")  # every run starts with an empty cache
         time.sleep(3)
         for users in args.users:
             prefix = str(ROOT / f"runs/serving/locust_{args.label or 'run'}_{copies}x_{users}u")
