@@ -1,7 +1,7 @@
 """Keep asking Oracle Cloud for an Always Free Arm machine until it has room, then print its address.
 
     ~/.oci/venv/bin/python scripts/oracle_launch.py --dry-run     # look everything up, launch nothing
-    nohup caffeinate -is ~/.oci/venv/bin/python scripts/oracle_launch.py > ~/.oci/launch.log 2>&1 &
+    nohup caffeinate -s ~/.oci/venv/bin/python scripts/oracle_launch.py > ~/.oci/launch.log 2>&1 &
 
 Oracle's free Arm machines (VM.Standard.A1.Flex) are often "out of host capacity". Every --every seconds
 this asks for one in each availability domain, each size in turn (2 cores / 8 GB, then 1 / 6), and stops
@@ -92,6 +92,9 @@ def main():
 
     attempt = 0
     while True:
+        if found := existing(compute, tenancy, args.name):  # another copy of this script got one meanwhile
+            log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")
+            return
         for domain in domains:
             for ocpus, memory in SIZES:
                 attempt += 1
