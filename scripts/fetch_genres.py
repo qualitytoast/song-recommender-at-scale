@@ -41,7 +41,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+import certifi
+
+ROOT =Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recsys.config import load_config  # noqa: E402
@@ -56,8 +58,8 @@ SEARCH_BATCH = 100  # most results one search returns
 GAP_SECONDS = 1.0  # wait between requests
 RETRIES = 6        # on 503 or a network error, wait 2, 4, 8, ... 64 seconds and try again
 
-# python.org's macOS Python ships without trusted certificates; use the system's bundle.
-SSL_CONTEXT = ssl.create_default_context(cafile="/etc/ssl/cert.pem")
+# python.org's macOS Python ships without trusted certificates; use certifi's bundle (works on Linux too).
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 _last_request_end = 0.0
 
 # Connection problems worth retrying. URLError covers failures while connecting; a
