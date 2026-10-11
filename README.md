@@ -282,8 +282,10 @@ are exactly the full index's top list, both models' input vectors, the songs'
 artist, album and genres, and the appeared-together counts whose later song it
 holds.
 
-**Front desk** (`recsys/frontdesk.py`). Holds the models' small shared layers
-and the song names, but no per-song tables. A request takes three rounds, each
+**Front desk** (`recsys/frontdesk.py`). Runs both stages, the retriever's
+transformer and the ranker, but holds only the models' small shared layers and
+the song names: the per-song tables and the search live on the shards, so the
+two-stage system is the front desk and the shards together. A request takes three rounds, each
 sent to every shard involved at the same time: (1) the input songs' rows,
 (2) the playlist vector, searched on every shard, the top lists merged (by
 score, then song ID), (3) the 100 candidates' rows and appeared-together counts.
