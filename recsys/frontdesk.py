@@ -18,14 +18,18 @@ this bundle's version, as shards 0..N-1 of N over the same catalog (and every re
 version, which a shard refuses if it differs).
 
 Faults (gRPC's own machinery, set in SERVICE_CONFIG): every call has a deadline; a call that finds its
-shard unavailable is retried once; a shard given as several copies ("a:1|b:2", or a DNS name with
+shard unavailable is retried up to twice; a shard given as several copies ("a:1|b:2", or a DNS name with
 several addresses, as `docker compose --scale` makes) gets each call on the next healthy copy (round
 robin, skipping copies whose gRPC health service doesn't say SERVING). If every copy of a shard fails
 a call, the answer is made from the other shards and flagged: "partial": true and "missing_shards"
 (input songs and candidates it holds are left out). Only if no input song or no search result is left
-does the request fail (ShardsUnavailable: HTTP 503).
+does the request fail (ShardsUnavailable: HTTP 503). A circuit breaker keeps one stuck shard from
+slowing every request: a shard that let a call run past its deadline is skipped, as if it had failed,
+for `cooldown` seconds; then the next call tries it again. (An unreachable shard fails at once, so it
+costs no waiting and isn't skipped: a copy that died mustn't take its shard's live copies out.)
 """
 import json
+import time
 
 import grpc
 import numpy as np
@@ -42,13 +46,13 @@ from recsys.wire import pack, unpack
 ROWS = ("retriever_inputs", "ranker_inputs", "artist", "album", "genres")
 
 
-# Per call to a shard: one retry if it was unavailable (after 10-50 ms), and copies used in turn,
+# Per call to a shard: up to two retries if it was unavailable (after 10-50 ms), and copies used in turn,
 # only those whose health service says SERVING.
 SERVICE_CONFIG = json.dumps({
     "loadBalancingConfig": [{"round_robin": {}}],
     "healthCheckConfig": {"serviceName": ""},
     "methodConfig": [{"name": [{"service": "shard.Shard"}],
-                      "retryPolicy": {"maxAttempts": 2, "initialBackoff": "0.01s", "maxBackoff": "0.05s",
+                      "retryPolicy": {"maxAttempts": 3, "initialBackoff": "0.01s", "maxBackoff": "0.05s",
                                       "backoffMultiplier": 2, "retryableStatusCodes": ["UNAVAILABLE"]}}]})
 
 
@@ -89,9 +93,9 @@ def merge_top(id_parts, score_parts, k):
 
 
 class ShardedRecommender(Catalog):
-    def __init__(self, bundle, shards, device="cpu", deadline=2.0, startup_wait=120.0):
+    def __init__(self, bundle, shards, device="cpu", deadline=2.0, startup_wait=120.0, cooldown=1.0):
         """shards: the shard servers' addresses ("host:port"), shard i's at position i; deadline: seconds
-        each call to a shard may take."""
+        each call to a shard may take; cooldown: seconds a shard that missed a call is skipped."""
         super().__init__(bundle, device)
         s = self.settings
         blank = np.zeros((1, s["embed_dim"]), dtype=np.float32)
@@ -103,10 +107,15 @@ class ShardedRecommender(Catalog):
         self.ranker.retriever.song_embedding = RequestRows()
         self.ranker.to(self.device)
         load_shared(self.ranker, torch.load(self.path / "ranker_shared.pt", weights_only=True))
-        self.deadline = deadline
+        self.deadline, self.cooldown = deadline, cooldown
         self.addresses = list(shards)
+        self.skip_until = [0.0] * len(self.addresses)  # the circuit breaker: shard i skipped until then
         options = [("grpc.max_receive_message_length", 64 << 20), ("grpc.max_send_message_length", 64 << 20),
-                   ("grpc.enable_retries", 1), ("grpc.service_config", SERVICE_CONFIG)]
+                   ("grpc.enable_retries", 1), ("grpc.service_config", SERVICE_CONFIG),
+                   # reconnect to a shard (copy) that was down within 0.1-1 s, not gRPC's default of up to
+                   # 2 minutes, so a restarted shard is used again right away
+                   ("grpc.initial_reconnect_backoff_ms", 100), ("grpc.min_reconnect_backoff_ms", 100),
+                   ("grpc.max_reconnect_backoff_ms", 1000)]
         self.channels = [grpc.insecure_channel(shard_target(a), options=options) for a in self.addresses]
         self.stubs = [shard_pb2_grpc.ShardStub(c) for c in self.channels]
         self.check_shards(startup_wait)
@@ -130,26 +139,35 @@ class ShardedRecommender(Catalog):
     def shard_states(self):
         """Each shard's answer to Info within the deadline: [{index, address, up}]."""
         pending = [stub.Info.future(shard_pb2.InfoRequest(), timeout=self.deadline) for stub in self.stubs]
-        states = []
+        states, now = [], time.monotonic()
         for i, p in enumerate(pending):
             try:
                 p.result()
-                states.append({"index": i, "address": self.addresses[i], "up": True})
+                up = True
             except grpc.RpcError:
-                states.append({"index": i, "address": self.addresses[i], "up": False})
+                up = False
+            states.append({"index": i, "address": self.addresses[i], "up": up,
+                           "skipped_for_s": round(max(0.0, self.skip_until[i] - now), 2)})
         return states
 
     def call_all(self, calls):
         """Send every (shard, method, request) at once; the replies, with None for each call that failed
-        (after gRPC's retry), and the shards that failed one."""
-        pending = [(shard, method.future(request, timeout=self.deadline)) for shard, method, request in calls]
+        (after gRPC's retries) or went to a shard the circuit breaker skips, and the shards that failed one.
+        A shard that let a call run past its deadline is skipped for `cooldown` seconds."""
+        now = time.monotonic()
+        pending = [(shard, None if now < self.skip_until[shard] else method.future(request, timeout=self.deadline))
+                   for shard, method, request in calls]
         replies, failed = [], set()
         for shard, p in pending:
             try:
+                if p is None:
+                    raise LookupError("skipped")
                 replies.append(p.result())
-            except grpc.RpcError:
+            except (grpc.RpcError, LookupError) as e:
                 replies.append(None)
                 failed.add(shard)
+                if isinstance(e, grpc.RpcError) and e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    self.skip_until[shard] = time.monotonic() + self.cooldown
         return replies, failed
 
     def by_shard(self, ids):

@@ -21,10 +21,15 @@ from serving_helpers import write_tiny_bundle
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def free_port():
-    with socket.socket() as s:
+def free_ports(n):
+    """n distinct free ports (all held open while choosing, so none is handed out twice)."""
+    sockets = [socket.socket() for _ in range(n)]
+    for s in sockets:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    ports = [s.getsockname()[1] for s in sockets]
+    for s in sockets:
+        s.close()
+    return ports
 
 
 def slices(bundle, n):
@@ -38,8 +43,7 @@ def slices(bundle, n):
 def shard_servers(folders, with_processes=False):
     """A shard server process per slice folder; yields their addresses (and processes)."""
     procs, addresses = [], []
-    for folder in folders:
-        port = free_port()
+    for folder, port in zip(folders, free_ports(len(folders))):
         procs.append(subprocess.Popen([sys.executable, "-m", "recsys.shard", "--slice", str(folder), "--port", str(port),
                                        "--host", "127.0.0.1"], cwd=ROOT, stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL))
@@ -144,15 +148,19 @@ def test_a_crashed_shard_gives_a_flagged_partial_answer_without_its_songs(bundle
 def test_a_hung_shard_is_cut_off_by_the_deadline(bundle):
     path, single = bundle
     with shard_servers(slices(path, 3), with_processes=True) as (addresses, procs):
-        rec = ShardedRecommender(path, addresses, "cpu", deadline=0.3, startup_wait=60)
+        rec = ShardedRecommender(path, addresses, "cpu", deadline=0.3, startup_wait=60, cooldown=1.0)
         try:
             name = single.encode_name("")
             procs[2].send_signal(signal.SIGSTOP)  # alive but not answering
             start = time.perf_counter()
             _, _, _, notes = rec.recommend_ids([3, 4], name)
             assert notes == {"partial": True, "missing_shards": [2]}
-            assert time.perf_counter() - start < 2.0  # waited for the deadlines, not forever
+            assert time.perf_counter() - start < 2.0  # waited for a deadline, not forever
+            start = time.perf_counter()
+            _, _, _, notes = rec.recommend_ids([3, 4], name)  # the breaker skips shard 2: no waiting
+            assert notes == {"partial": True, "missing_shards": [2]} and time.perf_counter() - start < 0.2
             procs[2].send_signal(signal.SIGCONT)
+            time.sleep(1.1)  # the cooldown passes; the next call tries shard 2 again
             ids, _, _, notes = rec.recommend_ids([3, 4], name)
             assert notes == {"partial": False}
             np.testing.assert_array_equal(ids, single.recommend_ids([3, 4], name)[0])
@@ -169,6 +177,10 @@ def test_a_shard_with_two_copies_survives_losing_one(bundle):
         try:
             name = single.encode_name("road trip")
             expected = single.recommend_ids([2, 3, 4], name)[0]
+            for address in addresses[:2]:  # both copies up (not still starting) before one is lost
+                with grpc.insecure_channel(address) as channel:
+                    shard_pb2_grpc.ShardStub(channel).Info(shard_pb2.InfoRequest(), timeout=60, wait_for_ready=True)
+            time.sleep(0.3)  # the front desk's channel reconnects within 0.1-1 s
             procs[0].terminate()
             procs[0].wait(timeout=30)
             for _ in range(4):  # each call goes to a live copy (retried there if it hit the dead one)
