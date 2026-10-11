@@ -1,0 +1,64 @@
+# Asks Oracle Cloud for the Always Free Arm machine (scripts/oracle_launch.py), one request per run, every
+# 5 minutes (GitHub often starts scheduled runs late), until the machine exists. Then it opens an issue with
+# the machine's address (GitHub emails the owner) and turns itself off.
+# On/off by hand: Actions tab -> Oracle launch -> ... -> Disable workflow / Enable workflow.
+# Needs two repository secrets: OCI_CONFIG (the ~/.oci/config text) and OCI_API_KEY (the private key file).
+name: Oracle launch
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_success:
+        description: "Test the success steps (issue + turning off) without asking Oracle"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write    # the "machine is running" issue
+  actions: write   # turning this workflow off
+
+concurrency:
+  group: oracle-launch   # never two runs at once
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Oracle's Python library
+        if: ${{ !inputs.test_success }}
+        run: pip install --quiet oci
+      - name: Oracle API key
+        if: ${{ !inputs.test_success }}
+        env:
+          OCI_CONFIG: ${{ secrets.OCI_CONFIG }}
+          OCI_API_KEY: ${{ secrets.OCI_API_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_CONFIG" > ~/.oci/config
+          printf '%s\n' "$OCI_API_KEY" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
+      - name: Ask Oracle for the machine
+        id: launch
+        run: |
+          if [ "${{ inputs.test_success }}" = "true" ]; then
+            printf 'done=true\nip=TEST\n' >> "$GITHUB_OUTPUT"
+          else
+            python scripts/oracle_launch.py --tries 1 --first ${{ github.run_number }} --ssh-key deploy/oracle_songrec.pub
+          fi
+      - name: Tell the owner and turn this workflow off
+        if: steps.launch.outputs.done == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue create --title "Oracle machine is running at ${{ steps.launch.outputs.ip }}" \
+            --body "The Oracle launch workflow got the machine (\`ubuntu@${{ steps.launch.outputs.ip }}\`) and turned itself off. Next: put this IP on duckdns.org for songrec, then set up the server."
+          gh workflow disable oracle-launch.yml

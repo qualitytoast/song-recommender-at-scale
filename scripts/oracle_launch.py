@@ -2,6 +2,7 @@
 
     ~/.oci/venv/bin/python scripts/oracle_launch.py --dry-run     # look everything up, launch nothing
     nohup caffeinate -s ~/.oci/venv/bin/python scripts/oracle_launch.py > ~/.oci/launch.log 2>&1 &
+    python scripts/oracle_launch.py --tries 1 --first 7            # one request (the GitHub workflow's way)
 
 Oracle's free Arm machines (VM.Standard.A1.Flex) are often "out of host capacity". Every --every seconds
 this asks for one, going round the availability domains and sizes (2 cores / 8 GB, then 1 / 6), waiting
@@ -10,9 +11,12 @@ at a pace Oracle accepts. It stops at the first success, or
 as soon as a machine with this name exists, so it never makes two. A refused request costs nothing, and
 only the free shape is ever asked for. Needs Oracle's Python library
 (pip install oci, kept out of the project's environment: ~/.oci/venv) and an API key in ~/.oci/config.
-The network is the VCN wizard's: the public subnet of --vcn.
+The network is the VCN wizard's: the public subnet of --vcn. Run by a GitHub Actions workflow
+(.github/workflows/oracle-launch.yml), it hands "done" and "ip" to the workflow's next steps once the
+machine exists.
 """
 import argparse
+import os
 import random
 import subprocess
 import sys
@@ -31,6 +35,8 @@ def log(message):
 
 def notify(message):
     """A macOS notification (with sound), so a success is seen even if nobody is watching the log."""
+    if sys.platform != "darwin":
+        return
     subprocess.run(["osascript", "-e", f'display notification "{message}" with title "Oracle" sound name "Glass"'],
                    check=False)
 
@@ -57,6 +63,13 @@ def lookups(args, config):
     return domains, subnets[0], images[0], key
 
 
+def report(**values):
+    """Hand results to the GitHub Actions workflow running this (its next steps read them), if one is."""
+    if path := os.environ.get("GITHUB_OUTPUT"):
+        with open(path, "a") as f:
+            f.writelines(f"{k}={v}\n" for k, v in values.items())
+
+
 def existing(compute, tenancy, name):
     return [i for i in compute.list_instances(tenancy, display_name=name).data
             if i.lifecycle_state not in ("TERMINATED", "TERMINATING")]
@@ -77,6 +90,8 @@ def main():
     ap.add_argument("--vcn", default="song-recommender-vcn")
     ap.add_argument("--ssh-key", default="~/.ssh/oracle_songrec.pub")
     ap.add_argument("--every", type=float, default=60, help="seconds between requests (at the fastest)")
+    ap.add_argument("--tries", type=int, default=0, help="stop after this many requests (0: until it gets one)")
+    ap.add_argument("--first", type=int, default=0, help="start at this (zone, size) choice, counting round")
     ap.add_argument("--dry-run", action="store_true", help="only look things up and print them")
     args = ap.parse_args()
 
@@ -86,7 +101,9 @@ def main():
     domains, subnet, image, key = lookups(args, config)
     log(f"region {config['region']}; domains {domains}; subnet {subnet.display_name}; image {image.display_name}")
     if found := existing(compute, tenancy, args.name):
-        log(f"STOPPED: a machine named {args.name!r} already exists ({found[0].lifecycle_state})")
+        ip = public_ip(config, compute, found[0])
+        log(f"STOPPED: a machine named {args.name!r} already exists ({found[0].lifecycle_state}, IP {ip})")
+        report(done="true", ip=ip)
         return
     if args.dry_run:
         log(f"dry run: would ask for {SHAPE} at sizes {SIZES}, one request every {args.every:.0f}s")
@@ -95,10 +112,11 @@ def main():
     choices = [(domain, size) for domain in domains for size in SIZES]
     attempt, wait = 0, args.every
     while True:
-        if attempt % len(choices) == 0 and (found := existing(compute, tenancy, args.name)):  # another copy got one
-            log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")
+        if attempt and attempt % len(choices) == 0 and (found := existing(compute, tenancy, args.name)):
+            log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")  # another copy's
+            report(done="true", ip=public_ip(config, compute, found[0]))
             return
-        domain, (ocpus, memory) = choices[attempt % len(choices)]
+        domain, (ocpus, memory) = choices[(args.first + attempt) % len(choices)]
         attempt += 1
         details = oci.core.models.LaunchInstanceDetails(
             availability_domain=domain, compartment_id=tenancy, display_name=args.name, shape=SHAPE,
@@ -119,6 +137,8 @@ def main():
                 log(f"STOPPED: unexpected error {e.status} {e.code}: {e.message}")
                 notify(f"Launch script stopped: {e.code}")
                 raise
+            if args.tries and attempt >= args.tries:
+                return
             time.sleep(wait + random.uniform(0, 5))
             continue
         log(f"LAUNCHED {ocpus} OCPU / {memory} GB in {domain}: {instance.id}")
@@ -127,6 +147,7 @@ def main():
         ip = public_ip(config, compute, instance)
         log(f"RUNNING at public IP {ip}")
         notify(f"Your Oracle machine is running at {ip}")
+        report(done="true", ip=ip)
         return
 
 
