@@ -49,7 +49,7 @@ def test_the_serving_models_compute_what_the_trained_ones_do(served):
 def test_recommendations_match_the_offline_pipeline(served, songs):
     rec, retriever, ranker, pairs = served
     name_ids = rec.encode_name("Road trip mix!")[0]
-    ids, scores, times = rec.recommend_ids(songs, name_ids)
+    ids, scores, times, notes = rec.recommend_ids(songs, name_ids)
     expected_ids, expected_scores = offline_top10(retriever, ranker, pairs, songs[-3:], name_ids)
     np.testing.assert_array_equal(ids, expected_ids)
     np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)

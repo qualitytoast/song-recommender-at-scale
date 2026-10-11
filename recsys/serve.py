@@ -59,6 +59,10 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0):
             return app.state.recommender.recommend(request.songs, request.name)
         except NoKnownSongs as e:
             raise HTTPException(400, {"error": str(e), "ignored": e.ignored})
+        except RuntimeError as e:  # frontdesk.ShardsUnavailable: too few shards answered
+            if type(e).__name__ != "ShardsUnavailable":
+                raise
+            raise HTTPException(503, {"error": str(e)})
 
     @app.get("/songs")
     def songs(q: str, limit: int = Query(10, ge=1, le=50)):
@@ -67,8 +71,10 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0):
     @app.get("/health")
     def health():
         rec = app.state.recommender
-        return {"status": "ok", "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
-                "shards": len(getattr(rec, "stubs", [])) or None}
+        shards = rec.shard_states() if hasattr(rec, "shard_states") else None
+        status = "ok" if shards is None or all(s["up"] for s in shards) else "degraded"
+        return {"status": status, "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
+                "shards": shards}
 
     return app
 

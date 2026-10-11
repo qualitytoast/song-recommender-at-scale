@@ -1,8 +1,10 @@
 import json
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -10,7 +12,7 @@ import grpc
 import numpy as np
 import pytest
 
-from recsys.frontdesk import ShardMismatch, ShardedRecommender, merge_top
+from recsys.frontdesk import ShardMismatch, ShardedRecommender, ShardsUnavailable, merge_top
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender
 from recsys.wire import pack, unpack
@@ -33,8 +35,8 @@ def slices(bundle, n):
 
 
 @contextmanager
-def shard_servers(folders):
-    """A shard server process per slice folder; yields their addresses."""
+def shard_servers(folders, with_processes=False):
+    """A shard server process per slice folder; yields their addresses (and processes)."""
     procs, addresses = [], []
     for folder in folders:
         port = free_port()
@@ -43,10 +45,12 @@ def shard_servers(folders):
                                       stderr=subprocess.DEVNULL))
         addresses.append(f"127.0.0.1:{port}")
     try:
-        yield addresses
+        yield (addresses, procs) if with_processes else addresses
     finally:
         for p in procs:
-            p.terminate()
+            if p.poll() is None:
+                p.send_signal(signal.SIGCONT)
+                p.terminate()
             p.wait(timeout=30)
 
 
@@ -73,8 +77,8 @@ def test_sharded_answers_equal_the_single_process_ones(bundle, n):
         try:
             name = single.encode_name("road trip")
             for songs in ([7], [7, 21], [3, 17, 9], [1, 2, 3, 4, 5], [5, 5, 8]):
-                ids, scores, times = rec.recommend_ids(songs, name)
-                expected_ids, expected_scores, _ = single.recommend_ids(songs, name)
+                ids, scores, times, notes = rec.recommend_ids(songs, name)
+                expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name)
                 np.testing.assert_array_equal(ids, expected_ids)
                 np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
             assert set(times) == {"shards: input songs", "retriever", "shards: search", "shards: candidates",
@@ -115,3 +119,61 @@ def test_a_shard_refuses_another_version_and_songs_it_does_not_hold(bundle):
         assert error.value.code() == grpc.StatusCode.INVALID_ARGUMENT  # song 1 lives on shard 1
         reply = stub.Lookup(shard_pb2.LookupRequest(version=info.version, ids=pack(np.array([4, 0], np.int64))), timeout=10)
         assert unpack(reply.retriever_inputs).shape == (2, 8)
+
+
+def test_a_crashed_shard_gives_a_flagged_partial_answer_without_its_songs(bundle):
+    path, single = bundle
+    with shard_servers(slices(path, 3), with_processes=True) as (addresses, procs):
+        rec = ShardedRecommender(path, addresses, "cpu", deadline=1.0, startup_wait=60)
+        try:
+            name = single.encode_name("")
+            ids, _, _, notes = rec.recommend_ids([3, 4, 5], name)
+            assert notes == {"partial": False}
+            procs[1].terminate()
+            procs[1].wait(timeout=30)
+            ids, _, _, notes = rec.recommend_ids([3, 4, 5], name)  # song 4 lives on shard 1
+            assert notes == {"partial": True, "missing_shards": [1]}
+            assert len(ids) == 10 and not (ids % 3 == 1).any()  # nothing from shard 1
+            assert [s["up"] for s in rec.shard_states()] == [True, False, True]
+            with pytest.raises(ShardsUnavailable):
+                rec.recommend_ids([4, 7], name)  # every input song lives on shard 1
+        finally:
+            rec.close()
+
+
+def test_a_hung_shard_is_cut_off_by_the_deadline(bundle):
+    path, single = bundle
+    with shard_servers(slices(path, 3), with_processes=True) as (addresses, procs):
+        rec = ShardedRecommender(path, addresses, "cpu", deadline=0.3, startup_wait=60)
+        try:
+            name = single.encode_name("")
+            procs[2].send_signal(signal.SIGSTOP)  # alive but not answering
+            start = time.perf_counter()
+            _, _, _, notes = rec.recommend_ids([3, 4], name)
+            assert notes == {"partial": True, "missing_shards": [2]}
+            assert time.perf_counter() - start < 2.0  # waited for the deadlines, not forever
+            procs[2].send_signal(signal.SIGCONT)
+            ids, _, _, notes = rec.recommend_ids([3, 4], name)
+            assert notes == {"partial": False}
+            np.testing.assert_array_equal(ids, single.recommend_ids([3, 4], name)[0])
+        finally:
+            rec.close()
+
+
+def test_a_shard_with_two_copies_survives_losing_one(bundle):
+    path, single = bundle
+    folders = slices(path, 2)
+    with shard_servers([folders[0], folders[0], folders[1]], with_processes=True) as (addresses, procs):
+        shards = [f"{addresses[0]}|{addresses[1]}", addresses[2]]  # shard 0 twice
+        rec = ShardedRecommender(path, shards, "cpu", deadline=1.0, startup_wait=60)
+        try:
+            name = single.encode_name("road trip")
+            expected = single.recommend_ids([2, 3, 4], name)[0]
+            procs[0].terminate()
+            procs[0].wait(timeout=30)
+            for _ in range(4):  # each call goes to a live copy (retried there if it hit the dead one)
+                ids, _, _, notes = rec.recommend_ids([2, 3, 4], name)
+                assert notes == {"partial": False}
+                np.testing.assert_array_equal(ids, expected)
+        finally:
+            rec.close()

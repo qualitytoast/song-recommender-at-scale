@@ -16,7 +16,17 @@ ranker's extra inputs run on tables of just those songs: the same code and numbe
 catalog, so the answers equal the single-process Recommender's. Startup checks that the shards serve
 this bundle's version, as shards 0..N-1 of N over the same catalog (and every request carries the
 version, which a shard refuses if it differs).
+
+Faults (gRPC's own machinery, set in SERVICE_CONFIG): every call has a deadline; a call that finds its
+shard unavailable is retried once; a shard given as several copies ("a:1|b:2", or a DNS name with
+several addresses, as `docker compose --scale` makes) gets each call on the next healthy copy (round
+robin, skipping copies whose gRPC health service doesn't say SERVING). If every copy of a shard fails
+a call, the answer is made from the other shards and flagged: "partial": true and "missing_shards"
+(input songs and candidates it holds are left out). Only if no input song or no search result is left
+does the request fail (ShardsUnavailable: HTTP 503).
 """
+import json
+
 import grpc
 import numpy as np
 import torch
@@ -32,8 +42,29 @@ from recsys.wire import pack, unpack
 ROWS = ("retriever_inputs", "ranker_inputs", "artist", "album", "genres")
 
 
+# Per call to a shard: one retry if it was unavailable (after 10-50 ms), and copies used in turn,
+# only those whose health service says SERVING.
+SERVICE_CONFIG = json.dumps({
+    "loadBalancingConfig": [{"round_robin": {}}],
+    "healthCheckConfig": {"serviceName": ""},
+    "methodConfig": [{"name": [{"service": "shard.Shard"}],
+                      "retryPolicy": {"maxAttempts": 2, "initialBackoff": "0.01s", "maxBackoff": "0.05s",
+                                      "backoffMultiplier": 2, "retryableStatusCodes": ["UNAVAILABLE"]}}]})
+
+
 class ShardMismatch(RuntimeError):
     """The shards don't serve this bundle as shards 0..N-1 of N."""
+
+
+class ShardsUnavailable(RuntimeError):
+    """Too many shards failed to answer a request at all."""
+
+
+def shard_target(spec):
+    """The gRPC target for a shard given as "host:port" (a DNS name: every address it resolves to is a
+    copy) or as copies "ip:port|ip:port"."""
+    copies = spec.split("|")
+    return f"ipv4:{','.join(copies)}" if len(copies) > 1 else f"dns:///{spec}"
 
 
 class RequestRows(nn.Module):
@@ -74,8 +105,9 @@ class ShardedRecommender(Catalog):
         load_shared(self.ranker, torch.load(self.path / "ranker_shared.pt", weights_only=True))
         self.deadline = deadline
         self.addresses = list(shards)
-        options = [("grpc.max_receive_message_length", 64 << 20), ("grpc.max_send_message_length", 64 << 20)]
-        self.channels = [grpc.insecure_channel(a, options=options) for a in self.addresses]
+        options = [("grpc.max_receive_message_length", 64 << 20), ("grpc.max_send_message_length", 64 << 20),
+                   ("grpc.enable_retries", 1), ("grpc.service_config", SERVICE_CONFIG)]
+        self.channels = [grpc.insecure_channel(shard_target(a), options=options) for a in self.addresses]
         self.stubs = [shard_pb2_grpc.ShardStub(c) for c in self.channels]
         self.check_shards(startup_wait)
 
@@ -95,10 +127,30 @@ class ShardedRecommender(Catalog):
         for channel in self.channels:
             channel.close()
 
+    def shard_states(self):
+        """Each shard's answer to Info within the deadline: [{index, address, up}]."""
+        pending = [stub.Info.future(shard_pb2.InfoRequest(), timeout=self.deadline) for stub in self.stubs]
+        states = []
+        for i, p in enumerate(pending):
+            try:
+                p.result()
+                states.append({"index": i, "address": self.addresses[i], "up": True})
+            except grpc.RpcError:
+                states.append({"index": i, "address": self.addresses[i], "up": False})
+        return states
+
     def call_all(self, calls):
-        """Send every (method, request) at once and wait for all the replies."""
-        pending = [method.future(request, timeout=self.deadline) for method, request in calls]
-        return [p.result() for p in pending]
+        """Send every (shard, method, request) at once; the replies, with None for each call that failed
+        (after gRPC's retry), and the shards that failed one."""
+        pending = [(shard, method.future(request, timeout=self.deadline)) for shard, method, request in calls]
+        replies, failed = [], set()
+        for shard, p in pending:
+            try:
+                replies.append(p.result())
+            except grpc.RpcError:
+                replies.append(None)
+                failed.add(shard)
+        return replies, failed
 
     def by_shard(self, ids):
         """{shard: positions in ids of the songs it holds}."""
@@ -107,15 +159,18 @@ class ShardedRecommender(Catalog):
 
     def lookup_calls(self, ids):
         parts = self.by_shard(ids)
-        calls = [(self.stubs[o].Lookup, shard_pb2.LookupRequest(version=self.version, ids=pack(ids[at])))
+        calls = [(o, self.stubs[o].Lookup, shard_pb2.LookupRequest(version=self.version, ids=pack(ids[at])))
                  for o, at in parts.items()]
         return parts, calls
 
     @staticmethod
     def gather_rows(n, parts, replies):
-        """The Lookup replies' arrays, back in the order of the n songs asked for."""
+        """The Lookup replies' arrays, back in the order of the n songs asked for (rows of songs whose
+        shard didn't answer stay unset; the caller leaves those songs out)."""
         out = {}
         for at, reply in zip(parts.values(), replies):
+            if reply is None:
+                continue
             for name in ROWS:
                 a = unpack(getattr(reply, name))
                 out.setdefault(name, np.empty((n,) + a.shape[1:], dtype=a.dtype))[at] = a
@@ -126,37 +181,56 @@ class ShardedRecommender(Catalog):
         clock = Stopwatch(self.device)
         s, device, songs = self.settings, self.device, self.settings["songs"]
         X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)
-        L = len(X)
         N = np.asarray(name_ids, dtype=np.int64).reshape(1, -1)
-        # 1. the input songs' rows
+        missing = set()
+        # 1. the input songs' rows (songs on a shard that didn't answer are left out)
         parts, calls = self.lookup_calls(X)
-        inputs = self.gather_rows(L, parts, self.call_all(calls))
+        replies, failed = self.call_all(calls)
+        missing |= failed
+        inputs = self.gather_rows(len(X), parts, replies)
+        keep = ~np.isin(X % len(self.stubs), list(failed))
+        if not keep.any():
+            raise ShardsUnavailable(f"no shard holding the input songs answered (shards {sorted(failed)})")
+        X, inputs = X[keep], {name: a[keep] for name, a in inputs.items()}
+        L = len(X)
         clock.mark("shards: input songs")
         self.retriever.song_embedding.rows = torch.from_numpy(inputs["retriever_inputs"]).to(device)
         context = np.arange(L)[None, :]  # local IDs: the inputs are 0..L-1
         h = query_vectors(self.retriever, context, N, device)
         clock.mark("retriever")
-        # 2. search every shard, merge
+        # 2. search every shard, merge what came back
         k = s["shortlist"] + (L if s["exclude_input"] else 0)
-        replies = self.call_all([(stub.Search, shard_pb2.SearchRequest(version=self.version, queries=pack(h), k=k))
-                                 for stub in self.stubs])
+        replies, failed = self.call_all([(i, stub.Search, shard_pb2.SearchRequest(version=self.version,
+                                                                                  queries=pack(h), k=k))
+                                         for i, stub in enumerate(self.stubs)])
+        missing |= failed
+        replies = [r for r in replies if r is not None]
+        if not replies:
+            raise ShardsUnavailable("no shard answered the search")
         ids, scores = merge_top([unpack(r.ids) for r in replies], [unpack(r.scores) for r in replies], k)
         if s["exclude_input"]:
             ids, scores = drop_input_songs(ids, scores, X[None, :], None, s["shortlist"])
         clock.mark("shards: search")
         # 3. the candidates' rows and the counts input song -> candidate, from the candidates' shards
         cands = ids[0]
-        C = len(cands)
         keys = X[None, :] * songs + cands[:, None]  # (C, L): pair (input l, candidate c)
         parts, calls = self.lookup_calls(cands)
         count_parts = self.by_shard(cands)
-        calls += [(self.stubs[o].Counts, shard_pb2.CountsRequest(version=self.version, keys=pack(keys[at].ravel())))
+        calls += [(o, self.stubs[o].Counts, shard_pb2.CountsRequest(version=self.version,
+                                                                    keys=pack(keys[at].ravel())))
                   for o, at in count_parts.items()]
-        replies = self.call_all(calls)
-        rows = self.gather_rows(C, parts, replies[:len(parts)])
-        counts = np.zeros((C, L), dtype=np.int64)
+        replies, failed = self.call_all(calls)
+        missing |= failed
+        rows = self.gather_rows(len(cands), parts, replies[:len(parts)])
+        counts = np.zeros((len(cands), L), dtype=np.int64)
         for at, reply in zip(count_parts.values(), replies[len(parts):]):
-            counts[at] = unpack(reply.counts).reshape(len(at), L)
+            if reply is not None:
+                counts[at] = unpack(reply.counts).reshape(len(at), L)
+        if failed:  # candidates on a shard that didn't answer can't be ranked: leave them out
+            keep = ~np.isin(cands % len(self.stubs), list(failed))
+            cands, scores, counts = cands[keep], scores[:, keep], counts[keep]
+            rows = {name: a[keep] for name, a in rows.items()}
+        C = len(cands)
         clock.mark("shards: candidates")
         # the ranker's extra inputs on tables of this request's songs: local IDs 0..L-1 inputs, L.. candidates
         n_local = L + C
@@ -164,8 +238,7 @@ class ShardedRecommender(Catalog):
         local_keys = position * n_local + (L + cand)  # pair (local input ID, local candidate ID)
         order = np.argsort(local_keys)
         features = CandidateFeatures(s["features"], n_local, None, (local_keys[order], counts.T[position, cand][order]),
-                                     device,
-                                     song_artist=np.concatenate([inputs["artist"], rows["artist"]]),
+                                     device, song_artist=np.concatenate([inputs["artist"], rows["artist"]]),
                                      song_album=np.concatenate([inputs["album"], rows["album"]]),
                                      song_genres=np.concatenate([inputs["genres"], rows["genres"]]))
         context_t = torch.from_numpy(context).to(device)
@@ -179,4 +252,7 @@ class ShardedRecommender(Catalog):
         rerank = self.ranker(context_t, torch.from_numpy(N).to(device), cands_t, base, f).cpu().numpy()[0]
         clock.mark("ranker")
         best = np.argsort(-rerank, kind="stable")[:TOP]
-        return cands[best], rerank[best], clock.times
+        notes = {"partial": bool(missing)}
+        if missing:
+            notes["missing_shards"] = sorted(int(i) for i in missing)
+        return cands[best], rerank[best], clock.times, notes

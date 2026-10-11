@@ -206,7 +206,8 @@ class Catalog:
 
     def recommend_ids(self, song_ids, name_ids):
         """The top 10 for a playlist's songs (song IDs, oldest first; the last input_length are read)
-        and its name-word IDs (1, width): (song IDs, ranker scores, timings in ms by stage)."""
+        and its name-word IDs (1, width): (song IDs, ranker scores, timings in ms by stage, notes for the
+        response: {"partial": bool} and, if partial, "missing_shards")."""
         raise NotImplementedError
 
     def recommend(self, songs, name=None):
@@ -223,13 +224,13 @@ class Catalog:
         name_ids = self.encode_name(name)
         lookup_ms = (time.perf_counter() - start) * 1000
         with self.lock:
-            ids, scores, times = self.recommend_ids([i for _, i in used], name_ids)
+            ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
         times = {"lookup": lookup_ms, **times}
         times["total"] = (time.perf_counter() - start) * 1000
         return {"recommendations": [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j],
                                      "score": float(x)} for j, x in zip(ids.tolist(), scores)],
                 "used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
-                "ignored": ignored, "version": self.version,
+                "ignored": ignored, "version": self.version, **notes,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
 
 
@@ -275,4 +276,4 @@ class Recommender(Catalog):
         rerank = self.ranker(context, torch.from_numpy(N).to(device), cands, base, f).cpu().numpy()[0]
         clock.mark("ranker")
         order = np.argsort(-rerank, kind="stable")[:TOP]
-        return ids[0, order], rerank[order], clock.times
+        return ids[0, order], rerank[order], clock.times, {"partial": False}
