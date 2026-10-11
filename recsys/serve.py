@@ -35,16 +35,21 @@ class RecommendRequest(BaseModel):
     name: str | None = None   # the playlist's name, if it has one
 
 
-def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None):
+def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, batch=0, batch_wait_ms=2.0):
     """The FastAPI app serving bundle (a recsys.export folder) with the models on device; with shards
     (their addresses, shard i at position i), the songs' data comes from the shard servers; with
-    redis_url, answers are shared through a Redis cache (recsys.cache)."""
+    redis_url, answers are shared through a Redis cache (recsys.cache); with batch > 1 (sharded only),
+    requests arriving within batch_wait_ms are answered together, up to batch at a time (recsys.batching)."""
 
     @asynccontextmanager
     async def lifespan(app):  # load once at startup, close the search process or connections at shutdown
         if shards:
             from recsys.frontdesk import ShardedRecommender
             app.state.recommender = ShardedRecommender(bundle, shards, device, deadline)
+            if batch > 1:
+                from recsys.batching import Batcher
+                rec = app.state.recommender
+                app.state.recommender.batcher = Batcher(rec.recommend_batch, batch, batch_wait_ms)
         else:
             app.state.recommender = Recommender(bundle, device)
         if redis_url:
@@ -78,7 +83,8 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None):
         shards = rec.shard_states() if hasattr(rec, "shard_states") else None
         status = "ok" if shards is None or all(s["up"] for s in shards) else "degraded"
         return {"status": status, "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
-                "shards": shards, "cache": rec.cache.report() if rec.cache else None}
+                "shards": shards, "cache": rec.cache.report() if rec.cache else None,
+                "batching": rec.batcher.report() if rec.batcher else None}
 
     return app
 
@@ -102,7 +108,9 @@ if __name__ == "__main__":
     ap.add_argument("--shards", help="comma-separated shard addresses (host:port), shard 0 first")
     ap.add_argument("--deadline", type=float, default=2.0, help="seconds each call to a shard may take")
     ap.add_argument("--redis", help="a shared answer cache, e.g. redis://redis:6379/0")
+    ap.add_argument("--batch", type=int, default=0, help="answer up to this many requests together (sharded)")
+    ap.add_argument("--batch-wait-ms", type=float, default=2.0, help="how long a request waits for company")
     args = ap.parse_args()
     shards = args.shards.split(",") if args.shards else None
-    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis),
-                host=args.host, port=args.port)
+    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis, args.batch,
+                           args.batch_wait_ms), host=args.host, port=args.port)

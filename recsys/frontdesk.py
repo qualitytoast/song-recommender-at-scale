@@ -189,9 +189,9 @@ class ShardedRecommender(Catalog):
         for at, reply in zip(parts.values(), replies):
             if reply is None:
                 continue
-            for name in ROWS:
+            for name in ROWS:  # zeros for songs whose shard didn't answer: finite, never used
                 a = unpack(getattr(reply, name))
-                out.setdefault(name, np.empty((n,) + a.shape[1:], dtype=a.dtype))[at] = a
+                out.setdefault(name, np.zeros((n,) + a.shape[1:], dtype=a.dtype))[at] = a
         return out
 
     @torch.no_grad()
@@ -274,3 +274,111 @@ class ShardedRecommender(Catalog):
         if missing:
             notes["missing_shards"] = sorted(int(i) for i in missing)
         return cands[best], rerank[best], clock.times, notes
+
+    @torch.no_grad()
+    def recommend_batch(self, requests):
+        """recommend_ids for several (song IDs, name-word IDs) requests at once (recsys.batching): each
+        shard is asked once per round for the whole batch (every distinct song once), and the models run
+        on all of them together, shorter inputs padded (and masked, as for any-length cases). Returns one
+        (ids, scores, timings, notes) per request, or a ShardsUnavailable for a request none of whose input
+        songs could be read."""
+        clock = Stopwatch(self.device)
+        s, device, songs, n_shards = self.settings, self.device, self.settings["songs"], len(self.stubs)
+        Xs = [np.asarray(ids[-s["input_length"]:], dtype=np.int64) for ids, _ in requests]
+        names = [np.asarray(n, dtype=np.int64).reshape(-1) for _, n in requests]
+        missing = set()
+        # 1. the rows of every input song of the batch
+        uniq_in = np.unique(np.concatenate(Xs))
+        parts, calls = self.lookup_calls(uniq_in)
+        replies, failed = self.call_all(calls)
+        missing |= failed
+        in_rows = self.gather_rows(len(uniq_in), parts, replies)
+        in_ok = ~np.isin(uniq_in % n_shards, list(failed))
+        Xs = [X[~np.isin(X % n_shards, list(failed))] for X in Xs]
+        results = [None if len(X) else ShardsUnavailable("no shard holding the input songs answered") for X in Xs]
+        live = [i for i, X in enumerate(Xs) if len(X)]
+        if not live:
+            return results
+        Xs, names, B = [Xs[i] for i in live], [names[i] for i in live], len(live)
+        lengths = np.array([len(X) for X in Xs])
+        L = int(lengths.max())
+        X_glob = np.zeros((B, L), dtype=np.int64)
+        N = np.zeros((B, max(len(n) for n in names)), dtype=np.int64)
+        for r, (X, n) in enumerate(zip(Xs, names)):
+            X_glob[r, :len(X)], N[r, :len(n)] = X, n
+        clock.mark("shards: input songs")
+        self.retriever.song_embedding.rows = torch.from_numpy(in_rows["retriever_inputs"]).to(device)
+        h = query_vectors(self.retriever, np.searchsorted(uniq_in, X_glob), N, device, lengths=lengths)
+        clock.mark("retriever")
+        # 2. every shard searched once for all the queries; merged per request (searching L deep for every
+        #    request: a request with fewer input songs keeps the same top shortlist after dropping them)
+        k = s["shortlist"] + (L if s["exclude_input"] else 0)
+        replies, failed = self.call_all([(i, stub.Search, shard_pb2.SearchRequest(version=self.version,
+                                                                                  queries=pack(h), k=k))
+                                         for i, stub in enumerate(self.stubs)])
+        missing |= failed
+        replies = [r for r in replies if r is not None]
+        if not replies:
+            return [ShardsUnavailable("no shard answered the search")] * len(requests)
+        id_parts, score_parts = [unpack(r.ids) for r in replies], [unpack(r.scores) for r in replies]
+        merged = [merge_top([p[r:r + 1] for p in id_parts], [p[r:r + 1] for p in score_parts], k) for r in range(B)]
+        cands, scores = np.concatenate([m[0] for m in merged]), np.concatenate([m[1] for m in merged])
+        if s["exclude_input"]:
+            cands, scores = drop_input_songs(cands, scores, X_glob, lengths, s["shortlist"])
+        clock.mark("shards: search")
+        # 3. the rows of every candidate, and the counts (input -> candidate) of every pair, each once
+        C = cands.shape[1]
+        uniq_c = np.unique(cands)
+        real = np.arange(L)[None, None, :] < lengths[:, None, None]  # (B, 1, L)
+        pairs = (X_glob[:, None, :] * songs + cands[:, :, None])  # (B, C, L)
+        uniq_keys = np.unique(pairs[np.broadcast_to(real, pairs.shape)])
+        parts, calls = self.lookup_calls(uniq_c)
+        count_parts = self.by_shard(uniq_keys % songs)  # each pair from its later song's shard
+        calls += [(o, self.stubs[o].Counts, shard_pb2.CountsRequest(version=self.version, keys=pack(uniq_keys[at])))
+                  for o, at in count_parts.items()]
+        replies, failed = self.call_all(calls)
+        missing |= failed
+        c_rows = self.gather_rows(len(uniq_c), parts, replies[:len(parts)])
+        c_ok = ~np.isin(uniq_c % n_shards, list(failed))
+        key_counts = np.zeros(len(uniq_keys), dtype=np.int64)
+        for at, reply in zip(count_parts.values(), replies[len(parts):]):
+            if reply is not None:
+                key_counts[at] = unpack(reply.counts)
+        lost = np.isin(cands % n_shards, list(failed))  # candidates that can't be ranked: never chosen
+        clock.mark("shards: candidates")
+        # the ranker's extra inputs on a table of the batch's songs
+        table = np.union1d(uniq_in, uniq_c)
+        n_local = len(table)
+
+        def table_rows(name):  # each song's row from a round its shard answered
+            out = np.zeros((n_local,) + in_rows[name].shape[1:], dtype=in_rows[name].dtype)
+            out[np.searchsorted(table, uniq_c[c_ok])] = c_rows[name][c_ok]
+            out[np.searchsorted(table, uniq_in[in_ok])] = in_rows[name][in_ok]
+            return out
+        context = np.searchsorted(table, X_glob)
+        padded = np.arange(L)[None, :] >= lengths[:, None]
+        local_c = np.searchsorted(table, cands)
+        seen = key_counts > 0
+        local_keys = np.searchsorted(table, uniq_keys[seen] // songs) * n_local + np.searchsorted(table, uniq_keys[seen] % songs)
+        order = np.argsort(local_keys)
+        features = CandidateFeatures(s["features"], n_local, None, (local_keys[order], key_counts[seen][order]), device,
+                                     song_artist=table_rows("artist"), song_album=table_rows("album"),
+                                     song_genres=table_rows("genres"))
+        t = lambda a: torch.from_numpy(np.ascontiguousarray(a)).to(device)
+        base = t(scores.astype(np.float32))
+        ranks = torch.arange(1, C + 1, device=device)[None, :].expand(B, C)
+        f = features(t(np.where(padded, -1, context)), t(local_c), base, ranks, base[:, 0], playlist_len=t(lengths))
+        clock.mark("ranker inputs")
+        self.ranker.retriever.song_embedding.rows = t(table_rows("ranker_inputs"))
+        rerank = self.ranker(t(context), t(N), t(local_c), base, f, t(lengths)).cpu().numpy()
+        rerank[lost] = -np.inf
+        clock.mark("ranker")
+        notes = {"partial": bool(missing)}
+        if missing:
+            notes["missing_shards"] = sorted(int(i) for i in missing)
+        times = {**clock.times, "batch size": B}
+        for r, i in enumerate(live):
+            best = np.argsort(-rerank[r], kind="stable")[:TOP]
+            best = best[np.isfinite(rerank[r, best])]
+            results[i] = (cands[r, best], rerank[r, best], times, notes)
+        return results

@@ -145,6 +145,7 @@ class Catalog:
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
         self.lock = threading.Lock()
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
+        self.batcher = None  # a recsys.batching.Batcher, if requests are answered in batches
 
     def load(self, name):
         return np.load(self.path / f"{name}.npy")
@@ -249,9 +250,13 @@ class Catalog:
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
 
     def compute(self, used, name_ids):
-        """(timings, the top 10 as dicts, notes) for the resolved songs `used` and name-word IDs."""
-        with self.lock:
-            ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
+        """(timings, the top 10 as dicts, notes) for the resolved songs `used` and name-word IDs; in a batch
+        with other requests if a batcher is set, else one request at a time."""
+        if self.batcher is not None:
+            ids, scores, times, notes = self.batcher.submit(([i for _, i in used], name_ids))
+        else:
+            with self.lock:
+                ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
         return times, [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j], "score": float(x)}
                        for j, x in zip(ids.tolist(), scores)], notes
 
