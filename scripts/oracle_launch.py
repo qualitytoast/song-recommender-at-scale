@@ -4,9 +4,11 @@
     nohup caffeinate -s ~/.oci/venv/bin/python scripts/oracle_launch.py > ~/.oci/launch.log 2>&1 &
 
 Oracle's free Arm machines (VM.Standard.A1.Flex) are often "out of host capacity". Every --every seconds
-this asks for one in each availability domain, each size in turn (2 cores / 8 GB, then 1 / 6), and stops
-at the first success, or at once if a machine with this name already exists, so it never makes two. A
-refused request costs nothing, and only the free shape is ever asked for. Needs Oracle's Python library
+this asks for one, going round the availability domains and sizes (2 cores / 8 GB, then 1 / 6), waiting
+twice as long after each "too many requests" (up to 10 minutes) and speeding up again slowly, so it settles
+at a pace Oracle accepts. It stops at the first success, or
+as soon as a machine with this name exists, so it never makes two. A refused request costs nothing, and
+only the free shape is ever asked for. Needs Oracle's Python library
 (pip install oci, kept out of the project's environment: ~/.oci/venv) and an API key in ~/.oci/config.
 The network is the VCN wizard's: the public subnet of --vcn.
 """
@@ -74,8 +76,7 @@ def main():
     ap.add_argument("--name", default="song-recommender")
     ap.add_argument("--vcn", default="song-recommender-vcn")
     ap.add_argument("--ssh-key", default="~/.ssh/oracle_songrec.pub")
-    ap.add_argument("--every", type=float, default=120, help="seconds between rounds of requests")
-    ap.add_argument("--pause", type=float, default=5, help="seconds between the requests of a round")
+    ap.add_argument("--every", type=float, default=60, help="seconds between requests (at the fastest)")
     ap.add_argument("--dry-run", action="store_true", help="only look things up and print them")
     args = ap.parse_args()
 
@@ -88,46 +89,45 @@ def main():
         log(f"STOPPED: a machine named {args.name!r} already exists ({found[0].lifecycle_state})")
         return
     if args.dry_run:
-        log(f"dry run: would ask for {SHAPE} at sizes {SIZES} every {args.every:.0f}s")
+        log(f"dry run: would ask for {SHAPE} at sizes {SIZES}, one request every {args.every:.0f}s")
         return
 
-    attempt = 0
+    choices = [(domain, size) for domain in domains for size in SIZES]
+    attempt, wait = 0, args.every
     while True:
-        if found := existing(compute, tenancy, args.name):  # another copy of this script got one meanwhile
+        if attempt % len(choices) == 0 and (found := existing(compute, tenancy, args.name)):  # another copy got one
             log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")
             return
-        for domain in domains:
-            for ocpus, memory in SIZES:
-                if attempt:
-                    time.sleep(args.pause)  # Oracle answers "too many requests" to quick bursts
-                attempt += 1
-                details = oci.core.models.LaunchInstanceDetails(
-                    availability_domain=domain, compartment_id=tenancy, display_name=args.name, shape=SHAPE,
-                    shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(ocpus=ocpus, memory_in_gbs=memory),
-                    source_details=oci.core.models.InstanceSourceViaImageDetails(image_id=image.id),
-                    create_vnic_details=oci.core.models.CreateVnicDetails(subnet_id=subnet.id, assign_public_ip=True),
-                    metadata={"ssh_authorized_keys": key})
-                try:
-                    instance = compute.launch_instance(details).data
-                except oci.exceptions.ServiceError as e:
-                    if e.status == 500 and "capacity" in str(e.message).lower():
-                        log(f"try {attempt}: {ocpus} OCPU / {memory} GB in {domain.split(':')[-1]}: out of capacity")
-                        continue
-                    if e.status == 429:  # asking too often: wait longer before the next round
-                        log(f"try {attempt}: too many requests; slowing down")
-                        time.sleep(args.every)
-                        continue
-                    log(f"STOPPED: unexpected error {e.status} {e.code}: {e.message}")
-                    notify(f"Launch script stopped: {e.code}")
-                    raise
-                log(f"LAUNCHED {ocpus} OCPU / {memory} GB in {domain}: {instance.id}")
-                instance = oci.wait_until(compute, compute.get_instance(instance.id), "lifecycle_state", "RUNNING",
-                                          max_wait_seconds=900).data
-                ip = public_ip(config, compute, instance)
-                log(f"RUNNING at public IP {ip}")
-                notify(f"Your Oracle machine is running at {ip}")
-                return
-        time.sleep(args.every + random.uniform(0, 15))
+        domain, (ocpus, memory) = choices[attempt % len(choices)]
+        attempt += 1
+        details = oci.core.models.LaunchInstanceDetails(
+            availability_domain=domain, compartment_id=tenancy, display_name=args.name, shape=SHAPE,
+            shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(ocpus=ocpus, memory_in_gbs=memory),
+            source_details=oci.core.models.InstanceSourceViaImageDetails(image_id=image.id),
+            create_vnic_details=oci.core.models.CreateVnicDetails(subnet_id=subnet.id, assign_public_ip=True),
+            metadata={"ssh_authorized_keys": key})
+        try:  # no automatic retries by the library: this loop sets the pace
+            instance = compute.launch_instance(details, retry_strategy=oci.retry.NoneRetryStrategy()).data
+        except oci.exceptions.ServiceError as e:
+            if e.status == 500 and "capacity" in str(e.message).lower():
+                log(f"try {attempt}: {ocpus} OCPU / {memory} GB in {domain.split(':')[-1]}: out of capacity")
+                wait = max(args.every, wait * 0.9)  # speed up again slowly after being told to slow down
+            elif e.status == 429:  # asking too often: back off, doubling up to 10 minutes
+                wait = min(wait * 2, 600)
+                log(f"try {attempt}: too many requests; next try in {wait:.0f}s")
+            else:
+                log(f"STOPPED: unexpected error {e.status} {e.code}: {e.message}")
+                notify(f"Launch script stopped: {e.code}")
+                raise
+            time.sleep(wait + random.uniform(0, 5))
+            continue
+        log(f"LAUNCHED {ocpus} OCPU / {memory} GB in {domain}: {instance.id}")
+        instance = oci.wait_until(compute, compute.get_instance(instance.id), "lifecycle_state", "RUNNING",
+                                  max_wait_seconds=900).data
+        ip = public_ip(config, compute, instance)
+        log(f"RUNNING at public IP {ip}")
+        notify(f"Your Oracle machine is running at {ip}")
+        return
 
 
 if __name__ == "__main__":
