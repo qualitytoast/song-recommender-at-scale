@@ -1,0 +1,31 @@
+# Runs the test suite on every push and pull request (continuous integration). The tests build their own
+# tiny bundle, shard processes and fake Redis, so they need no data or model files. PyTorch comes from
+# its CPU-only index, as in docker/Dockerfile (GitHub's machines have no GPU).
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true   # a newer push to the same branch replaces a run still going
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install the requirements (CPU PyTorch)
+        run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+      - name: Run the tests
+        run: python -m pytest -q
