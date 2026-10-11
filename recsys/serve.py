@@ -35,9 +35,10 @@ class RecommendRequest(BaseModel):
     name: str | None = None   # the playlist's name, if it has one
 
 
-def create_app(bundle, device="cpu", shards=None, deadline=2.0):
+def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None):
     """The FastAPI app serving bundle (a recsys.export folder) with the models on device; with shards
-    (their addresses, shard i at position i), the songs' data comes from the shard servers."""
+    (their addresses, shard i at position i), the songs' data comes from the shard servers; with
+    redis_url, answers are shared through a Redis cache (recsys.cache)."""
 
     @asynccontextmanager
     async def lifespan(app):  # load once at startup, close the search process or connections at shutdown
@@ -46,6 +47,9 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0):
             app.state.recommender = ShardedRecommender(bundle, shards, device, deadline)
         else:
             app.state.recommender = Recommender(bundle, device)
+        if redis_url:
+            from recsys.cache import Cache
+            app.state.recommender.cache = Cache(redis_url)
         yield
         app.state.recommender.close()
 
@@ -74,7 +78,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0):
         shards = rec.shard_states() if hasattr(rec, "shard_states") else None
         status = "ok" if shards is None or all(s["up"] for s in shards) else "degraded"
         return {"status": status, "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
-                "shards": shards}
+                "shards": shards, "cache": rec.cache.report() if rec.cache else None}
 
     return app
 
@@ -97,7 +101,8 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--shards", help="comma-separated shard addresses (host:port), shard 0 first")
     ap.add_argument("--deadline", type=float, default=2.0, help="seconds each call to a shard may take")
+    ap.add_argument("--redis", help="a shared answer cache, e.g. redis://redis:6379/0")
     args = ap.parse_args()
     shards = args.shards.split(",") if args.shards else None
-    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline), host=args.host,
-                port=args.port)
+    uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis),
+                host=args.host, port=args.port)

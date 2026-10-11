@@ -144,6 +144,7 @@ class Catalog:
         words = json.loads((self.path / "name_words.json").read_text())
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
         self.lock = threading.Lock()
+        self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
 
     def load(self, name):
         return np.load(self.path / f"{name}.npy")
@@ -167,10 +168,20 @@ class Catalog:
     def find_songs(self, query, limit=10):
         """Songs for a menu as the user types: those whose track or artist name starts with query (or,
         for "track - artist" text, whose track starts with the part before " - " and artist with the
-        part after), in the most playlists first: [{uri, track, artist, playlists}]."""
+        part after), in the most playlists first: [{uri, track, artist, playlists}]. Cached, if a cache
+        is set."""
         q = name_key(query)
         if not q:
             return []
+        key = f"songs:{self.version}:{limit}:{q}"
+        if self.cache and (found := self.cache.get(key)) is not None:
+            return found
+        found = self._find_songs(q, limit)
+        if self.cache:
+            self.cache.set(key, found)
+        return found
+
+    def _find_songs(self, q, limit):
         parts = [self._most_played(self._starting(self.track_keys, self.by_track, q), limit),
                  self._most_played(self._starting(self.artist_keys, self.by_artist, q), limit)]
         for t, a in splits(q):
@@ -223,15 +234,26 @@ class Catalog:
         used = known[-self.settings["input_length"]:]
         name_ids = self.encode_name(name)
         lookup_ms = (time.perf_counter() - start) * 1000
-        with self.lock:
-            ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
+        answer = {"used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
+                  "ignored": ignored, "version": self.version}
+        key = f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
+        if self.cache and (cached := self.cache.get(key)) is not None:
+            return {"recommendations": cached, **answer, "partial": False, "cached": True,
+                    "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
+        times, recommendations, notes = self.compute(used, name_ids)
+        if self.cache and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
+            self.cache.set(key, recommendations)
         times = {"lookup": lookup_ms, **times}
         times["total"] = (time.perf_counter() - start) * 1000
-        return {"recommendations": [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j],
-                                     "score": float(x)} for j, x in zip(ids.tolist(), scores)],
-                "used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
-                "ignored": ignored, "version": self.version, **notes,
+        return {"recommendations": recommendations, **answer, **notes, "cached": False,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
+
+    def compute(self, used, name_ids):
+        """(timings, the top 10 as dicts, notes) for the resolved songs `used` and name-word IDs."""
+        with self.lock:
+            ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
+        return times, [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j], "score": float(x)}
+                       for j, x in zip(ids.tolist(), scores)], notes
 
 
 class Recommender(Catalog):
