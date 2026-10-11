@@ -75,6 +75,7 @@ def main():
     ap.add_argument("--vcn", default="song-recommender-vcn")
     ap.add_argument("--ssh-key", default="~/.ssh/oracle_songrec.pub")
     ap.add_argument("--every", type=float, default=120, help="seconds between rounds of requests")
+    ap.add_argument("--pause", type=float, default=5, help="seconds between the requests of a round")
     ap.add_argument("--dry-run", action="store_true", help="only look things up and print them")
     args = ap.parse_args()
 
@@ -97,6 +98,8 @@ def main():
             return
         for domain in domains:
             for ocpus, memory in SIZES:
+                if attempt:
+                    time.sleep(args.pause)  # Oracle answers "too many requests" to quick bursts
                 attempt += 1
                 details = oci.core.models.LaunchInstanceDetails(
                     availability_domain=domain, compartment_id=tenancy, display_name=args.name, shape=SHAPE,
