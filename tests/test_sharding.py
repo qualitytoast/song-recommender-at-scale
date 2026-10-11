@@ -137,7 +137,7 @@ def test_a_crashed_shard_gives_a_flagged_partial_answer_without_its_songs(bundle
             procs[1].wait(timeout=30)
             ids, _, _, notes = rec.recommend_ids([3, 4, 5], name)  # song 4 lives on shard 1
             assert notes == {"partial": True, "missing_shards": [1]}
-            assert len(ids) == 10 and not (ids % 3 == 1).any()  # nothing from shard 1
+            assert len(ids) >= 10 and not (ids % 3 == 1).any()  # nothing from shard 1
             assert [s["up"] for s in rec.shard_states()] == [True, False, True]
             with pytest.raises(ShardsUnavailable):
                 rec.recommend_ids([4, 7], name)  # every input song lives on shard 1

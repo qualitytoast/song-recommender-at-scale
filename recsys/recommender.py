@@ -9,7 +9,8 @@ data or the full checkpoints.
 A request's songs (Spotify URIs, or "Track - Artist" text) become song IDs (unknown ones are left out
 and listed); its last input_length known
 songs and the playlist name go through the retriever (playlist vector h), the search process finds the
-top shortlist songs (input songs left out), and the ranker reorders them; the top 10 are the answer.
+top shortlist songs (input songs left out), and the ranker reorders them; the top 10 are the answer,
+with at most max_per_artist songs by any one artist (pick_top).
 Per-song tables are the bundle's precomputed input vectors (one row per song), so the models here hold
 only their small shared layers plus those rows.
 """
@@ -32,6 +33,10 @@ from recsys.ranker import CandidateRanker, drop_input_songs
 from recsys.search import SearchWorker, query_vectors
 
 TOP = 10  # recommendations per request
+# At most this many of the 10 by one artist, unless a request says otherwise (0: no limit). The models
+# learned to predict the very next song, which is often by the last song's artist (people add albums), so
+# the 10 most likely next songs alone are mostly that artist's.
+MAX_PER_ARTIST = 2
 LAST = "\U0010ffff"  # sorts after every character: keys starting with p lie in [p, p + LAST)
 
 
@@ -49,6 +54,26 @@ def splits(key):
         out.append((key[:i], key[i + 3:]))
         i = key.find(" - ", i + 1)
     return [(t, a) for t, a in out if t and a]
+
+
+def pick_top(ids, scores, song_artist, max_per_artist, k=TOP):
+    """The top k of a ranked list (ids, scores: best first), skipping a song once max_per_artist songs by
+    its artist are in (0: no limit). Too few artists to fill k: the best skipped songs fill the rest."""
+    if not max_per_artist:
+        return ids[:k], scores[:k]
+    artists = song_artist[ids]
+    count = {}
+    keep = np.zeros(len(ids), dtype=bool)
+    for i, a in enumerate(artists.tolist()):
+        if count.get(a, 0) < max_per_artist:
+            count[a] = count.get(a, 0) + 1
+            keep[i] = True
+            if keep.sum() == k:
+                break
+    chosen = np.flatnonzero(keep)
+    if len(chosen) < k:
+        chosen = np.sort(np.concatenate([chosen, np.flatnonzero(~keep)[:k - len(chosen)]]))
+    return ids[chosen], scores[chosen]
 
 
 class NoKnownSongs(ValueError):
@@ -132,8 +157,8 @@ class Catalog:
         self.version = json.loads((self.path / "manifest.json").read_text())["version"]
         songs = json.loads((self.path / "songs.json").read_text())
         self.uris, self.tracks = songs["uris"], songs["tracks"]
-        artist_of = self.load("song_artist")
-        self.artists = [songs["artist_names"][a] for a in artist_of]
+        self.song_artist = self.load("song_artist")
+        self.artists = [songs["artist_names"][a] for a in self.song_artist]
         self.song_id = {uri: i for i, uri in enumerate(self.uris)}
         # Finding songs by name: song IDs sorted by track name key and by artist name key (each
         # most-played first among equal names), with the keys in that order for binary search.
@@ -141,7 +166,7 @@ class Catalog:
         keys = json.loads((self.path / "name_keys.json").read_text())
         self.by_track, self.by_artist = self.load("songs_by_track"), self.load("songs_by_artist")
         self.track_keys = [keys["tracks"][i] for i in self.by_track]
-        self.artist_keys = [keys["artists"][artist_of[i]] for i in self.by_artist]
+        self.artist_keys = [keys["artists"][self.song_artist[i]] for i in self.by_artist]
         words = json.loads((self.path / "name_words.json").read_text())
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
         self.lock = threading.Lock()
@@ -220,16 +245,17 @@ class Catalog:
         return encode_names([name or ""], self.word_id)
 
     def recommend_ids(self, song_ids, name_ids):
-        """The top 10 for a playlist's songs (song IDs, oldest first; the last input_length are read)
-        and its name-word IDs (1, width): (song IDs, ranker scores, timings in ms by stage, notes for the
-        response: {"partial": bool} and, if partial, "missing_shards")."""
+        """The reranked shortlist for a playlist's songs (song IDs, oldest first; the last input_length are
+        read) and its name-word IDs (1, width), best first: (song IDs, ranker scores, timings in ms by
+        stage, notes for the response: {"partial": bool} and, if partial, "missing_shards")."""
         raise NotImplementedError
 
-    def recommend(self, songs, name=None, arrived=None):
+    def recommend(self, songs, name=None, arrived=None, max_per_artist=MAX_PER_ARTIST):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
-        top 10 songs {uri, track, artist, score}, the songs read {uri, track, artist} and the ones
-        left out (no match in the catalog), the bundle version, and the time per stage. arrived: when the
-        request came in (time.monotonic()), for dropping it if it waits too long (Overloaded)."""
+        top 10 songs {uri, track, artist, score} with at most max_per_artist by one artist (0: no limit),
+        the songs read {uri, track, artist} and the ones left out (no match in the catalog), the bundle
+        version, and the time per stage. arrived: when the request came in (time.monotonic()), for
+        dropping it if it waits too long (Overloaded)."""
         start = time.perf_counter()
         arrived = time.monotonic() if arrived is None else arrived
         ids = [self.resolve(s) for s in songs]
@@ -242,13 +268,14 @@ class Catalog:
         lookup_ms = (time.perf_counter() - start) * 1000
         answer = {"used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
                   "ignored": ignored, "version": self.version}
-        key = f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
+        key = (f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
+               f":a{max_per_artist}")
         self.answers["total"] += 1
         if self.cache and (cached := self.cache.get(key)) is not None:
             self.answers["cached"] += 1
             return {"recommendations": cached, **answer, "partial": False, "cached": True,
                     "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
-        times, recommendations, notes = self.compute(used, name_ids, arrived)
+        times, recommendations, notes = self.compute(used, name_ids, arrived, max_per_artist)
         self.answers["partial"] += notes["partial"]
         if self.cache and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
             self.cache.set(key, recommendations)
@@ -257,10 +284,10 @@ class Catalog:
         return {"recommendations": recommendations, **answer, **notes, "cached": False,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
 
-    def compute(self, used, name_ids, arrived=None):
-        """(timings, the top 10 as dicts, notes) for the resolved songs `used` and name-word IDs; in a batch
-        with other requests if a batcher is set, else one request at a time. With an admission policy, a
-        request that waited too long to start raises Overloaded instead."""
+    def compute(self, used, name_ids, arrived=None, max_per_artist=MAX_PER_ARTIST):
+        """(timings, the top 10 as dicts (pick_top), notes) for the resolved songs `used` and name-word IDs;
+        in a batch with other requests if a batcher is set, else one request at a time. With an admission
+        policy, a request that waited too long to start raises Overloaded instead."""
         arrived = time.monotonic() if arrived is None else arrived
         if self.batcher is not None:
             deadline = self.admission.deadline(arrived) if self.admission else None
@@ -270,6 +297,7 @@ class Catalog:
                 if self.admission:
                     self.admission.check_started(arrived)
                 ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids)
+        ids, scores = pick_top(ids, scores, self.song_artist, max_per_artist)
         return times, [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j], "score": float(x)}
                        for j, x in zip(ids.tolist(), scores)], notes
 
@@ -315,5 +343,5 @@ class Recommender(Catalog):
         clock.mark("ranker inputs")
         rerank = self.ranker(context, torch.from_numpy(N).to(device), cands, base, f).cpu().numpy()[0]
         clock.mark("ranker")
-        order = np.argsort(-rerank, kind="stable")[:TOP]
+        order = np.argsort(-rerank, kind="stable")
         return ids[0, order], rerank[order], clock.times, {"partial": False}

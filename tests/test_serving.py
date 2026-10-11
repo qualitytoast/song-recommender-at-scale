@@ -8,7 +8,7 @@ import torch
 from recsys.export import write_manifest
 from recsys.rank_features import CandidateFeatures
 from recsys.ranker import build_shortlists, feature_fn, rerank
-from recsys.recommender import NoKnownSongs, Recommender
+from recsys.recommender import NoKnownSongs, Recommender, pick_top
 from recsys.search import ExactSearch, song_vectors
 from serving_helpers import ARTISTS, CPU, SETTINGS, TRACKS, V, write_tiny_bundle
 
@@ -20,8 +20,8 @@ def served(tmp_path_factory):
     rec.close()
 
 
-def offline_top10(retriever, ranker, pairs, songs, name_ids):
-    """The top 10 the offline evaluation's code computes for one input (exact search)."""
+def offline_order(retriever, ranker, pairs, songs, name_ids):
+    """The reranked shortlist the offline evaluation's code computes for one input (exact search)."""
     X, N = np.array([songs]), np.array([name_ids])
     vectors = song_vectors(retriever)
     ids, scores, _ = build_shortlists(retriever, X, N, np.array([0]), CPU, SETTINGS["shortlist"],
@@ -29,7 +29,7 @@ def offline_top10(retriever, ranker, pairs, songs, name_ids):
     featurizer = CandidateFeatures.from_retriever(SETTINGS["features"], retriever, None, pairs, CPU)
     features = feature_fn(featurizer, ids, scores, (X[0], np.array([0]), np.array([len(songs)])), np.array([0]), CPU)
     reranked = rerank(ranker, X, N, ids, scores, CPU, features=features)[0]
-    order = np.argsort(-reranked, kind="stable")[:10]
+    order = np.argsort(-reranked, kind="stable")
     return ids[0, order], reranked[order]
 
 
@@ -50,11 +50,34 @@ def test_recommendations_match_the_offline_pipeline(served, songs):
     rec, retriever, ranker, pairs = served
     name_ids = rec.encode_name("Road trip mix!")[0]
     ids, scores, times, notes = rec.recommend_ids(songs, name_ids)
-    expected_ids, expected_scores = offline_top10(retriever, ranker, pairs, songs[-3:], name_ids)
+    expected_ids, expected_scores = offline_order(retriever, ranker, pairs, songs[-3:], name_ids)
     np.testing.assert_array_equal(ids, expected_ids)
     np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
     assert not set(ids) & set(songs[-3:])  # the input songs are never recommended
     assert set(times) == {"retriever", "search", "ranker inputs", "ranker"}
+
+
+def test_pick_top_keeps_at_most_max_per_artist_songs_by_one_artist():
+    ids, scores = np.arange(8), -np.arange(8.0)
+    artist = np.array([0, 0, 0, 1, 0, 1, 1, 2])
+    np.testing.assert_array_equal(pick_top(ids, scores, artist, 2, k=4)[0], [0, 1, 3, 5])
+    np.testing.assert_array_equal(pick_top(ids, scores, artist, 2, k=4)[1], [0, -1, -3, -5])
+    np.testing.assert_array_equal(pick_top(ids, scores, artist, 0, k=4)[0], [0, 1, 2, 3])  # 0: no limit
+    np.testing.assert_array_equal(pick_top(ids, scores, artist, 1, k=4)[0], [0, 1, 3, 7])  # too few artists:
+    # the best skipped song fills the last place
+
+
+def test_a_request_gets_the_artist_limit_it_asks_for(served):
+    rec = served[0]
+    name_ids = rec.encode_name("")
+    ranked, scores, _, _ = rec.recommend_ids([3, 17, 9], name_ids)
+    uris = ["spotify:track:3", "spotify:track:17", "spotify:track:9"]
+    for limit in (0, 1, 2, 10):
+        top = [int(r["uri"].split(":")[-1]) for r in rec.recommend(uris, max_per_artist=limit)["recommendations"]]
+        assert top == pick_top(ranked, scores, rec.song_artist, limit)[0].tolist()
+    assert rec.recommend(uris)["recommendations"] == rec.recommend(uris, max_per_artist=2)["recommendations"]
+    assert [int(r["uri"].split(":")[-1]) for r in rec.recommend(uris, max_per_artist=0)["recommendations"]] == \
+        ranked[:10].tolist()
 
 
 def test_a_request_skips_unknown_songs_and_reads_the_last_known_ones(served):
@@ -116,6 +139,9 @@ def test_the_http_api(served, tmp_path):
         menu = client.get("/songs", params={"q": "nightc", "limit": 2}).json()["songs"]
         assert [(s["track"], s["artist"]) for s in menu] == [("Nightcall", "Kavinsky"), ("Nightcall", "London Grammar")]
         assert client.get("/songs", params={"q": "x", "limit": 500}).status_code == 422  # at most 50
+        any_artist = client.post("/recommend", json={"songs": ["spotify:track:6"], "max_per_artist": 0}).json()
+        assert any_artist["recommendations"] == rec.recommend(["spotify:track:6"], max_per_artist=0)["recommendations"]
+        assert client.post("/recommend", json={"songs": ["spotify:track:6"], "max_per_artist": 11}).status_code == 422
 
 
 def test_finding_songs_by_name_puts_the_most_played_first(served):

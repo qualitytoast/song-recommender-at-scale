@@ -60,4 +60,4 @@ def test_in_a_batch_a_dead_shard_only_fails_the_requests_it_holds_every_song_of(
     results = rec.recommend_batch([([4, 7], single.encode_name("")), ([3, 4], single.encode_name(""))])
     assert isinstance(results[0], ShardsUnavailable)  # both its songs live on shard 1
     ids, _, _, notes = results[1]
-    assert notes == {"partial": True, "missing_shards": [1]} and len(ids) == 10 and not (ids % 3 == 1).any()
+    assert notes == {"partial": True, "missing_shards": [1]} and len(ids) >= 10 and not (ids % 3 == 1).any()

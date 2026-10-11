@@ -39,7 +39,7 @@ from torch import nn
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.rank_features import CandidateFeatures
 from recsys.ranker import drop_input_songs
-from recsys.recommender import TOP, Catalog, Stopwatch, load_shared, serving_ranker, serving_retriever
+from recsys.recommender import Catalog, Stopwatch, load_shared, serving_ranker, serving_retriever
 from recsys.search import query_vectors
 from recsys.wire import pack, unpack
 
@@ -269,7 +269,7 @@ class ShardedRecommender(Catalog):
             np.concatenate([inputs["ranker_inputs"], rows["ranker_inputs"]])).to(device)
         rerank = self.ranker(context_t, torch.from_numpy(N).to(device), cands_t, base, f).cpu().numpy()[0]
         clock.mark("ranker")
-        best = np.argsort(-rerank, kind="stable")[:TOP]
+        best = np.argsort(-rerank, kind="stable")
         notes = {"partial": bool(missing)}
         if missing:
             notes["missing_shards"] = sorted(int(i) for i in missing)
@@ -378,7 +378,7 @@ class ShardedRecommender(Catalog):
             notes["missing_shards"] = sorted(int(i) for i in missing)
         times = {**clock.times, "batch size": B}
         for r, i in enumerate(live):
-            best = np.argsort(-rerank[r], kind="stable")[:TOP]
+            best = np.argsort(-rerank[r], kind="stable")
             best = best[np.isfinite(rerank[r, best])]
             results[i] = (cands[r, best], rerank[r, best], times, notes)
         return results
