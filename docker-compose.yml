@@ -1,0 +1,60 @@
+# The sharded recommender in containers: 4 shard servers (one container each), the front desk, Redis.
+#
+#   python -m recsys.shard_slices --bundle bundles/<bundle> --shards 4   # once: the shard slices
+#   BUNDLE=./bundles/<bundle> docker compose up --build                  # then http://localhost:8000/docs
+#
+# BUNDLE is the bundle folder (default below), mounted read-only at /bundle in every container. Each
+# shard listens on port 50051 inside its own container and is reached by its service name (shard-0, ...).
+x-recommender: &recommender
+  build: {context: ., dockerfile: docker/Dockerfile}
+  image: song-recommender:latest
+  volumes:
+    - ${BUNDLE:-./bundles/ranker_1m_any_length-f73f0d4e1e71}:/bundle:ro
+  restart: unless-stopped   # a crashed container is started again
+  init: true                # a small init process runs the program, so the program's crash ends the container
+
+x-shard-health: &shard-health
+  test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
+  interval: 5s
+  timeout: 3s
+  retries: 3
+  start_period: 30s
+
+services:
+  shard-0:
+    <<: *recommender
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051
+    healthcheck: *shard-health
+  shard-1:
+    <<: *recommender
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051
+    healthcheck: *shard-health
+  shard-2:
+    <<: *recommender
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051
+    healthcheck: *shard-health
+  shard-3:
+    <<: *recommender
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051
+    healthcheck: *shard-health
+
+  frontdesk:
+    <<: *recommender
+    command: >
+      python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
+      --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
+    ports: ["8000:8000"]
+    depends_on:
+      shard-0: {condition: service_healthy}
+      shard-1: {condition: service_healthy}
+      shard-2: {condition: service_healthy}
+      shard-3: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
