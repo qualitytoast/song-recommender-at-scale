@@ -42,8 +42,8 @@ def wait_healthy(url="http://127.0.0.1:8000/health", timeout=300):
 
 def run_locust(users, seconds, prefix):
     subprocess.run([sys.executable, "-m", "locust", "-f", "scripts/locustfile.py", "--headless", "-u", str(users),
-                    "-r", str(users), "--run-time", f"{seconds}s", "--host", "http://127.0.0.1:8000", "--csv", prefix,
-                    "--only-summary"], cwd=ROOT, env=ENV, capture_output=True)
+                    "-r", str(min(users, 100)), "--run-time", f"{seconds}s", "--host", "http://127.0.0.1:8000",
+                    "--csv", prefix, "--only-summary"], cwd=ROOT, env={**ENV, **SETTINGS}, capture_output=True)
     rows = {r["Name"]: r for r in csv.DictReader(open(f"{prefix}_stats.csv"))}
     pick = lambda r: {"requests": int(r["Request Count"]), "failures": int(r["Failure Count"]),
                       "per_s": float(r["Requests/s"]), "p50_ms": float(r["50%"]), "p99_ms": float(r["99%"])}

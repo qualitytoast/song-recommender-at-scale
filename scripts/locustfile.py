@@ -3,7 +3,9 @@ prefixes as they type) and asks for recommendations for a held-out playlist (/re
 
     locust -f scripts/locustfile.py --headless -u 32 -r 32 --run-time 30s --host http://localhost:8000
 
-CASES points at serving_check's cases (default runs/serving/cases/cases.json).
+CASES points at serving_check's cases (default runs/serving/cases/cases.json). THINK_MIN and THINK_MAX
+(seconds, default 0 and 0.05) set the pause between a user's actions: near 0 for a stress test, a few
+seconds for people browsing.
 """
 import json
 import os
@@ -16,7 +18,7 @@ WORDS = ["nightcall", "humble", "beyonce", "mr. brightside", "drake", "kavinsky"
 
 
 class Listener(HttpUser):
-    wait_time = between(0.0, 0.05)  # nearly back to back: each user keeps the system busy
+    wait_time = between(float(os.environ.get("THINK_MIN", 0.0)), float(os.environ.get("THINK_MAX", 0.05)))
 
     @task(3)
     def type_a_name(self):

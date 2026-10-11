@@ -146,6 +146,7 @@ class Catalog:
         self.lock = threading.Lock()
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
         self.batcher = None  # a recsys.batching.Batcher, if requests are answered in batches
+        self.answers = {"total": 0, "partial": 0, "cached": 0}  # counts for /health
 
     def load(self, name):
         return np.load(self.path / f"{name}.npy")
@@ -238,10 +239,13 @@ class Catalog:
         answer = {"used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
                   "ignored": ignored, "version": self.version}
         key = f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
+        self.answers["total"] += 1
         if self.cache and (cached := self.cache.get(key)) is not None:
+            self.answers["cached"] += 1
             return {"recommendations": cached, **answer, "partial": False, "cached": True,
                     "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
         times, recommendations, notes = self.compute(used, name_ids)
+        self.answers["partial"] += notes["partial"]
         if self.cache and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
             self.cache.set(key, recommendations)
         times = {"lookup": lookup_ms, **times}

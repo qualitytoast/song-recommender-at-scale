@@ -84,7 +84,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         status = "ok" if shards is None or all(s["up"] for s in shards) else "degraded"
         return {"status": status, "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
                 "shards": shards, "cache": rec.cache.report() if rec.cache else None,
-                "batching": rec.batcher.report() if rec.batcher else None}
+                "batching": rec.batcher.report() if rec.batcher else None, "answers": rec.answers}
 
     return app
 
