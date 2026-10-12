@@ -1,5 +1,7 @@
 # Song Recommender at Scale
 
+[![Tests](https://github.com/qualitytoast/song-recommender-at-scale/actions/workflows/tests.yml/badge.svg)](https://github.com/qualitytoast/song-recommender-at-scale/actions/workflows/tests.yml)
+
 A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
 predicts the next one. It is trained on the Spotify Million Playlist Dataset
 (MPD), uses song and playlist features, and works in two stages: a fast
