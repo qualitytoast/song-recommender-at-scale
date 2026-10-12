@@ -198,6 +198,7 @@ def test_training_on_the_next_songs_end_to_end(tmp_path, monkeypatch):
     import csv
     import json
 
+    from recsys.evaluate import evaluate
     from recsys.mpd_store import build_store
     from recsys.train import train
     from test_mpd_store import random_mpd
@@ -218,6 +219,12 @@ def test_training_on_the_next_songs_end_to_end(tmp_path, monkeypatch):
                 assert row["val_ndcg"] == row["val_next_ndcg@10"]
         summary = json.loads((run / "summary.json").read_text())
         assert summary["target_songs"] == n and (run / "best.pt").exists()
+        evaluate(config, 1)
+        results = json.loads((run / "eval_any_length.json").read_text())  # any-length test cases
+        for name in ("validation", "full held-out"):
+            r = results[name]
+            assert {"ndcg@10", "hits@10", "later@10", "artists@10", "last_artist@10"} <= r.keys()
+            assert ("trained_for_ndcg@10" in r) == (n > 1)
 
 
 def test_target_settings_are_checked(tmp_path):

@@ -12,6 +12,12 @@ them to eval.json in the same folder.
 scores every held-out window instead of the config's fixed sample (test_max_windows), for
 a final model's headline number, and saves to eval_all.json, leaving eval.json as it was.
 
+Besides next-song NDCG@10 and Hits@k, validation and held-out get playlist scores (train.ScoredCases):
+NDCG@10 over the songs the model was trained to find (when that is the next several), "later@10"
+(the share of the top 10, input songs left out as served, that the playlist goes on to contain), and
+the top 10's artist variety ("artists@10": different artists; "last_artist@10": share by the last
+input song's artist).
+
     python -m recsys.evaluate --config configs/retriever_1m.toml --windows any_length
 
 scores test cases of every length (data.windows) whatever the config says, to re-score a
@@ -31,7 +37,7 @@ from recsys.config import load_config
 from recsys.data import build_dataset
 from recsys.metrics import gains_from_ranks
 from recsys.model import build_model, rank_and_loss
-from recsys.train import pick_device, run_dir_for
+from recsys.train import ScoredCases, pick_device, run_dir_for
 
 KS = (1, 5, 10)
 # Shortlist sizes for a second-stage ranker: recall@K = how often the true next song
@@ -46,6 +52,30 @@ def score(ranks, recall_ks=()):
     result.update({f"hits@{k}": float(np.mean(ranks <= k)) for k in KS})
     result.update({f"recall@{k}": float(np.mean(ranks <= k)) for k in sorted({*RECALL_KS, *recall_ks})})
     return result
+
+
+def playlist_scores(cases, ranks, top):
+    """The playlist scores of ScoredCases cases, keyed for an evaluation's results: "trained_for_ndcg@10" only
+    when the model trains on more than the next song (otherwise it is "ndcg@10")."""
+    s = cases.summary(ranks, top)
+    out = {"trained_for_ndcg@10": s["ndcg@10"]} if ranks.shape[1] > 1 else {}
+    out.update({k: s[k] for k in ("later@10", "artists@10", "last_artist@10") if k in s})
+    return out
+
+
+PLAYLIST_COLUMNS = (("trained_for_ndcg@10", "trained-for NDCG@10"), ("later@10", "later@10"),
+                    ("artists@10", "artists@10"), ("last_artist@10", "last artist@10"))
+
+
+def print_playlist_scores(results):
+    """One line per result that has playlist scores (playlist_scores)."""
+    rows = {name: r for name, r in results.items() if isinstance(r, dict) and "later@10" in r}
+    if not rows:
+        return
+    cols = [(k, label) for k, label in PLAYLIST_COLUMNS if any(k in r for r in rows.values())]
+    print(f"\n{'':30}" + "".join(f"{label:>20}" for _, label in cols))
+    for name, r in rows.items():
+        print(f"{name:30}" + "".join(f"{r[k]:>20.4f}" if k in r else f"{'':>20}" for k, _ in cols))
 
 
 def eval_file(all_held_out, windows="full"):
@@ -128,10 +158,21 @@ def evaluate(config_path, train_seed, all_held_out=False, windows=None):
         results["validation subset"] = model_score(ds.XI_val, ds.Y_val, ds.N_val, ds.LI_val)
         results["held-out minus validation"] = model_score(ds.XI_test[n_val:], ds.Y_test[n_val:], ds.N_test[n_val:],
                                                            ds.LI_test[n_val:])
+    else:  # separate playlists
+        t = cfg.train
+        cases = ScoredCases(ds, ds.XI_val, ds.N_val, ds.Y_val, ds.LI_val, ds.H_val, ds.O_val, t.target_songs,
+                            t.target_decay, device)
+        ranks, _, top = cases.rank(model)
+        results["validation"] = {**score(ranks[:, 0]), **playlist_scores(cases, ranks, top)}
+    if cfg.data.validation == "held_out_prefix":
+        held_out_ranks = model_ranks(ds.XI_test, ds.Y_test, ds.N_test, ds.LI_test)
+        held_out_playlist = {}
     else:
-        results["validation"] = model_score(ds.XI_val, ds.Y_val, ds.N_val, ds.LI_val)  # separate playlists
-    held_out_ranks = model_ranks(ds.XI_test, ds.Y_test, ds.N_test, ds.LI_test)
-    results["full held-out"] = score(held_out_ranks)  # with any-length cases, every length: the headline
+        cases = ScoredCases(ds, ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test, ds.H_test, ds.O_test,
+                            cfg.train.target_songs, cfg.train.target_decay, device)
+        ranks, _, top = cases.rank(model)
+        held_out_ranks, held_out_playlist = ranks[:, 0], playlist_scores(cases, ranks, top)
+    results["full held-out"] = {**score(held_out_ranks), **held_out_playlist}  # any-length cases: the headline
     any_length, longest = cfg.data.windows == "any_length", cfg.data.input_length
     if any_length:  # the cases with every song an input can hold: the old full windows
         results[f"held-out, {longest} songs"] = score(held_out_ranks[ds.LI_test == longest])
@@ -147,6 +188,7 @@ def evaluate(config_path, train_seed, all_held_out=False, windows=None):
             print(f"{name:30}{r['n']:>8,}{r['ndcg@10']:>10.4f}"
                   + "".join(f"{r[f'hits@{k}']:>9.3f}" for k in KS)
                   + "".join(f"{r[f'recall@{k}']:>9.3f}" for k in RECALL_KS))
+    print_playlist_scores(results)
     if any_length:
         print(f"\nheld-out by input length{'':4}{'n':>10}{'NDCG@10':>10}{'hits@10':>9}")
         print_by_length(results["held-out by length"])

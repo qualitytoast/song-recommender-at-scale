@@ -97,11 +97,13 @@ class EvalSchedule:
         return True
 
 
-class ValidationCases:
-    """What validation checks score a model on: each case's target songs (its next one, or its next n, see
-    data.case_targets) and their weights, the songs its playlist goes on to contain (data.later_keys; None
-    without the split's playlist offsets), each song's artist and each case's last input song. scores(model)
-    gives every number a check logs; "ndcg@10" is the one early stopping uses."""
+class ScoredCases:
+    """Cases a model is scored on (validation checks, held-out evaluation): each case's target songs (its next
+    one, or its next n, see data.case_targets) and their weights, the songs its playlist goes on to contain
+    (data.later_keys; None without the split's playlist offsets), each song's artist and each case's last input
+    song. summary() gives "ndcg@10" over the target songs (what early stopping uses; with one target, plain
+    NDCG@10), "next_ndcg@10" (the next song only), "later@10" (share of the top 10 the playlist goes on to
+    contain), "artists@10" and "last_artist@10" (artist variety of the top 10)."""
 
     def __init__(self, ds, X, N, Y, lengths, histories, offsets, n, decay, device):
         self.X, self.N, self.lengths, self.device = X, N, lengths, device
@@ -112,9 +114,18 @@ class ValidationCases:
         self.artist = ds.song_features["artist"][0] if "artist" in ds.song_features else None
         self.last = X[np.arange(len(X)), lengths - 1]
 
+    def rank(self, model):
+        """(ranks of each case's target songs (cases, n), its next song's loss, its top 10): rank_targets."""
+        return rank_targets(model, self.X, self.N, self.T, self.device, lengths=self.lengths)
+
     def scores(self, model):
-        ranks, losses, top = rank_targets(model, self.X, self.N, self.T, self.device, lengths=self.lengths)
-        out = {"loss": float(losses.mean()), "ndcg@10": float(multi_target_gains(ranks, self.weights).mean()),
+        ranks, losses, top = self.rank(model)
+        return {"loss": float(losses.mean()), **self.summary(ranks, top)}
+
+    def summary(self, ranks, top):
+        """The scores above from ranks (cases, n) of the target songs (0: none; a missed shortlist's MISSED
+        counts as not found) and each case's top 10 songs."""
+        out = {"ndcg@10": float(multi_target_gains(ranks, self.weights).mean()),
                "next_ndcg@10": float(gains_from_ranks(ranks[:, 0], k=10).mean())}
         if self.later is not None:
             out["later@10"] = float(later_precision(top, self.later, self.n_songs).mean())
@@ -211,7 +222,7 @@ def train(config_path, train_seed):
     if t.compile:  # same model and weights; only how the GPU runs the step changes
         forward_loss = torch.compile(forward_loss)
         forward_several = torch.compile(forward_several)
-    val_cases = ValidationCases(ds, ds.XI_val, ds.N_val, ds.Y_val, ds.LI_val, ds.H_val, ds.O_val, t.target_songs,
+    val_cases = ScoredCases(ds, ds.XI_val, ds.N_val, ds.Y_val, ds.LI_val, ds.H_val, ds.O_val, t.target_songs,
                                 t.target_decay, device)
 
     num_params = sum(p.numel() for p in model.parameters())
