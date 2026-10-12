@@ -1,0 +1,92 @@
+{
+  "label": "docker4",
+  "health": {
+    "status": "ok",
+    "version": "f73f0d4e1e71",
+    "songs": 1053328,
+    "device": "cpu",
+    "shards": [
+      {
+        "index": 0,
+        "address": "shard-0:50051",
+        "up": true
+      },
+      {
+        "index": 1,
+        "address": "shard-1:50051",
+        "up": true
+      },
+      {
+        "index": 2,
+        "address": "shard-2:50051",
+        "up": true
+      },
+      {
+        "index": 3,
+        "address": "shard-3:50051",
+        "up": true
+      }
+    ]
+  },
+  "cases": 2000,
+  "same_top10_in_order": 2000,
+  "same_top10_as_set": 2000,
+  "same_top10_by_length": {
+    "1": "200/200",
+    "2": "200/200",
+    "3": "200/200",
+    "4": "200/200",
+    "5": "200/200",
+    "6": "200/200",
+    "7": "200/200",
+    "8": "200/200",
+    "9": "200/200",
+    "10": "200/200"
+  },
+  "ndcg@10": {
+    "offline": 0.1524405814642747,
+    "served": 0.1524405814642747
+  },
+  "latency_ms": {
+    "lookup": {
+      "p50": 0.029,
+      "p99": 0.051
+    },
+    "shards: input songs": {
+      "p50": 1.187,
+      "p99": 2.214
+    },
+    "retriever": {
+      "p50": 3.9085,
+      "p99": 5.35924
+    },
+    "shards: search": {
+      "p50": 1.671,
+      "p99": 2.47518
+    },
+    "shards: candidates": {
+      "p50": 2.315,
+      "p99": 3.24913
+    },
+    "ranker inputs": {
+      "p50": 0.635,
+      "p99": 0.89201
+    },
+    "ranker": {
+      "p50": 7.7829999999999995,
+      "p99": 11.202069999999999
+    },
+    "total": {
+      "p50": 17.1905,
+      "p99": 23.820429999999998
+    },
+    "end to end (client)": {
+      "p50": 19.166583428159356,
+      "p99": 26.20972941163927
+    }
+  },
+  "memory_mb": {
+    "server": 0,
+    "search process": 0
+  }
+}

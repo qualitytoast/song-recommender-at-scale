@@ -1,0 +1,132 @@
+[
+  {
+    "label": "base",
+    "settings": {
+      "REDIS_URL": "",
+      "BATCH": "0"
+    },
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 16,
+    "/recommend": {
+      "requests": 3054,
+      "failures": 0,
+      "per_s": 105.22666858564345,
+      "p50_ms": 33.0,
+      "p99_ms": 67.0
+    },
+    "/songs": {
+      "requests": 27335,
+      "failures": 0,
+      "per_s": 941.8372579530334,
+      "p50_ms": 2.0,
+      "p99_ms": 5.0
+    },
+    "Aggregated": {
+      "requests": 30389,
+      "failures": 0,
+      "per_s": 1047.063926538677,
+      "p50_ms": 2.0,
+      "p99_ms": 51.0
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": null,
+      "batching": null
+    }
+  },
+  {
+    "label": "base",
+    "settings": {
+      "REDIS_URL": "",
+      "BATCH": "0"
+    },
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 64,
+    "/recommend": {
+      "requests": 3112,
+      "failures": 0,
+      "per_s": 107.23902748229528,
+      "p50_ms": 370.0,
+      "p99_ms": 470.0
+    },
+    "/songs": {
+      "requests": 28025,
+      "failures": 0,
+      "per_s": 965.7370646501688,
+      "p50_ms": 12.0,
+      "p99_ms": 34.0
+    },
+    "Aggregated": {
+      "requests": 31137,
+      "failures": 0,
+      "per_s": 1072.9760921324641,
+      "p50_ms": 13.0,
+      "p99_ms": 410.0
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": null,
+      "batching": null
+    }
+  }
+]

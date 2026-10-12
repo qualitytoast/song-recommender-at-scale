@@ -1,0 +1,17 @@
+{
+  "config": "configs/p3_50k.toml",
+  "train_seed": 2,
+  "device": "mps",
+  "num_params": 35426979,
+  "eval_every_targets": 572137,
+  "best_check": 14,
+  "best_epochs": 3.75,
+  "best_val_ndcg": 0.10774762208876557,
+  "checks_run": 20,
+  "epochs_run": 5.0,
+  "train_seconds": 2504.9,
+  "val_seconds_total": 113.5,
+  "val_seconds_per_check": 5.67,
+  "git_commit": "35cb591",
+  "git_dirty": false
+}

@@ -1,0 +1,56 @@
+{
+  "best_check": 15,
+  "search": "ivf nlist=2048 nprobe=128",
+  "retriever + ranker (top 100)": {
+    "n": 200000,
+    "ndcg@10": 0.15713133276144414,
+    "hits@1": 0.094945,
+    "hits@5": 0.18461,
+    "hits@10": 0.23313,
+    "recall@100": 0.430205,
+    "recall@500": 0.430205,
+    "recall@1000": 0.430205,
+    "recall@2000": 0.430205,
+    "recall@5000": 0.430205
+  },
+  "retriever alone": {
+    "n": 200000,
+    "ndcg@10": 0.13324819612347735,
+    "hits@1": 0.079635,
+    "hits@5": 0.15493,
+    "hits@10": 0.200195,
+    "recall@100": 0.430205,
+    "recall@500": 0.430205,
+    "recall@1000": 0.430205,
+    "recall@2000": 0.430205,
+    "recall@5000": 0.430205
+  },
+  "retriever alone, exact search": {
+    "n": 200000,
+    "ndcg@10": 0.12405753721568599,
+    "hits@1": 0.072785,
+    "hits@5": 0.143575,
+    "hits@10": 0.1894,
+    "recall@100": 0.42765,
+    "recall@500": 0.647515,
+    "recall@1000": 0.73252,
+    "recall@2000": 0.80561,
+    "recall@5000": 0.881925,
+    "from": "runs/retriever_ranker_runs/200k/retriever_200k_1m_settings/seed1/eval.json"
+  },
+  "most-popular": {
+    "n": 200000,
+    "ndcg@10": 0.0032281019475499484,
+    "hits@1": 0.000815,
+    "hits@5": 0.003735,
+    "hits@10": 0.00681,
+    "recall@100": 0.04665,
+    "recall@500": 0.151455,
+    "recall@1000": 0.23761,
+    "recall@2000": 0.348195,
+    "recall@5000": 0.519625
+  },
+  "search_seconds": 35.9,
+  "rerank_seconds": 29.4,
+  "total_seconds": 69.2
+}

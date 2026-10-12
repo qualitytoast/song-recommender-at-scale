@@ -1,0 +1,20 @@
+runs/r_50k_lazy/seed1 | 302,495 ranker windows, 5,000 val windows | shortlists (exact) in 144s | train recall@500 59.0%
+35,427,172 params: the retriever's + 193 new (candidate marker, position, correction)
+check   0 | 0 windows | train loss 0.0000 | val NDCG@10 0.1061 Hits@10 0.171 Hits@1 0.056 | train 0s + val 2s  *best
+check   1 | 60,032 windows | train loss 4.7354 | val NDCG@10 0.1130 Hits@10 0.181 Hits@1 0.060 | train 20s + val 2s  *best
+check   2 | 120,000 windows | train loss 4.5968 | val NDCG@10 0.1160 Hits@10 0.185 Hits@1 0.062 | train 15s + val 2s  *best
+check   3 | 180,032 windows | train loss 4.5526 | val NDCG@10 0.1166 Hits@10 0.185 Hits@1 0.062 | train 16s + val 1s  *best
+check   4 | 240,000 windows | train loss 4.4933 | val NDCG@10 0.1185 Hits@10 0.189 Hits@1 0.063 | train 16s + val 2s  *best
+check   5 | 300,032 windows | train loss 4.4490 | val NDCG@10 0.1181 Hits@10 0.187 Hits@1 0.063 | train 15s + val 2s  no improvement 1/5
+check   6 | 360,031 windows | train loss 4.3939 | val NDCG@10 0.1179 Hits@10 0.186 Hits@1 0.065 | train 15s + val 2s  no improvement 2/5
+check   7 | 420,063 windows | train loss 4.3548 | val NDCG@10 0.1177 Hits@10 0.183 Hits@1 0.066 | train 14s + val 2s  no improvement 3/5
+check   8 | 480,031 windows | train loss 4.3309 | val NDCG@10 0.1165 Hits@10 0.182 Hits@1 0.064 | train 14s + val 2s  no improvement 4/5
+check   9 | 540,063 windows | train loss 4.3182 | val NDCG@10 0.1175 Hits@10 0.184 Hits@1 0.066 | train 15s + val 1s  no improvement 5/5
+early stop at check 9
+best val NDCG@10 0.1185 at check 4 (retriever alone 0.1061) | 5.1 min
+
+runs/r_50k_lazy/seed1/best.pt (check 4) | held-out 159,081 windows | shortlists (exact) 73s | reranking 52s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 500
+retriever + ranker (top 500)          0.1130    0.060    0.134    0.181     0.622
+retriever alone                       0.1012    0.053    0.119    0.164     0.622
+most-popular                          0.0034    0.001    0.004    0.007     0.172

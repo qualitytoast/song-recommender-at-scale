@@ -1,0 +1,27 @@
+# Phase 1, experiment 3: v1_adam with AdamW (decoupled weight decay) instead of Adam.
+# Only the optimizer and weight_decay differ from v1_adam.toml.
+
+seed = 42
+
+[data]
+folder = "data/mpd"
+max_playlists = 5000
+min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
+min_freq = 2           # songs seen fewer times than this are dropped
+context_length = 10    # predict the 11th song from the previous 10
+test_split = 0.1       # fraction of playlists held out
+val_size = 3000        # first N held-out windows, used for early stopping
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+
+[train]
+optimizer = "adamw"    # was "adam"
+lr = 1e-3             # was 0.05; Adam steps are ~lr in size, so it needs a smaller lr
+weight_decay = 0.05    # was 1e-3; lr * wd = 5e-5 shrink per step, same as v1_baseline (SGD)
+batch_size = 32
+epochs = 40
+min_epochs = 20
+patience = 10

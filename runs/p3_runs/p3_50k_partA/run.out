@@ -1,0 +1,42 @@
+runs/p3_50k_partA/seed1 | device mps | 166,627 songs | 239,397 train chunks (1,832,555 targets) | 20,000 val | 35,426,979 params
+check   0 | epoch  0.31 | train loss 8.3970 | val loss 8.5361 | val NDCG@10 0.0198 | train 115.5s + val 6.1s  *best
+check   1 | epoch  0.62 | train loss 7.3546 | val loss 7.9795 | val NDCG@10 0.0375 | train 130.1s + val 6.4s  *best
+check   2 | epoch  0.94 | train loss 6.9966 | val loss 7.7032 | val NDCG@10 0.0555 | train 117.8s + val 5.2s  *best
+check   3 | epoch  1.25 | train loss 6.5068 | val loss 7.5758 | val NDCG@10 0.0768 | train 108.6s + val 5.2s  *best
+check   4 | epoch  1.56 | train loss 6.4255 | val loss 7.4763 | val NDCG@10 0.0846 | train 105.8s + val 5.1s  *best
+check   5 | epoch  1.87 | train loss 6.4106 | val loss 7.3997 | val NDCG@10 0.0895 | train 105.8s + val 5.1s  *best
+check   6 | epoch  2.19 | train loss 6.0548 | val loss 7.4639 | val NDCG@10 0.0982 | train 106.1s + val 5.1s  *best
+check   7 | epoch  2.50 | train loss 5.9561 | val loss 7.4516 | val NDCG@10 0.0982 | train 106.0s + val 5.1s
+check   8 | epoch  2.81 | train loss 6.0577 | val loss 7.4183 | val NDCG@10 0.1006 | train 111.8s + val 6.0s  *best
+check   9 | epoch  3.12 | train loss 5.8438 | val loss 7.5387 | val NDCG@10 0.1015 | train 117.8s + val 5.6s  *best
+check  10 | epoch  3.43 | train loss 5.6340 | val loss 7.5538 | val NDCG@10 0.0993 | train 113.8s + val 5.2s  no improvement 1/5
+check  11 | epoch  3.75 | train loss 5.8163 | val loss 7.5183 | val NDCG@10 0.0976 | train 115.8s + val 5.7s  no improvement 2/5
+check  12 | epoch  4.06 | train loss 5.7877 | val loss 7.6527 | val NDCG@10 0.1021 | train 113.7s + val 5.2s  *best
+check  13 | epoch  4.37 | train loss 5.3629 | val loss 7.6956 | val NDCG@10 0.0980 | train 116.2s + val 5.7s  no improvement 1/5
+check  14 | epoch  4.68 | train loss 5.6155 | val loss 7.6406 | val NDCG@10 0.0964 | train 111.4s + val 5.3s  no improvement 2/5
+check  15 | epoch  5.00 | train loss 5.7929 | val loss 7.5728 | val NDCG@10 0.0977 | train 108.9s + val 6.4s  no improvement 3/5
+check  16 | epoch  5.31 | train loss 5.1498 | val loss 7.8017 | val NDCG@10 0.0956 | train 111.4s + val 5.1s  no improvement 4/5
+check  17 | epoch  5.62 | train loss 5.4622 | val loss 7.7218 | val NDCG@10 0.0955 | train 116.3s + val 5.7s  no improvement 5/5
+early stop at check 17
+best val NDCG@10 0.1021 at check 12 (4.06 epochs) | 35.6 min, of which validation 1.7 min | saved runs/p3_50k_partA/seed1/best.pt
+runs/p3_50k_partA/seed2 | device mps | 166,627 songs | 239,397 train chunks (1,832,555 targets) | 20,000 val | 35,426,979 params
+check   0 | epoch  0.31 | train loss 8.4035 | val loss 8.5216 | val NDCG@10 0.0191 | train 119.6s + val 5.4s  *best
+check   1 | epoch  0.62 | train loss 7.3420 | val loss 7.9825 | val NDCG@10 0.0384 | train 119.4s + val 5.9s  *best
+check   2 | epoch  0.94 | train loss 6.9939 | val loss 7.7047 | val NDCG@10 0.0558 | train 116.3s + val 5.8s  *best
+check   3 | epoch  1.25 | train loss 6.5303 | val loss 7.5866 | val NDCG@10 0.0754 | train 120.1s + val 5.8s  *best
+check   4 | epoch  1.56 | train loss 6.4314 | val loss 7.4824 | val NDCG@10 0.0833 | train 122.2s + val 5.7s  *best
+check   5 | epoch  1.87 | train loss 6.4126 | val loss 7.4137 | val NDCG@10 0.0898 | train 115.8s + val 5.6s  *best
+check   6 | epoch  2.19 | train loss 6.0520 | val loss 7.4554 | val NDCG@10 0.0995 | train 119.1s + val 5.6s  *best
+check   7 | epoch  2.50 | train loss 5.9565 | val loss 7.4500 | val NDCG@10 0.0988 | train 118.7s + val 5.8s
+check   8 | epoch  2.81 | train loss 6.0619 | val loss 7.4262 | val NDCG@10 0.1020 | train 120.4s + val 5.9s  *best
+check   9 | epoch  3.12 | train loss 5.8600 | val loss 7.5315 | val NDCG@10 0.1029 | train 120.2s + val 6.2s  *best
+check  10 | epoch  3.43 | train loss 5.6112 | val loss 7.5659 | val NDCG@10 0.0992 | train 117.2s + val 5.7s  no improvement 1/5
+check  11 | epoch  3.75 | train loss 5.8284 | val loss 7.5207 | val NDCG@10 0.0981 | train 120.8s + val 6.2s  no improvement 2/5
+check  12 | epoch  4.06 | train loss 5.7810 | val loss 7.6433 | val NDCG@10 0.1043 | train 116.3s + val 5.7s  *best
+check  13 | epoch  4.37 | train loss 5.3492 | val loss 7.6941 | val NDCG@10 0.0973 | train 116.9s + val 5.8s  no improvement 1/5
+check  14 | epoch  4.68 | train loss 5.6211 | val loss 7.6284 | val NDCG@10 0.0966 | train 120.5s + val 5.8s  no improvement 2/5
+check  15 | epoch  5.00 | train loss 5.8011 | val loss 7.5552 | val NDCG@10 0.0981 | train 123.2s + val 5.7s  no improvement 3/5
+check  16 | epoch  5.31 | train loss 5.1475 | val loss 7.7742 | val NDCG@10 0.0980 | train 121.9s + val 5.7s  no improvement 4/5
+check  17 | epoch  5.62 | train loss 5.4574 | val loss 7.7005 | val NDCG@10 0.0973 | train 120.1s + val 6.1s  no improvement 5/5
+early stop at check 17
+best val NDCG@10 0.1043 at check 12 (4.06 epochs) | 37.6 min, of which validation 1.7 min | saved runs/p3_50k_partA/seed2/best.pt

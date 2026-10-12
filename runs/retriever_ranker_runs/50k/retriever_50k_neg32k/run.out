@@ -1,0 +1,12 @@
+runs/retriever_ranker_runs/retriever_50k_neg32k/seed1 | device mps | 166,627 songs | 239,397 train chunks (1,832,555 targets) | 20,000 val | 35,426,979 params
+check   0 | epoch  0.25 | train loss 10.1659 | val loss 8.8897 | val NDCG@10 0.0133 | train 74.6s + val 5.2s  *best
+check   1 | epoch  0.50 | train loss 9.0764 | val loss 8.2728 | val NDCG@10 0.0262 | train 72.5s + val 5.4s  *best
+check   2 | epoch  0.75 | train loss 8.6303 | val loss 7.9464 | val NDCG@10 0.0379 | train 73.7s + val 5.1s  *best
+check   3 | epoch  1.00 | train loss 8.3914 | val loss 7.7434 | val NDCG@10 0.0512 | train 73.3s + val 5.4s  *best
+check   4 | epoch  1.25 | train loss 7.8728 | val loss 7.6351 | val NDCG@10 0.0688 | train 75.2s + val 5.2s  *best
+check   5 | epoch  1.50 | train loss 7.8264 | val loss 7.5156 | val NDCG@10 0.0789 | train 74.3s + val 5.2s  *best
+check   6 | epoch  1.75 | train loss 7.7633 | val loss 7.4259 | val NDCG@10 0.0830 | train 73.6s + val 5.4s  *best
+check   7 | epoch  2.00 | train loss 7.7105 | val loss 7.3518 | val NDCG@10 0.0921 | train 74.9s + val 5.5s  *best
+check   8 | epoch  2.25 | train loss 7.1525 | val loss 7.4122 | val NDCG@10 0.0978 | train 74.4s + val 5.3s  *best
+check   9 | epoch  2.50 | train loss 7.2250 | val loss 7.3596 | val NDCG@10 0.1017 | train 72.4s + val 5.1s  *best
+check  10 | epoch  2.75 | train loss 7.2403 | val loss 7.3251 | val NDCG@10 0.1041 | train 73.7s + val 5.3s  *best

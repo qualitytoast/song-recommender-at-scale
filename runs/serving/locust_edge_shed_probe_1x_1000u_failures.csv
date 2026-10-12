@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,/recommend,CatchResponseError('busy (503)'),5739,2026-10-11T18:05:13Z,2026-10-11T18:06:14Z
+GET,/songs,HTTPError('503 Server Error: Service Temporarily Unavailable for url: /songs'),109993,2026-10-11T18:05:13Z,2026-10-11T18:06:15Z

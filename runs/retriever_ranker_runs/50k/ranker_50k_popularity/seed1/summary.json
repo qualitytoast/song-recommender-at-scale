@@ -1,0 +1,20 @@
+{
+  "config": "configs/ranker_50k_popularity.toml",
+  "train_seed": 1,
+  "retriever": "configs/retriever_50k.toml",
+  "search": "ivf nlist=2048 nprobe=128",
+  "num_params": 35427173,
+  "new_params": 194,
+  "trained_params": 35427173,
+  "train_windows_used": 117999,
+  "features": [
+    "log_popularity"
+  ],
+  "best_check": 32,
+  "best_val_ndcg": 0.12356012029677574,
+  "retriever_val_ndcg": 0.11791096609587558,
+  "checks_run": 38,
+  "train_seconds": 356.8,
+  "git_commit": "ea86097",
+  "git_dirty": false
+}

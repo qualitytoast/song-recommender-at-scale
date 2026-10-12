@@ -1,0 +1,23 @@
+cpu: up after 2 s
+cpu: 2,000 requests | same top 10 as offline: 2,000 in order, 2,000 as a set | NDCG@10 served 0.1524 vs offline 0.1524
+  by length: 1: 200/200, 2: 200/200, 3: 200/200, 4: 200/200, 5: 200/200, 6: 200/200, 7: 200/200, 8: 200/200, 9: 200/200, 10: 200/200
+  lookup                 p50    0.01 ms   p99    0.02 ms
+  retriever              p50    0.20 ms   p99    0.24 ms
+  search                 p50    0.27 ms   p99    0.33 ms
+  ranker inputs          p50    0.13 ms   p99    0.18 ms
+  ranker                 p50    0.39 ms   p99    0.45 ms
+  total                  p50    1.00 ms   p99    1.20 ms
+  end to end (client)    p50    1.50 ms   p99    1.78 ms
+  memory: server 2,445 MB, search process 1,411 MB
+mps: up after 1 s
+mps: 2,000 requests | same top 10 as offline: 2,000 in order, 2,000 as a set | NDCG@10 served 0.1524 vs offline 0.1524
+  by length: 1: 200/200, 2: 200/200, 3: 200/200, 4: 200/200, 5: 200/200, 6: 200/200, 7: 200/200, 8: 200/200, 9: 200/200, 10: 200/200
+  lookup                 p50    0.01 ms   p99    0.02 ms
+  retriever              p50    0.94 ms   p99    1.72 ms
+  search                 p50    0.33 ms   p99    0.47 ms
+  ranker inputs          p50    1.20 ms   p99    2.57 ms
+  ranker                 p50    4.40 ms   p99    9.74 ms
+  total                  p50    6.95 ms   p99   13.17 ms
+  end to end (client)    p50    7.60 ms   p99   13.89 ms
+  memory: server 784 MB, search process 1,411 MB
+servers stopped

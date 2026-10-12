@@ -1,0 +1,20 @@
+runs/retriever_ranker_runs/retriever_ranker_50k_b128/seed1 | 302,495 ranker windows, 20,000 val windows | shortlists (exact) in 154s | train recall@500 60.7%
+35,427,172 params: the retriever's + 193 new (candidate marker, position, correction)
+check   0 | 0 windows | train loss 0.0000 | val loss 4.5678 | val NDCG@10 0.1178 Hits@10 0.180 Hits@1 0.069 | train 0s + val 10s  *best
+check   1 | 60,544 windows | train loss 4.8632 | val loss 4.5282 | val NDCG@10 0.1168 Hits@10 0.178 Hits@1 0.069 | train 22s + val 9s
+check   2 | 121,024 windows | train loss 4.8205 | val loss 4.5175 | val NDCG@10 0.1164 Hits@10 0.178 Hits@1 0.068 | train 16s + val 8s
+check   3 | 181,504 windows | train loss 4.8564 | val loss 4.5089 | val NDCG@10 0.1164 Hits@10 0.178 Hits@1 0.068 | train 15s + val 7s
+check   4 | 242,048 windows | train loss 4.8377 | val loss 4.5012 | val NDCG@10 0.1166 Hits@10 0.178 Hits@1 0.069 | train 15s + val 7s
+check   5 | 302,495 windows | train loss 4.7993 | val loss 4.4946 | val NDCG@10 0.1166 Hits@10 0.178 Hits@1 0.068 | train 15s + val 7s  no improvement 1/5
+check   6 | 363,039 windows | train loss 4.8096 | val loss 4.4891 | val NDCG@10 0.1160 Hits@10 0.177 Hits@1 0.068 | train 14s + val 7s  no improvement 2/5
+check   7 | 423,519 windows | train loss 4.7911 | val loss 4.4837 | val NDCG@10 0.1156 Hits@10 0.176 Hits@1 0.068 | train 14s + val 7s  no improvement 3/5
+check   8 | 483,999 windows | train loss 4.7635 | val loss 4.4783 | val NDCG@10 0.1160 Hits@10 0.177 Hits@1 0.068 | train 14s + val 7s  no improvement 4/5
+check   9 | 544,543 windows | train loss 4.7980 | val loss 4.4741 | val NDCG@10 0.1157 Hits@10 0.177 Hits@1 0.067 | train 14s + val 7s  no improvement 5/5
+early stop at check 9
+best val NDCG@10 0.1178 at check 0 (retriever alone 0.1178) | 6.2 min
+
+runs/retriever_ranker_runs/retriever_ranker_50k_b128/seed1/best.pt (check 0) | held-out 159,081 windows | shortlists (exact) 72s | reranking 51s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 500
+retriever + ranker (top 500)          0.1172    0.068    0.137    0.179     0.642
+retriever alone                       0.1172    0.068    0.137    0.179     0.642
+most-popular                          0.0034    0.001    0.004    0.007     0.172

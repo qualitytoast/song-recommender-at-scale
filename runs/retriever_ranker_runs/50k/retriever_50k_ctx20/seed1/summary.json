@@ -1,0 +1,17 @@
+{
+  "config": "configs/retriever_50k_ctx20.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 35427619,
+  "eval_every_targets": 458138,
+  "best_check": 26,
+  "best_epochs": 6.7502,
+  "best_val_ndcg": 0.11595150700842785,
+  "checks_run": 32,
+  "epochs_run": 8.0,
+  "train_seconds": 587.0,
+  "val_seconds_total": 100.6,
+  "val_seconds_per_check": 3.14,
+  "git_commit": "a20992c",
+  "git_dirty": false
+}

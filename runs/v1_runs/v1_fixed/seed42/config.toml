@@ -1,0 +1,33 @@
+# Phase 1, final run: v1_adamw with all five v1 quirks fixed at once.
+# Differences from v1_adamw.toml are marked "was".
+
+seed = 42
+
+[data]
+folder = "data/mpd"
+max_playlists = 5000
+min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
+min_freq = 2           # songs seen fewer times than this are dropped
+song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
+vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
+context_length = 10    # predict the 11th song from the previous 10
+test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
+validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
+val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
+val_size = 0             # was 3000; unused with separate_playlists
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
+init = "pytorch"         # was "v1": PyTorch's default starting weights
+
+[train]
+optimizer = "adamw"    # decoupled weight decay
+lr = 1e-3
+weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
+batch_size = 32
+epochs = 40
+min_epochs = 20
+patience = 10

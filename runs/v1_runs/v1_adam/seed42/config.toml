@@ -1,0 +1,27 @@
+# Phase 1, experiment 2: v1_baseline with Adam instead of SGD.
+# Only the optimizer and its learning rate differ from v1_baseline.toml.
+
+seed = 42
+
+[data]
+folder = "data/mpd"
+max_playlists = 5000
+min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
+min_freq = 2           # songs seen fewer times than this are dropped
+context_length = 10    # predict the 11th song from the previous 10
+test_split = 0.1       # fraction of playlists held out
+val_size = 3000        # first N held-out windows, used for early stopping
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+
+[train]
+optimizer = "adam"     # was "sgd"
+lr = 1e-3             # was 0.05; Adam steps are ~lr in size, so it needs a smaller lr
+weight_decay = 1e-3    # added to the gradient, applied to every parameter
+batch_size = 32
+epochs = 40
+min_epochs = 20
+patience = 10

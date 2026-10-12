@@ -1,0 +1,96 @@
+runs/p3_neg8k/seed1 | device mps | 30,587 songs | 30,441 train chunks (172,048 targets) | 6,109 val | 7,202,491 params
+epoch  0 | train loss 8.1757 | val loss 8.1222 | val NDCG@10 0.0139 | 18.8s  *best
+epoch  1 | train loss 6.9739 | val loss 7.6129 | val NDCG@10 0.0357 | 17.3s  *best
+epoch  2 | train loss 6.0131 | val loss 7.5092 | val NDCG@10 0.0564 | 20.2s  *best
+epoch  3 | train loss 5.1858 | val loss 7.6650 | val NDCG@10 0.0642 | 18.8s  *best
+epoch  4 | train loss 4.5272 | val loss 7.8583 | val NDCG@10 0.0659 | 18.8s  *best
+epoch  5 | train loss 4.0514 | val loss 8.0045 | val NDCG@10 0.0679 | 17.6s  *best
+epoch  6 | train loss 3.6955 | val loss 8.2316 | val NDCG@10 0.0637 | 18.6s
+epoch  7 | train loss 3.4234 | val loss 8.4213 | val NDCG@10 0.0628 | 16.7s
+epoch  8 | train loss 3.2073 | val loss 8.5654 | val NDCG@10 0.0617 | 19.3s
+epoch  9 | train loss 3.0291 | val loss 8.6917 | val NDCG@10 0.0593 | 19.4s
+epoch 10 | train loss 2.8733 | val loss 8.8975 | val NDCG@10 0.0571 | 19.0s  no improvement 1/10
+epoch 11 | train loss 2.7272 | val loss 9.0432 | val NDCG@10 0.0583 | 19.9s  no improvement 2/10
+epoch 12 | train loss 2.6061 | val loss 9.0649 | val NDCG@10 0.0582 | 20.3s  no improvement 3/10
+epoch 13 | train loss 2.4982 | val loss 9.3342 | val NDCG@10 0.0550 | 20.4s  no improvement 4/10
+epoch 14 | train loss 2.3982 | val loss 9.4553 | val NDCG@10 0.0543 | 19.8s  no improvement 5/10
+epoch 15 | train loss 2.3066 | val loss 9.5542 | val NDCG@10 0.0562 | 19.8s  no improvement 6/10
+epoch 16 | train loss 2.2289 | val loss 9.7266 | val NDCG@10 0.0548 | 21.6s  no improvement 7/10
+epoch 17 | train loss 2.1519 | val loss 9.7583 | val NDCG@10 0.0527 | 18.8s  no improvement 8/10
+epoch 18 | train loss 2.0797 | val loss 9.9229 | val NDCG@10 0.0523 | 16.8s  no improvement 9/10
+epoch 19 | train loss 2.0194 | val loss 10.0361 | val NDCG@10 0.0517 | 17.1s  no improvement 10/10
+early stop at epoch 19
+best val NDCG@10 0.0679 at epoch 5 | 6.3 min | saved runs/p3_neg8k/seed1/best.pt
+runs/p3_neg8k/seed2 | device mps | 30,587 songs | 30,441 train chunks (172,048 targets) | 6,109 val | 7,202,491 params
+epoch  0 | train loss 8.1840 | val loss 8.1652 | val NDCG@10 0.0144 | 17.9s  *best
+epoch  1 | train loss 6.9942 | val loss 7.6415 | val NDCG@10 0.0360 | 19.1s  *best
+epoch  2 | train loss 6.0464 | val loss 7.5603 | val NDCG@10 0.0546 | 18.3s  *best
+epoch  3 | train loss 5.2139 | val loss 7.7011 | val NDCG@10 0.0620 | 17.8s  *best
+epoch  4 | train loss 4.5531 | val loss 7.9203 | val NDCG@10 0.0638 | 17.3s  *best
+epoch  5 | train loss 4.0584 | val loss 8.1449 | val NDCG@10 0.0633 | 18.2s
+epoch  6 | train loss 3.7006 | val loss 8.3409 | val NDCG@10 0.0625 | 18.7s
+epoch  7 | train loss 3.4244 | val loss 8.5365 | val NDCG@10 0.0593 | 18.2s
+epoch  8 | train loss 3.2038 | val loss 8.7224 | val NDCG@10 0.0614 | 18.9s
+epoch  9 | train loss 3.0223 | val loss 8.9221 | val NDCG@10 0.0574 | 17.9s
+epoch 10 | train loss 2.8653 | val loss 9.0802 | val NDCG@10 0.0589 | 21.6s  no improvement 1/10
+epoch 11 | train loss 2.7301 | val loss 9.1949 | val NDCG@10 0.0585 | 20.1s  no improvement 2/10
+epoch 12 | train loss 2.6055 | val loss 9.3597 | val NDCG@10 0.0571 | 18.5s  no improvement 3/10
+epoch 13 | train loss 2.4968 | val loss 9.5134 | val NDCG@10 0.0583 | 19.1s  no improvement 4/10
+epoch 14 | train loss 2.4065 | val loss 9.6085 | val NDCG@10 0.0576 | 17.1s  no improvement 5/10
+epoch 15 | train loss 2.3166 | val loss 9.7432 | val NDCG@10 0.0567 | 19.2s  no improvement 6/10
+epoch 16 | train loss 2.2313 | val loss 9.8844 | val NDCG@10 0.0548 | 19.0s  no improvement 7/10
+epoch 17 | train loss 2.1563 | val loss 9.9679 | val NDCG@10 0.0549 | 18.3s  no improvement 8/10
+epoch 18 | train loss 2.0894 | val loss 10.1218 | val NDCG@10 0.0510 | 18.1s  no improvement 9/10
+epoch 19 | train loss 2.0225 | val loss 10.1935 | val NDCG@10 0.0547 | 17.9s  no improvement 10/10
+early stop at epoch 19
+best val NDCG@10 0.0638 at epoch 4 | 6.2 min | saved runs/p3_neg8k/seed2/best.pt
+runs/p3_neg8k/seed3 | device mps | 30,587 songs | 30,441 train chunks (172,048 targets) | 6,109 val | 7,202,491 params
+epoch  0 | train loss 8.1783 | val loss 8.1176 | val NDCG@10 0.0143 | 18.4s  *best
+epoch  1 | train loss 6.9928 | val loss 7.6151 | val NDCG@10 0.0321 | 19.6s  *best
+epoch  2 | train loss 6.0667 | val loss 7.4861 | val NDCG@10 0.0575 | 19.2s  *best
+epoch  3 | train loss 5.2481 | val loss 7.6467 | val NDCG@10 0.0637 | 17.3s  *best
+epoch  4 | train loss 4.5787 | val loss 7.8366 | val NDCG@10 0.0667 | 18.0s  *best
+epoch  5 | train loss 4.0819 | val loss 8.0593 | val NDCG@10 0.0636 | 17.7s
+epoch  6 | train loss 3.7234 | val loss 8.2554 | val NDCG@10 0.0623 | 17.8s
+epoch  7 | train loss 3.4454 | val loss 8.4411 | val NDCG@10 0.0614 | 17.0s
+epoch  8 | train loss 3.2276 | val loss 8.5807 | val NDCG@10 0.0618 | 17.2s
+epoch  9 | train loss 3.0406 | val loss 8.7955 | val NDCG@10 0.0601 | 18.0s
+epoch 10 | train loss 2.8799 | val loss 8.9467 | val NDCG@10 0.0584 | 17.4s  no improvement 1/10
+epoch 11 | train loss 2.7428 | val loss 9.1590 | val NDCG@10 0.0560 | 17.3s  no improvement 2/10
+epoch 12 | train loss 2.6205 | val loss 9.3309 | val NDCG@10 0.0555 | 17.1s  no improvement 3/10
+epoch 13 | train loss 2.5077 | val loss 9.5102 | val NDCG@10 0.0558 | 17.5s  no improvement 4/10
+epoch 14 | train loss 2.4072 | val loss 9.5939 | val NDCG@10 0.0562 | 19.2s  no improvement 5/10
+epoch 15 | train loss 2.3159 | val loss 9.7667 | val NDCG@10 0.0528 | 19.8s  no improvement 6/10
+epoch 16 | train loss 2.2335 | val loss 9.9626 | val NDCG@10 0.0527 | 18.0s  no improvement 7/10
+epoch 17 | train loss 2.1529 | val loss 10.1747 | val NDCG@10 0.0512 | 18.0s  no improvement 8/10
+epoch 18 | train loss 2.0895 | val loss 10.2132 | val NDCG@10 0.0501 | 18.1s  no improvement 9/10
+epoch 19 | train loss 2.0334 | val loss 10.1954 | val NDCG@10 0.0513 | 18.1s  no improvement 10/10
+early stop at epoch 19
+best val NDCG@10 0.0667 at epoch 4 | 6.0 min | saved runs/p3_neg8k/seed3/best.pt
+
+runs/p3_neg8k/seed1/best.pt (epoch 5)
+                                     n   NDCG@10   hits@1   hits@5  hits@10
+validation                       6,109    0.0679    0.035    0.079    0.112
+full held-out                    7,722    0.0703    0.035    0.083    0.116
+most-popular (full held-out)     7,722    0.0068    0.001    0.008    0.015
+
+most common next songs in training: One Dance (95x), HUMBLE. (82x), Broccoli (feat. Lil Yachty) (81x)
+model / most-popular NDCG@10: 10.4x
+
+runs/p3_neg8k/seed2/best.pt (epoch 4)
+                                     n   NDCG@10   hits@1   hits@5  hits@10
+validation                       6,109    0.0638    0.030    0.078    0.108
+full held-out                    7,722    0.0707    0.035    0.082    0.118
+most-popular (full held-out)     7,722    0.0068    0.001    0.008    0.015
+
+most common next songs in training: One Dance (95x), HUMBLE. (82x), Broccoli (feat. Lil Yachty) (81x)
+model / most-popular NDCG@10: 10.4x
+
+runs/p3_neg8k/seed3/best.pt (epoch 4)
+                                     n   NDCG@10   hits@1   hits@5  hits@10
+validation                       6,109    0.0667    0.033    0.077    0.112
+full held-out                    7,722    0.0707    0.038    0.083    0.114
+most-popular (full held-out)     7,722    0.0068    0.001    0.008    0.015
+
+most common next songs in training: One Dance (95x), HUMBLE. (82x), Broccoli (feat. Lil Yachty) (81x)
+model / most-popular NDCG@10: 10.4x

@@ -1,0 +1,62 @@
+[
+  {
+    "method": "exact (mps GPU)",
+    "build_s": 0.0,
+    "memory_mb": 274,
+    "queries_per_s": 469,
+    "search_recall": 1.0,
+    "latency_p50_ms": 3.75529145821929,
+    "latency_p99_ms": 4.1990489535965025,
+    "end_to_end_p50_ms": 3.75529145821929,
+    "end_to_end_p99_ms": 4.1990489535965025,
+    "true_song_in_top_k": 0.443
+  },
+  {
+    "method": "ivf nlist=4096 nprobe=16",
+    "build_s": 26.9,
+    "memory_mb": 283,
+    "queries_per_s": 95416,
+    "search_recall": 0.937528,
+    "latency_p50_ms": 0.053541501984000206,
+    "latency_p99_ms": 0.09528689552098422,
+    "end_to_end_p50_ms": 0.0757705420255661,
+    "end_to_end_p99_ms": 0.09984453208744513,
+    "true_song_in_top_k": 0.4256
+  },
+  {
+    "method": "ivf nlist=4096 nprobe=64",
+    "build_s": 26.8,
+    "memory_mb": 283,
+    "queries_per_s": 39378,
+    "search_recall": 0.9879020000000001,
+    "latency_p50_ms": 0.11718750465661287,
+    "latency_p99_ms": 0.1680768304504429,
+    "end_to_end_p50_ms": 0.14031259343028069,
+    "end_to_end_p99_ms": 0.17260444350540632,
+    "true_song_in_top_k": 0.4384
+  },
+  {
+    "method": "ivf nlist=4096 nprobe=128",
+    "build_s": 26.5,
+    "memory_mb": 283,
+    "queries_per_s": 21142,
+    "search_recall": 0.9949620000000001,
+    "latency_p50_ms": 0.20543800201267004,
+    "latency_p99_ms": 0.2568949968554033,
+    "end_to_end_p50_ms": 0.22812513634562492,
+    "end_to_end_p99_ms": 0.27081032050773496,
+    "true_song_in_top_k": 0.4418
+  },
+  {
+    "method": "ivf nlist=4096 nprobe=256",
+    "build_s": 26.6,
+    "memory_mb": 283,
+    "queries_per_s": 9223,
+    "search_recall": 0.9980439999999998,
+    "latency_p50_ms": 0.36287494003772736,
+    "latency_p99_ms": 0.44439630117266515,
+    "end_to_end_p50_ms": 0.37416687700897455,
+    "end_to_end_p99_ms": 0.4434097907505929,
+    "true_song_in_top_k": 0.4428
+  }
+]

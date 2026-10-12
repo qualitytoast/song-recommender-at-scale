@@ -1,0 +1,158 @@
+[
+  {
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 1,
+    "/recommend": {
+      "requests": 186,
+      "failures": 0,
+      "per_s": 6.873425742639856,
+      "p50_ms": 16.0,
+      "p99_ms": 25.0
+    },
+    "/songs": {
+      "requests": 1617,
+      "failures": 0,
+      "per_s": 59.75445927875617,
+      "p50_ms": 2.0,
+      "p99_ms": 8.0
+    },
+    "Aggregated": {
+      "requests": 1803,
+      "failures": 0,
+      "per_s": 66.62788502139603,
+      "p50_ms": 2.0,
+      "p99_ms": 21.0
+    }
+  },
+  {
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 16,
+    "/recommend": {
+      "requests": 1689,
+      "failures": 0,
+      "per_s": 58.18241902752784,
+      "p50_ms": 140.0,
+      "p99_ms": 220.0
+    },
+    "/songs": {
+      "requests": 15400,
+      "failures": 0,
+      "per_s": 530.4968934422313,
+      "p50_ms": 3.0,
+      "p99_ms": 9.0
+    },
+    "Aggregated": {
+      "requests": 17089,
+      "failures": 0,
+      "per_s": 588.6793124697592,
+      "p50_ms": 3.0,
+      "p99_ms": 180.0
+    }
+  },
+  {
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 64,
+    "/recommend": {
+      "requests": 1688,
+      "failures": 0,
+      "per_s": 58.1518684074339,
+      "p50_ms": 690.0,
+      "p99_ms": 970.0
+    },
+    "/songs": {
+      "requests": 15678,
+      "failures": 0,
+      "per_s": 540.1095929453488,
+      "p50_ms": 30.0,
+      "p99_ms": 68.0
+    },
+    "Aggregated": {
+      "requests": 17366,
+      "failures": 0,
+      "per_s": 598.2614613527827,
+      "p50_ms": 31.0,
+      "p99_ms": 760.0
+    }
+  },
+  {
+    "frontdesk_copies": 3,
+    "shard_copies": 1,
+    "users": 1,
+    "/recommend": {
+      "requests": 164,
+      "failures": 0,
+      "per_s": 5.644712405024271,
+      "p50_ms": 17.0,
+      "p99_ms": 60.0
+    },
+    "/songs": {
+      "requests": 1722,
+      "failures": 0,
+      "per_s": 59.26948025275485,
+      "p50_ms": 3.0,
+      "p99_ms": 7.0
+    },
+    "Aggregated": {
+      "requests": 1886,
+      "failures": 0,
+      "per_s": 64.91419265777913,
+      "p50_ms": 3.0,
+      "p99_ms": 21.0
+    }
+  },
+  {
+    "frontdesk_copies": 3,
+    "shard_copies": 1,
+    "users": 16,
+    "/recommend": {
+      "requests": 2683,
+      "failures": 0,
+      "per_s": 92.40255446889799,
+      "p50_ms": 28.0,
+      "p99_ms": 140.0
+    },
+    "/songs": {
+      "requests": 24164,
+      "failures": 0,
+      "per_s": 832.2084704384835,
+      "p50_ms": 3.0,
+      "p99_ms": 14.0
+    },
+    "Aggregated": {
+      "requests": 26847,
+      "failures": 0,
+      "per_s": 924.6110249073814,
+      "p50_ms": 4.0,
+      "p99_ms": 59.0
+    }
+  },
+  {
+    "frontdesk_copies": 3,
+    "shard_copies": 1,
+    "users": 64,
+    "/recommend": {
+      "requests": 5265,
+      "failures": 0,
+      "per_s": 181.476431483936,
+      "p50_ms": 220.0,
+      "p99_ms": 310.0
+    },
+    "/songs": {
+      "requests": 49018,
+      "failures": 0,
+      "per_s": 1689.5748753047626,
+      "p50_ms": 3.0,
+      "p99_ms": 9.0
+    },
+    "Aggregated": {
+      "requests": 54283,
+      "failures": 0,
+      "per_s": 1871.0513067886986,
+      "p50_ms": 3.0,
+      "p99_ms": 260.0
+    }
+  }
+]

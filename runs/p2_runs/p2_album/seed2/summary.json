@@ -1,0 +1,12 @@
+{
+  "config": "configs/p2_album.toml",
+  "train_seed": 2,
+  "device": "mps",
+  "num_params": 7110139,
+  "best_epoch": 4,
+  "best_val_ndcg": 0.05996224270666354,
+  "epochs_run": 20,
+  "train_seconds": 283.5,
+  "git_commit": "11eb612",
+  "git_dirty": false
+}

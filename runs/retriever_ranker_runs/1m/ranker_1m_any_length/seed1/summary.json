@@ -1,0 +1,26 @@
+{
+  "config": "configs/ranker_1m_any_length.toml",
+  "train_seed": 1,
+  "retriever": "configs/retriever_1m.toml",
+  "search": "ivf nlist=4096 nprobe=128",
+  "num_params": 200645009,
+  "new_params": 4801,
+  "trained_params": 200645009,
+  "train_windows_used": 4327603,
+  "features": [
+    "same_artist",
+    "same_album",
+    "genre_match",
+    "last_same_artist",
+    "log_after_last",
+    "log_after_context",
+    "context_with_pair"
+  ],
+  "best_check": 17,
+  "best_val_ndcg": 0.16804402082009756,
+  "retriever_val_ndcg": 0.14146966663315247,
+  "checks_run": 23,
+  "train_seconds": 5793.8,
+  "git_commit": "c21d5b8",
+  "git_dirty": false
+}

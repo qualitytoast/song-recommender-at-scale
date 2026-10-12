@@ -1,0 +1,12 @@
+{
+  "config": "configs/p2_causal.toml",
+  "train_seed": 2,
+  "device": "mps",
+  "num_params": 7202491,
+  "best_epoch": 5,
+  "best_val_ndcg": 0.06815527028074009,
+  "epochs_run": 20,
+  "train_seconds": 308.8,
+  "git_commit": "2796b29",
+  "git_dirty": false
+}

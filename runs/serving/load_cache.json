@@ -1,0 +1,140 @@
+[
+  {
+    "label": "cache",
+    "settings": {
+      "BATCH": "0"
+    },
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 16,
+    "/recommend": {
+      "requests": 3562,
+      "failures": 0,
+      "per_s": 122.72912326768285,
+      "p50_ms": 3.0,
+      "p99_ms": 63.0
+    },
+    "/songs": {
+      "requests": 32341,
+      "failures": 0,
+      "per_s": 1114.3129072431586,
+      "p50_ms": 2.0,
+      "p99_ms": 5.0
+    },
+    "Aggregated": {
+      "requests": 35903,
+      "failures": 0,
+      "per_s": 1237.0420305108416,
+      "p50_ms": 2.0,
+      "p99_ms": 32.0
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": {
+        "hits": 35320,
+        "misses": 1714,
+        "errors": 0,
+        "hit_rate": 0.9537
+      },
+      "batching": null
+    }
+  },
+  {
+    "label": "cache",
+    "settings": {
+      "BATCH": "0"
+    },
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 64,
+    "/recommend": {
+      "requests": 6550,
+      "failures": 0,
+      "per_s": 225.72485232102073,
+      "p50_ms": 10.0,
+      "p99_ms": 2200.0
+    },
+    "/songs": {
+      "requests": 58480,
+      "failures": 0,
+      "per_s": 2015.3266204172967,
+      "p50_ms": 9.0,
+      "p99_ms": 28.0
+    },
+    "Aggregated": {
+      "requests": 65030,
+      "failures": 0,
+      "per_s": 2241.0514727383174,
+      "p50_ms": 9.0,
+      "p99_ms": 47.0
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": {
+        "hits": 102251,
+        "misses": 2061,
+        "errors": 0,
+        "hit_rate": 0.9802
+      },
+      "batching": null
+    }
+  }
+]

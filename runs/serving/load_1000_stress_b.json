@@ -1,0 +1,80 @@
+[
+  {
+    "label": "stress_1000b",
+    "settings": {
+      "BATCH": "16"
+    },
+    "frontdesk_copies": 3,
+    "shard_copies": 1,
+    "users": 1000,
+    "/recommend": {
+      "requests": 3062,
+      "failures": 0,
+      "per_s": 51.916796241792404,
+      "p50_ms": 2300.0,
+      "p99_ms": 4700.0
+    },
+    "/songs": {
+      "requests": 26544,
+      "failures": 0,
+      "per_s": 450.0586020385818,
+      "p50_ms": 1700.0,
+      "p99_ms": 3800.0
+    },
+    "Aggregated": {
+      "requests": 29606,
+      "failures": 0,
+      "per_s": 501.97539828037424,
+      "p50_ms": 1800.0,
+      "p99_ms": 4000.0
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": {
+        "hits": 8000,
+        "misses": 516,
+        "errors": 27,
+        "hit_rate": 0.9394
+      },
+      "batching": {
+        "batches": 83,
+        "mean_size": 6.4,
+        "largest": 16
+      },
+      "answers": {
+        "total": 987,
+        "partial": 0,
+        "cached": 445
+      }
+    }
+  }
+]

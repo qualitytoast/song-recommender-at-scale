@@ -1,0 +1,17 @@
+{
+  "config": "configs/p3_50k_lazy_b128.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 35426979,
+  "eval_every_targets": 572137,
+  "best_check": 23,
+  "best_epochs": 6.0,
+  "best_val_ndcg": 0.12214049499811482,
+  "checks_run": 29,
+  "epochs_run": 7.25,
+  "train_seconds": 942.2,
+  "val_seconds_total": 150.8,
+  "val_seconds_per_check": 5.2,
+  "git_commit": "cacb3bd",
+  "git_dirty": false
+}

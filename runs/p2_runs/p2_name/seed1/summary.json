@@ -1,0 +1,12 @@
+{
+  "config": "configs/p2_name.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 7149499,
+  "best_epoch": 3,
+  "best_val_ndcg": 0.06346039809119443,
+  "epochs_run": 20,
+  "train_seconds": 302.6,
+  "git_commit": "10846ba",
+  "git_dirty": false
+}

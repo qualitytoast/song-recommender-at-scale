@@ -1,0 +1,51 @@
+runs/retriever_ranker_runs/ranker_50k_v2_neg15/seed1 | 302,495 ranker windows (118,705 trained on), 20,000 val windows | shortlists (ivf nlist=2048 nprobe=128) in 10s | train recall@100 39.2%
+35,431,780 params: the retriever's + 4,801 new (candidate marker, position, correction); 35,431,780 trained
+extra inputs (mean / std): same_artist 0.0856/0.226, same_album 0.024/0.106, genre_match 0.35/0.27, last_same_artist 0.151/0.358, log_after_last 0.761/0.935, log_after_context 2.08/1.35, context_with_pair 0.376/0.284
+check   0 | 0 windows | train loss 0.0000 | val loss 2.1508 | val NDCG@10 0.1230 Hits@10 0.186 Hits@1 0.072 | train 0s + val 2s  *best
+check   1 | 24,256 windows | train loss 2.0744 | val loss 2.0034 | val NDCG@10 0.1372 Hits@10 0.207 Hits@1 0.080 | train 7s + val 2s  *best
+check   2 | 48,448 windows | train loss 1.9595 | val loss 1.9772 | val NDCG@10 0.1424 Hits@10 0.214 Hits@1 0.084 | train 7s + val 2s  *best
+check   3 | 72,640 windows | train loss 1.9469 | val loss 1.9696 | val NDCG@10 0.1428 Hits@10 0.214 Hits@1 0.084 | train 6s + val 2s  *best
+check   4 | 96,832 windows | train loss 1.9460 | val loss 1.9651 | val NDCG@10 0.1427 Hits@10 0.214 Hits@1 0.084 | train 7s + val 2s
+check   5 | 121,009 windows | train loss 1.9408 | val loss 1.9624 | val NDCG@10 0.1430 Hits@10 0.215 Hits@1 0.084 | train 7s + val 2s  *best
+check   6 | 145,201 windows | train loss 1.9356 | val loss 1.9598 | val NDCG@10 0.1431 Hits@10 0.215 Hits@1 0.085 | train 7s + val 2s  *best
+check   7 | 169,457 windows | train loss 1.9347 | val loss 1.9580 | val NDCG@10 0.1429 Hits@10 0.214 Hits@1 0.085 | train 5s + val 2s  no improvement 1/5
+check   8 | 193,649 windows | train loss 1.9166 | val loss 1.9564 | val NDCG@10 0.1434 Hits@10 0.215 Hits@1 0.085 | train 7s + val 2s  *best
+check   9 | 217,841 windows | train loss 1.9306 | val loss 1.9547 | val NDCG@10 0.1434 Hits@10 0.215 Hits@1 0.084 | train 6s + val 2s  *best
+check  10 | 242,018 windows | train loss 1.9147 | val loss 1.9536 | val NDCG@10 0.1434 Hits@10 0.215 Hits@1 0.084 | train 6s + val 2s  *best
+check  11 | 266,210 windows | train loss 1.9257 | val loss 1.9523 | val NDCG@10 0.1435 Hits@10 0.216 Hits@1 0.085 | train 6s + val 2s  *best
+check  12 | 290,402 windows | train loss 1.8945 | val loss 1.9515 | val NDCG@10 0.1437 Hits@10 0.216 Hits@1 0.085 | train 5s + val 2s  *best
+check  13 | 314,658 windows | train loss 1.9169 | val loss 1.9503 | val NDCG@10 0.1441 Hits@10 0.216 Hits@1 0.085 | train 6s + val 2s  *best
+check  14 | 338,850 windows | train loss 1.9262 | val loss 1.9496 | val NDCG@10 0.1439 Hits@10 0.217 Hits@1 0.084 | train 6s + val 2s  no improvement 1/5
+check  15 | 363,027 windows | train loss 1.9021 | val loss 1.9487 | val NDCG@10 0.1441 Hits@10 0.216 Hits@1 0.085 | train 6s + val 2s  *best
+check  16 | 387,219 windows | train loss 1.8833 | val loss 1.9486 | val NDCG@10 0.1445 Hits@10 0.217 Hits@1 0.085 | train 6s + val 2s  *best
+check  17 | 411,411 windows | train loss 1.9252 | val loss 1.9469 | val NDCG@10 0.1443 Hits@10 0.217 Hits@1 0.085 | train 6s + val 2s  no improvement 1/5
+check  18 | 435,603 windows | train loss 1.9148 | val loss 1.9458 | val NDCG@10 0.1448 Hits@10 0.218 Hits@1 0.085 | train 7s + val 3s  *best
+check  19 | 459,859 windows | train loss 1.9017 | val loss 1.9449 | val NDCG@10 0.1443 Hits@10 0.217 Hits@1 0.085 | train 7s + val 2s  no improvement 1/5
+check  20 | 484,036 windows | train loss 1.9029 | val loss 1.9445 | val NDCG@10 0.1447 Hits@10 0.217 Hits@1 0.086 | train 7s + val 2s  no improvement 2/5
+check  21 | 508,228 windows | train loss 1.8938 | val loss 1.9442 | val NDCG@10 0.1450 Hits@10 0.218 Hits@1 0.086 | train 7s + val 2s  *best
+check  22 | 532,420 windows | train loss 1.9002 | val loss 1.9434 | val NDCG@10 0.1449 Hits@10 0.218 Hits@1 0.085 | train 7s + val 2s  no improvement 1/5
+check  23 | 556,612 windows | train loss 1.8943 | val loss 1.9419 | val NDCG@10 0.1448 Hits@10 0.218 Hits@1 0.085 | train 7s + val 2s  no improvement 2/5
+check  24 | 580,804 windows | train loss 1.8952 | val loss 1.9405 | val NDCG@10 0.1446 Hits@10 0.218 Hits@1 0.085 | train 7s + val 2s  no improvement 3/5
+check  25 | 605,045 windows | train loss 1.8999 | val loss 1.9401 | val NDCG@10 0.1451 Hits@10 0.218 Hits@1 0.086 | train 7s + val 2s  *best
+check  26 | 629,237 windows | train loss 1.8787 | val loss 1.9407 | val NDCG@10 0.1455 Hits@10 0.218 Hits@1 0.086 | train 5s + val 2s  *best
+check  27 | 653,429 windows | train loss 1.9083 | val loss 1.9396 | val NDCG@10 0.1447 Hits@10 0.217 Hits@1 0.085 | train 6s + val 2s  no improvement 1/5
+check  28 | 677,621 windows | train loss 1.8833 | val loss 1.9393 | val NDCG@10 0.1448 Hits@10 0.217 Hits@1 0.085 | train 7s + val 2s  no improvement 2/5
+check  29 | 701,813 windows | train loss 1.8814 | val loss 1.9397 | val NDCG@10 0.1455 Hits@10 0.218 Hits@1 0.086 | train 7s + val 2s  no improvement 3/5
+check  30 | 726,054 windows | train loss 1.8716 | val loss 1.9386 | val NDCG@10 0.1456 Hits@10 0.218 Hits@1 0.086 | train 7s + val 2s  *best
+check  31 | 750,246 windows | train loss 1.8732 | val loss 1.9394 | val NDCG@10 0.1455 Hits@10 0.218 Hits@1 0.086 | train 6s + val 2s  no improvement 1/5
+check  32 | 774,438 windows | train loss 1.8673 | val loss 1.9365 | val NDCG@10 0.1454 Hits@10 0.218 Hits@1 0.086 | train 7s + val 2s  no improvement 2/5
+check  33 | 798,630 windows | train loss 1.8810 | val loss 1.9372 | val NDCG@10 0.1458 Hits@10 0.219 Hits@1 0.086 | train 7s + val 2s  *best
+check  34 | 822,822 windows | train loss 1.8868 | val loss 1.9354 | val NDCG@10 0.1455 Hits@10 0.219 Hits@1 0.086 | train 3s + val 2s  no improvement 1/5
+check  35 | 847,063 windows | train loss 1.8606 | val loss 1.9382 | val NDCG@10 0.1456 Hits@10 0.218 Hits@1 0.086 | train 6s + val 2s  no improvement 2/5
+check  36 | 871,255 windows | train loss 1.8820 | val loss 1.9353 | val NDCG@10 0.1455 Hits@10 0.219 Hits@1 0.086 | train 7s + val 2s  no improvement 3/5
+check  37 | 895,447 windows | train loss 1.8801 | val loss 1.9363 | val NDCG@10 0.1457 Hits@10 0.219 Hits@1 0.086 | train 3s + val 2s  no improvement 4/5
+check  38 | 919,639 windows | train loss 1.8725 | val loss 1.9339 | val NDCG@10 0.1457 Hits@10 0.219 Hits@1 0.086 | train 6s + val 2s  no improvement 5/5
+early stop at check 38
+best val NDCG@10 0.1458 at check 33 (retriever alone 0.1230) | 5.4 min
+
+runs/retriever_ranker_runs/ranker_50k_v2_neg15/seed1/best.pt (check 33) | held-out 159,081 windows | shortlists (ivf nlist=2048 nprobe=128) 6s | reranking 12s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 100
+retriever + ranker (top 100)          0.1487    0.088    0.175    0.224     0.418
+retriever alone                       0.1255    0.074    0.147    0.189     0.418
+retriever alone, exact search         0.1172    0.068    0.137    0.179     0.414
+most-popular                          0.0034    0.001    0.004    0.007     0.052

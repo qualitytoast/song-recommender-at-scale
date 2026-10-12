@@ -1,0 +1,1 @@
+ready after 3s: {"status":"ok","version":"f73f0d4e1e71","songs":1053328,"device":"cpu","shards":4} (logs in runs/serving/launch/); Ctrl-C to stop

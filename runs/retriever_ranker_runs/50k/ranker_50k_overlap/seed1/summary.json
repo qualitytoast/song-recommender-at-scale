@@ -1,0 +1,23 @@
+{
+  "config": "configs/ranker_50k_overlap.toml",
+  "train_seed": 1,
+  "retriever": "configs/retriever_50k.toml",
+  "search": "ivf nlist=2048 nprobe=128",
+  "num_params": 35427176,
+  "new_params": 197,
+  "trained_params": 35427176,
+  "train_windows_used": 117999,
+  "features": [
+    "same_artist",
+    "same_album",
+    "genre_match",
+    "last_same_artist"
+  ],
+  "best_check": 28,
+  "best_val_ndcg": 0.12929850952678,
+  "retriever_val_ndcg": 0.11791096609587558,
+  "checks_run": 34,
+  "train_seconds": 360.2,
+  "git_commit": "0fa024d",
+  "git_dirty": false
+}

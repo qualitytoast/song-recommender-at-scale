@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/songs,RemoteDisconnected('Remote end closed connection without response'),19165,2026-10-11T03:45:16Z,2026-10-11T03:46:13Z
+POST,/recommend,RemoteDisconnected('Remote end closed connection without response'),2300,2026-10-11T03:45:16Z,2026-10-11T03:46:13Z
+POST,/recommend,HTTPError('503 Server Error: Service Unavailable for url: /recommend'),6,2026-10-11T03:45:36Z,2026-10-11T03:45:59Z

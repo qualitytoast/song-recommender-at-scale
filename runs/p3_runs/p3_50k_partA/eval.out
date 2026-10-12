@@ -1,0 +1,18 @@
+
+runs/p3_50k_partA/seed1/best.pt (check 12)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.1021    0.055    0.118    0.164    0.391    0.617    0.713    0.792    0.873
+full held-out                  159,081    0.1012    0.053    0.119    0.164    0.394    0.622    0.714    0.793    0.873
+most-popular (full held-out)   159,081    0.0034    0.001    0.004    0.007    0.052    0.172    0.271    0.401    0.592
+
+most common next songs in training: HUMBLE. (1027x), Congratulations (944x), One Dance (933x)
+model / most-popular NDCG@10: 29.8x
+
+runs/p3_50k_partA/seed2/best.pt (check 12)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.1043    0.058    0.122    0.163    0.389    0.620    0.714    0.793    0.872
+full held-out                  159,081    0.1027    0.055    0.121    0.165    0.396    0.623    0.716    0.794    0.875
+most-popular (full held-out)   159,081    0.0034    0.001    0.004    0.007    0.052    0.172    0.271    0.401    0.592
+
+most common next songs in training: HUMBLE. (1027x), Congratulations (944x), One Dance (933x)
+model / most-popular NDCG@10: 30.2x

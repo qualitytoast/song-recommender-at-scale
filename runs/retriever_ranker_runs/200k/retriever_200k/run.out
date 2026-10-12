@@ -1,0 +1,72 @@
+runs/p3_200k_partA/seed1 | device mps | 412,404 songs | 925,923 train chunks (7,788,816 targets) | 20,000 val | 83,268,404 params
+check   0 | epoch  0.25 | train loss 7.9434 | val loss 8.3170 | val NDCG@10 0.0351 | train 110.4s + val 17.7s  *best
+check   1 | epoch  0.50 | train loss 6.8432 | val loss 7.8632 | val NDCG@10 0.0582 | train 103.4s + val 17.9s  *best
+check   2 | epoch  0.75 | train loss 6.5610 | val loss 7.6742 | val NDCG@10 0.0707 | train 94.7s + val 15.8s  *best
+check   3 | epoch  1.00 | train loss 6.4077 | val loss 7.5515 | val NDCG@10 0.0796 | train 92.6s + val 16.3s  *best
+check   4 | epoch  1.25 | train loss 6.0718 | val loss 7.4995 | val NDCG@10 0.0899 | train 98.3s + val 18.3s  *best
+check   5 | epoch  1.50 | train loss 6.0478 | val loss 7.4517 | val NDCG@10 0.0939 | train 92.4s + val 16.4s  *best
+check   6 | epoch  1.75 | train loss 6.0295 | val loss 7.4109 | val NDCG@10 0.0971 | train 91.0s + val 15.9s  *best
+check   7 | epoch  2.00 | train loss 6.0051 | val loss 7.3761 | val NDCG@10 0.1008 | train 86.7s + val 15.7s  *best
+check   8 | epoch  2.25 | train loss 5.7076 | val loss 7.3929 | val NDCG@10 0.1046 | train 87.6s + val 15.7s  *best
+check   9 | epoch  2.50 | train loss 5.7369 | val loss 7.3673 | val NDCG@10 0.1078 | train 88.3s + val 17.1s  *best
+check  10 | epoch  2.75 | train loss 5.7588 | val loss 7.3535 | val NDCG@10 0.1127 | train 91.4s + val 16.4s  *best
+check  11 | epoch  3.00 | train loss 5.7628 | val loss 7.3315 | val NDCG@10 0.1098 | train 90.6s + val 15.7s  no improvement 1/5
+check  12 | epoch  3.25 | train loss 5.4939 | val loss 7.3768 | val NDCG@10 0.1119 | train 88.0s + val 15.8s  no improvement 2/5
+check  13 | epoch  3.50 | train loss 5.5371 | val loss 7.3660 | val NDCG@10 0.1136 | train 88.1s + val 15.7s  *best
+check  14 | epoch  3.75 | train loss 5.5707 | val loss 7.3514 | val NDCG@10 0.1139 | train 88.3s + val 15.7s  *best
+check  15 | epoch  4.00 | train loss 5.5993 | val loss 7.3338 | val NDCG@10 0.1158 | train 88.1s + val 15.9s  *best
+check  16 | epoch  4.25 | train loss 5.3475 | val loss 7.3968 | val NDCG@10 0.1146 | train 86.7s + val 15.8s  no improvement 1/5
+check  17 | epoch  4.50 | train loss 5.4096 | val loss 7.3798 | val NDCG@10 0.1160 | train 87.1s + val 15.7s  *best
+check  18 | epoch  4.75 | train loss 5.4514 | val loss 7.3694 | val NDCG@10 0.1168 | train 86.7s + val 15.8s  *best
+check  19 | epoch  5.00 | train loss 5.4674 | val loss 7.3442 | val NDCG@10 0.1171 | train 86.8s + val 15.7s  *best
+check  20 | epoch  5.25 | train loss 5.2444 | val loss 7.4023 | val NDCG@10 0.1181 | train 96.6s + val 18.5s  *best
+check  21 | epoch  5.50 | train loss 5.3144 | val loss 7.3845 | val NDCG@10 0.1185 | train 95.9s + val 15.7s  *best
+check  22 | epoch  5.75 | train loss 5.3532 | val loss 7.3726 | val NDCG@10 0.1193 | train 86.8s + val 15.8s  *best
+check  23 | epoch  6.00 | train loss 5.3758 | val loss 7.3683 | val NDCG@10 0.1197 | train 88.6s + val 15.8s  *best
+check  24 | epoch  6.25 | train loss 5.1728 | val loss 7.4271 | val NDCG@10 0.1180 | train 87.4s + val 18.2s  no improvement 1/5
+check  25 | epoch  6.50 | train loss 5.2283 | val loss 7.4119 | val NDCG@10 0.1191 | train 90.6s + val 15.7s  no improvement 2/5
+check  26 | epoch  6.75 | train loss 5.2773 | val loss 7.3995 | val NDCG@10 0.1201 | train 89.1s + val 15.7s  *best
+check  27 | epoch  7.00 | train loss 5.3095 | val loss 7.3851 | val NDCG@10 0.1209 | train 87.0s + val 16.1s  *best
+check  28 | epoch  7.25 | train loss 5.1154 | val loss 7.4538 | val NDCG@10 0.1175 | train 89.0s + val 15.7s  no improvement 1/5
+check  29 | epoch  7.50 | train loss 5.1724 | val loss 7.4322 | val NDCG@10 0.1184 | train 87.1s + val 15.8s  no improvement 2/5
+check  30 | epoch  7.75 | train loss 5.2111 | val loss 7.4281 | val NDCG@10 0.1219 | train 87.0s + val 15.9s  *best
+check  31 | epoch  8.00 | train loss 5.2475 | val loss 7.3965 | val NDCG@10 0.1184 | train 86.6s + val 15.7s  no improvement 1/5
+check  32 | epoch  8.25 | train loss 5.0655 | val loss 7.4588 | val NDCG@10 0.1188 | train 87.1s + val 15.7s  no improvement 2/5
+check  33 | epoch  8.50 | train loss 5.1323 | val loss 7.4379 | val NDCG@10 0.1193 | train 89.2s + val 15.8s  no improvement 3/5
+check  34 | epoch  8.75 | train loss 5.1595 | val loss 7.4290 | val NDCG@10 0.1203 | train 86.7s + val 15.8s  no improvement 4/5
+check  35 | epoch  9.00 | train loss 5.1871 | val loss 7.4170 | val NDCG@10 0.1203 | train 90.2s + val 17.6s  no improvement 5/5
+early stop at check 35
+best val NDCG@10 0.1219 at check 30 (7.75 epochs) | 64.2 min, of which validation 9.7 min | saved runs/p3_200k_partA/seed1/best.pt
+
+runs/p3_200k_partA/seed1/best.pt (check 30)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.1219    0.072    0.141    0.186    0.420    0.639    0.727    0.801    0.878
+full held-out                  836,433    0.1257    0.075    0.146    0.190    0.423    0.640    0.726    0.799    0.875
+most-popular (full held-out)   836,433    0.0032    0.001    0.004    0.007    0.046    0.151    0.237    0.349    0.520
+
+most common next songs in training: HUMBLE. (4523x), One Dance (3945x), Broccoli (feat. Lil Yachty) (3882x)
+model / most-popular NDCG@10: 39.4x
+
+# Full held-out evaluation on any-length cases (--windows any_length --all-held-out), saved to eval_any_length_all.json
+
+runs/retriever_ranker_runs/200k/retriever_200k/seed1/best.pt (check 30)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.1194    0.069    0.140    0.183    0.407    0.611    0.695    0.769    0.848
+full held-out                 1,178,608    0.1199    0.070    0.140    0.183    0.405    0.609    0.692    0.765    0.845
+held-out, 10 songs             836,433    0.1257    0.075    0.146    0.190    0.423    0.640    0.726    0.799    0.875
+most-popular (full held-out)  1,178,608    0.0030    0.001    0.003    0.006    0.043    0.139    0.218    0.320    0.478
+
+held-out by input length             n   NDCG@10  hits@10
+  1 song                        52,876    0.0869    0.136
+  2 songs                       46,630    0.1001    0.161
+  3 songs                       42,308    0.1040    0.167
+  4 songs                       38,984    0.1065    0.171
+  5 songs                       36,244    0.1074    0.172
+  6 songs                       34,005    0.1114    0.177
+  7 songs                       32,036    0.1139    0.178
+  8 songs                       30,346    0.1175    0.181
+  9 songs                       28,746    0.1203    0.186
+  10 songs                     836,433    0.1257    0.190
+
+most common next songs in training: HUMBLE. (4523x), One Dance (3945x), Broccoli (feat. Lil Yachty) (3882x)
+model / most-popular NDCG@10: 40.5x
