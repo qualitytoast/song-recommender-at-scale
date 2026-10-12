@@ -1,5 +1,6 @@
 # Asks Oracle Cloud for the Always Free Arm machine (scripts/oracle_launch.py), one request per run, every
-# 5 minutes (GitHub often starts scheduled runs late), until the machine exists. Then it opens an issue with
+# 5 minutes off the hour (GitHub delays or drops scheduled runs at :00, its busiest time), until the
+# machine exists. Then it opens an issue with
 # the machine's address (GitHub emails the owner) and turns itself off.
 # On/off by hand: Actions tab -> Oracle launch -> ... -> Disable workflow / Enable workflow.
 # Needs two repository secrets: OCI_CONFIG (the ~/.oci/config text) and OCI_API_KEY (the private key file).
@@ -7,7 +8,7 @@ name: Oracle launch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2-57/5 * * * *"   # minutes 2, 7, ..., 57
   workflow_dispatch:
     inputs:
       test_success:
