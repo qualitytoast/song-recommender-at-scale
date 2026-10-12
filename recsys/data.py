@@ -255,11 +255,11 @@ class Dataset:
     LI_test: np.ndarray = None  # context_length, XI_* is X_* itself
     XI_rank: np.ndarray = None
     LI_rank: np.ndarray = None
-    Gc_train: np.ndarray = None  # (chunks,) where each training chunk's first song is in fit_songs (compact store
-                                 # only): its songs and the ones after it, for training on the next several songs
+    Gc_train: np.ndarray = None  # (chunks,) where each training chunk's first song is in fit_songs: its songs and
+                                 # the ones after it, for training on the next several songs (chunk_targets)
     O_val: np.ndarray = None     # where each playlist starts in H_val's songs (also H_rval's), H_test's and
-    O_test: np.ndarray = None    # H_rank's, plus the end (compact store only): where a case's playlist stops,
-    O_rank: np.ndarray = None    # for the songs after its target (next_targets, later_keys)
+    O_test: np.ndarray = None    # H_rank's, plus the end: where a case's playlist stops, for the songs after
+    O_rank: np.ndarray = None    # its target (next_targets, last_positions)
     X_rval: np.ndarray = None   # the ranker's validation windows: validation windows outside the
     Y_rval: np.ndarray = None   # retriever's sample (ranker_validation_keep), so the windows that picked
     N_rval: np.ndarray = None   # the retriever's checkpoint don't also judge the ranker
@@ -356,7 +356,8 @@ def build_dataset(cfg):
                    Xc_train=Xc_train, Yc_train=Yc_train, Nc_train=encoded[fit_idx][Pc_train],
                    X_rank=X_rank, Y_rank=Y_rank, N_rank=encoded[rank_idx][P_rank],
                    genre_names=genre_names, song_genres=song_genres, fit_songs=fit_songs, fit_offsets=fit_offsets,
-                   Gc_train=Gc_train, O_val=val_offsets, O_test=test_offsets, O_rank=rank_offsets, H_rank=H_rank, H_val=H_val, H_test=H_test, XI_val=XI_val, LI_val=LI_val, XI_test=XI_test,
+                   Gc_train=Gc_train, O_val=val_offsets, O_test=test_offsets, O_rank=rank_offsets, H_rank=H_rank,
+                   H_val=H_val, H_test=H_test, XI_val=XI_val, LI_val=LI_val, XI_test=XI_test,
                    LI_test=LI_test, XI_rank=XI_rank, LI_rank=LI_rank, X_rval=X_rval, Y_rval=Y_rval, N_rval=N_rval,
                    H_rval=H_rval, XI_rval=XI_rval, LI_rval=LI_rval,
                    song_duration_ms=np.array([tracks[k]["duration_ms"] for k in vocab], dtype=np.int64))
@@ -557,23 +558,25 @@ def playlist_stops(histories, offsets):
 
 
 def drop_repeats(T, missing=-1):
-    """T (rows, n) song IDs with every song that already appeared earlier in its row set to missing: a song a
-    playlist repeats counts once, at its nearest place."""
-    out = T.copy()
+    """Set every song in T (rows, n) that already appeared earlier in its row to missing, in place, and return T:
+    a song a playlist repeats counts once, at its nearest place."""
     for d in range(1, T.shape[1]):
-        out[(T[:, d:d + 1] == T[:, :d]).any(axis=1) & (T[:, d] != missing), d] = missing
-    return out
+        T[(T[:, d:d + 1] == T[:, :d]).any(axis=1) & (T[:, d] != missing), d] = missing
+    return T
 
 
 def next_targets(histories, offsets, n):
-    """(cases, n): each case's target and the songs after it in its playlist (column d: d songs after the target),
-    -1 past the playlist's end, outside the vocab, or for a song already in an earlier column (drop_repeats).
-    Column 0 is the target itself."""
+    """(cases, n) int32: each case's target and the songs after it in its playlist (column d: d songs after the
+    target), -1 past the playlist's end, outside the vocab, or for a song already in an earlier column
+    (drop_repeats). Column 0 is the target itself. Built a column at a time (~10M cases at 1M)."""
     songs, _, end = histories
     stop = playlist_stops(histories, offsets)
-    idx = end[:, None] + np.arange(n)
-    out = np.where(idx < stop[:, None], songs[np.minimum(idx, len(songs) - 1)], -1)
-    return drop_repeats(np.where(out >= 0, out, -1))
+    out = np.empty((len(end), n), dtype=np.int32)
+    for d in range(n):
+        idx = end + d
+        found = songs[np.minimum(idx, len(songs) - 1)]
+        out[:, d] = np.where((idx < stop) & (found >= 0), found, -1)
+    return drop_repeats(out)
 
 
 def case_targets(Y, histories, offsets, n):
@@ -582,6 +585,17 @@ def case_targets(Y, histories, offsets, n):
         return np.asarray(Y)[:, None]
     T = next_targets(histories, offsets, n)
     assert np.array_equal(T[:, 0], Y), "the histories don't match the cases' targets"
+    return T
+
+
+def drop_input_targets(T, X, lengths, chunk=100000):
+    """T with every target after the first that is one of its case's input songs (X (cases, L), the first
+    lengths real) set to -1, in place: such a song is never recommended (input songs are left out), so it
+    can't count as found. The first target (the next song) keeps the old evaluation's rule."""
+    real = np.arange(X.shape[1])[None, :] < lengths[:, None]
+    for i in range(0, len(T), chunk):
+        hit = ((T[i:i + chunk, 1:, None] == X[i:i + chunk, None, :]) & real[i:i + chunk, None, :]).any(axis=-1)
+        T[i:i + chunk, 1:][hit] = -1
     return T
 
 
@@ -595,17 +609,24 @@ def chunk_targets(songs, offsets, starts, width):
     return np.where((idx < stop[:, None]) & (found >= 0), found, -100)
 
 
-def later_keys(histories, offsets, n_songs):
-    """Sorted keys case * n_songs + song, one per vocab song a case's playlist holds from its target on (the
-    target and every song after it): what "later in the playlist" counts."""
-    songs, _, end = histories
-    stop = playlist_stops(histories, offsets)
-    counts = stop - end
-    case = np.repeat(np.arange(len(end)), counts)
-    idx = np.repeat(end - np.cumsum(counts) + counts, counts) + np.arange(counts.sum())
-    found = songs[idx]
-    keep = found >= 0
-    return np.unique(case[keep] * n_songs + found[keep])
+def last_positions(songs, offsets, n_songs):
+    """(keys, last) for every (playlist, vocab song) pair of a split: keys playlist * n_songs + song, sorted, and
+    the index in songs of that song's last appearance in that playlist. A song is "later in the playlist" for a
+    case if its last appearance is at or after the case's target (metrics.later_precision): one entry per pair,
+    where listing each case's later songs would grow with the square of playlist length (~340M at 1M)."""
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    pos = np.flatnonzero(songs >= 0)
+    keys = playlist[pos].astype(np.int64) * n_songs + songs[pos]
+    order = np.lexsort((pos, keys))  # by key, then position
+    keys, pos = keys[order], pos[order]
+    last = np.append(keys[1:] != keys[:-1], True)
+    return keys[last], pos[last]
+
+
+def case_playlists(histories, offsets):
+    """(cases,) each case's playlist: its index among the split's playlists (offsets)."""
+    _, begin, _ = histories
+    return np.searchsorted(offsets, begin, side="right") - 1
 
 
 def build_dataset_from_store(cfg):

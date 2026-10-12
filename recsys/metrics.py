@@ -66,11 +66,13 @@ def multi_target_gains(ranks, weights, k=10):
     return np.where(idcg > 0, dcg / np.where(idcg > 0, idcg, 1.0), 0.0)
 
 
-def later_precision(top, later, n_songs):
-    """Per case: the share of its top songs (cases, k) that its playlist goes on to contain (later: sorted keys
-    case * n_songs + song, data.later_keys)."""
-    keys = np.arange(len(top))[:, None] * n_songs + np.asarray(top)
-    return np.isin(keys, later).mean(axis=1)
+def later_precision(top, playlist, end, keys, last, n_songs):
+    """Per case: the share of its top songs (cases, k) that its playlist goes on to contain, the target or any song
+    after it. playlist, end (cases,): its playlist (data.case_playlists) and its target's index in the split's
+    songs; keys, last: data.last_positions of the split (a song counts if it appears at or after end)."""
+    q = np.asarray(playlist, dtype=np.int64)[:, None] * n_songs + np.asarray(top)
+    at = np.minimum(np.searchsorted(keys, q), len(keys) - 1)
+    return ((keys[at] == q) & (last[at] >= np.asarray(end)[:, None])).mean(axis=1)
 
 
 def artist_variety(top, song_artist, last_songs):

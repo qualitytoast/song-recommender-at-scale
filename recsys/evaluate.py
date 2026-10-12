@@ -13,10 +13,11 @@ scores every held-out window instead of the config's fixed sample (test_max_wind
 a final model's headline number, and saves to eval_all.json, leaving eval.json as it was.
 
 Besides next-song NDCG@10 and Hits@k, validation and held-out get playlist scores (train.ScoredCases):
-NDCG@10 over the songs the model was trained to find (when that is the next several), "later@10"
-(the share of the top 10, input songs left out as served, that the playlist goes on to contain), and
-the top 10's artist variety ("artists@10": different artists; "last_artist@10": share by the last
-input song's artist).
+NDCG@10 over the next 5 and next 10 songs, equal and weighted (the same for every model, whatever it
+trains on), over the songs the model trains on ("trained_for_ndcg@10", when more than the next one),
+"later@10" (the share of the top 10, input songs left out as served, that the playlist goes on to
+contain), and the top 10's artist variety ("artists@10": different artists; "last_artist@10": share
+by the last input song's artist).
 
     python -m recsys.evaluate --config configs/retriever_1m.toml --windows any_length
 
@@ -55,16 +56,19 @@ def score(ranks, recall_ks=()):
 
 
 def playlist_scores(cases, ranks, top):
-    """The playlist scores of ScoredCases cases, keyed for an evaluation's results: "trained_for_ndcg@10" only
-    when the model trains on more than the next song (otherwise it is "ndcg@10")."""
+    """The playlist scores of ScoredCases cases (ranks with at least 10 target columns), keyed for an evaluation's
+    results next to score()'s next-song numbers: NDCG@10 over the next 5 / 10 songs (FIXED_TARGETS), over the
+    songs the model trains on ("trained_for_ndcg@10", when that is more than the next song), later@10 and artist
+    variety."""
     s = cases.summary(ranks, top)
-    out = {"trained_for_ndcg@10": s["ndcg@10"]} if ranks.shape[1] > 1 else {}
-    out.update({k: s[k] for k in ("later@10", "artists@10", "last_artist@10") if k in s})
+    out = {"trained_for_ndcg@10": s["ndcg@10"]} if cases.n > 1 else {}
+    out.update({k: v for k, v in s.items() if k not in ("ndcg@10", "next_ndcg@10")})
     return out
 
 
-PLAYLIST_COLUMNS = (("trained_for_ndcg@10", "trained-for NDCG@10"), ("later@10", "later@10"),
-                    ("artists@10", "artists@10"), ("last_artist@10", "last artist@10"))
+PLAYLIST_COLUMNS = (("ndcg@10_next5", "next 5"), ("ndcg@10_next5w", "next 5 w"), ("ndcg@10_next10", "next 10"),
+                    ("ndcg@10_next10w", "next 10 w"), ("later@10", "later@10"), ("artists@10", "artists@10"),
+                    ("last_artist@10", "last artist"))
 
 
 def print_playlist_scores(results):
@@ -73,9 +77,9 @@ def print_playlist_scores(results):
     if not rows:
         return
     cols = [(k, label) for k, label in PLAYLIST_COLUMNS if any(k in r for r in rows.values())]
-    print(f"\n{'':30}" + "".join(f"{label:>20}" for _, label in cols))
+    print(f"\n{'NDCG@10 over the next songs; top 10':36}" + "".join(f"{label:>12}" for _, label in cols))
     for name, r in rows.items():
-        print(f"{name:30}" + "".join(f"{r[k]:>20.4f}" if k in r else f"{'':>20}" for k, _ in cols))
+        print(f"{name:36}" + "".join(f"{r[k]:>12.4f}" if k in r else f"{'':>12}" for k, _ in cols))
 
 
 def eval_file(all_held_out, windows="full"):
@@ -161,7 +165,7 @@ def evaluate(config_path, train_seed, all_held_out=False, windows=None):
     else:  # separate playlists
         t = cfg.train
         cases = ScoredCases(ds, ds.XI_val, ds.N_val, ds.Y_val, ds.LI_val, ds.H_val, ds.O_val, t.target_songs,
-                            t.target_decay, device)
+                            t.target_decay, device, columns=10)
         ranks, _, top = cases.rank(model)
         results["validation"] = {**score(ranks[:, 0]), **playlist_scores(cases, ranks, top)}
     if cfg.data.validation == "held_out_prefix":
@@ -169,7 +173,7 @@ def evaluate(config_path, train_seed, all_held_out=False, windows=None):
         held_out_playlist = {}
     else:
         cases = ScoredCases(ds, ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test, ds.H_test, ds.O_test,
-                            cfg.train.target_songs, cfg.train.target_decay, device)
+                            cfg.train.target_songs, cfg.train.target_decay, device, columns=10)
         ranks, _, top = cases.rank(model)
         held_out_ranks, held_out_playlist = ranks[:, 0], playlist_scores(cases, ranks, top)
     results["full held-out"] = {**score(held_out_ranks), **held_out_playlist}  # any-length cases: the headline

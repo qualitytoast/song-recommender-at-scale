@@ -90,6 +90,7 @@ def multi_target_loss(logits, positions, T, weights, candidates, real, correctio
     answers, the batch's the mean over positions. With one weight it equals sampled_softmax_loss."""
     B, L = positions.shape
     W, n = T.shape[1], len(weights)
+    assert W >= L + n - 1, f"T needs the {L + n - 1} songs after each chunk's first, has {W}"
     P = B * L
     scores = logits.reshape(P, len(candidates)) - correction
     k = torch.arange(L, device=T.device)

@@ -65,6 +65,7 @@ def main():
     cfg = load_config(args.config)
     t = cfg.train
     assert t.objective == "every_position" and t.softmax == "sampled", "profiles the p3 training setup"
+    assert t.target_songs == 1, "profiles training on the next song (train.py's target_songs > 1 step isn't here)"
     ds = build_dataset(cfg)
     device = torch.device(args.device) if args.device else pick_device()
     torch.manual_seed(1)

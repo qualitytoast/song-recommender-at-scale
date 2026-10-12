@@ -110,8 +110,8 @@ class TrainConfig:
         _check_choice("softmax", self.softmax, ("full", "sampled"))
         if self.compile and self.softmax != "sampled":
             raise ValueError("compile is implemented for the sampled-softmax training step")
-        if self.target_songs < 1 or not 0 < self.target_decay <= 1:
-            raise ValueError(f"need target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
+        if not isinstance(self.target_songs, int) or self.target_songs < 1 or not 0 < self.target_decay <= 1:
+            raise ValueError(f"need an integer target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
                              f"{self.target_decay}")
         if self.target_songs > 1 and (self.objective != "every_position" or self.softmax != "sampled"
                                       or self.augmenting):

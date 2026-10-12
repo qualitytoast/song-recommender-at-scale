@@ -8,8 +8,8 @@ import pytest
 import torch
 from torch import nn
 
-from recsys.data import (any_length_cases, case_targets, chunk_targets, chunks_from_arrays, later_keys,
-                         next_targets, playlist_stops)
+from recsys.data import (any_length_cases, case_playlists, case_targets, chunk_targets, chunks_from_arrays,
+                         drop_input_targets, last_positions, next_targets, playlist_stops)
 from recsys.metrics import artist_variety, gains_from_ranks, later_precision, multi_target_gains, target_weights
 from recsys.model import SongRecommender, rank_and_loss, rank_targets
 from recsys.sampled import candidate_set, log_q, multi_target_loss, sampled_softmax_loss
@@ -53,12 +53,16 @@ def test_next_targets_stop_at_the_playlists_end_and_count_a_repeat_once():
     np.testing.assert_array_equal(case_targets(Y, histories, OFFSETS, 4), T)
 
 
-def test_later_keys_are_every_vocab_song_from_the_target_on():
+def test_later_in_the_playlist_is_every_vocab_song_from_the_target_on():
     _, _, _, histories = any_length_cases(SONGS, OFFSETS, input_length=3)
-    keys = later_keys(histories, OFFSETS, 100)
-    expected = {(0, s) for s in [2, 3, 4, 5]} | {(1, s) for s in [2, 3, 4, 5]} | {(2, s) for s in [2, 4, 5]} \
-        | {(3, s) for s in [4, 5]} | {(4, s) for s in [7, 8]} | {(5, 8)}
-    assert set(zip(*np.divmod(keys, 100))) == expected
+    keys, last = last_positions(SONGS, OFFSETS, 100)
+    playlist, end = case_playlists(histories, OFFSETS), histories[2]
+    np.testing.assert_array_equal(playlist, [0, 0, 0, 0, 1, 1])
+    later = [{2, 3, 4, 5}, {2, 3, 4, 5}, {2, 4, 5}, {4, 5}, {7, 8}, {8}]  # the target and the songs after it
+    for song in range(10):  # each song as every case's whole top list
+        top = np.full((6, 1), song)
+        got = later_precision(top, playlist, end, keys, last, 100)
+        np.testing.assert_array_equal(got, [float(song in s) for s in later])
 
 
 def test_one_target_is_plain_ndcg_and_weights_count_like_relevance():
@@ -72,10 +76,15 @@ def test_one_target_is_plain_ndcg_and_weights_count_like_relevance():
     np.testing.assert_allclose(multi_target_gains(np.array([[0, 0, 0]]), w), [0.0])
 
 
-def test_later_precision_and_artist_variety():
+def test_input_songs_dont_count_as_later_targets():
+    T = np.array([[5, 3, 6, 9], [5, 3, 6, 9]], dtype=np.int32)
+    X = np.array([[3, 6, 0], [3, 5, 6]])
+    got = drop_input_targets(T.copy(), X, np.array([2, 1]))  # case 1 reads only song 3
+    np.testing.assert_array_equal(got, [[5, -1, -1, 9], [5, -1, 6, 9]])  # the first target (the next song) stays
+
+
+def test_artist_variety():
     top = np.array([[2, 3, 9], [8, 1, 4]])
-    later = np.array([0 * 100 + 3, 0 * 100 + 9, 1 * 100 + 2])
-    np.testing.assert_allclose(later_precision(top, later, 100), [2 / 3, 0.0])
     artist = np.array([0, 0, 1, 1, 2, 2, 2, 2, 3, 3])
     distinct, last = artist_variety(top, artist, np.array([2, 4]))
     np.testing.assert_array_equal(distinct, [2, 3])
@@ -131,6 +140,9 @@ def test_rank_targets_matches_rank_and_loss_and_leaves_inputs_out_of_the_top():
     Y = np.array([7, 8, 9])
     T = np.array([[7, 2, -1], [8, 1, 3], [9, -1, -1]])
     ranks, losses, top = rank_targets(m, X, N, T, torch.device("cpu"), lengths=lengths, k=5)
+    no_top = rank_targets(m, X, N, T, torch.device("cpu"), lengths=lengths, k=0)
+    np.testing.assert_array_equal(no_top[0], ranks)
+    assert no_top[2] is None  # k = 0: no top-k search
     expected_ranks, expected_losses = rank_and_loss(m, X, N, Y, torch.device("cpu"), lengths=lengths)
     np.testing.assert_array_equal(ranks[:, 0], expected_ranks)
     np.testing.assert_allclose(losses, expected_losses, rtol=1e-6)
@@ -228,7 +240,7 @@ def test_training_on_the_next_songs_end_to_end(trained, monkeypatch):
         run = trained / "runs/retriever_ranker_runs/5k" / config.stem / "seed1"
         rows = list(csv.DictReader(open(run / "log.csv")))
         assert len(rows) >= 2
-        for row in rows:
+        for row in rows:  # (later@10 and artist variety on the first CHECK_SAMPLE cases)
             assert 0 <= float(row["val_later@10"]) <= 1 and 1 <= float(row["val_artists@10"]) <= 10
             if n == 1:  # one target: early stopping's NDCG is plain next-song NDCG@10, as before
                 assert row["val_ndcg"] == row["val_next_ndcg@10"]
@@ -238,7 +250,8 @@ def test_training_on_the_next_songs_end_to_end(trained, monkeypatch):
         results = json.loads((run / "eval_any_length.json").read_text())  # any-length test cases
         for name in ("validation", "full held-out"):
             r = results[name]
-            assert {"ndcg@10", "hits@10", "later@10", "artists@10", "last_artist@10"} <= r.keys()
+            assert {"ndcg@10", "hits@10", "later@10", "artists@10", "last_artist@10", "ndcg@10_next5",
+                    "ndcg@10_next5w", "ndcg@10_next10", "ndcg@10_next10w"} <= r.keys()  # the same for every model
             assert ("trained_for_ndcg@10" in r) == (n > 1)
 
 
@@ -291,7 +304,7 @@ def test_ranker_on_the_next_songs_end_to_end(trained, monkeypatch):
             assert all(r["val_ndcg"] == r["val_next_ndcg@10"] for r in rows)
         results = json.loads((run / "eval_any_length.json").read_text())
         for name in ("retriever + ranker (top 15)", "retriever alone", "validation: retriever + ranker"):
-            assert {"ndcg@10", "later@10", "artists@10"} <= results[name].keys()
+            assert {"ndcg@10", "later@10", "artists@10", "ndcg@10_next5", "ndcg@10_next10w"} <= results[name].keys()
             assert ("trained_for_ndcg@10" in results[name]) == (n > 1)
 
 
@@ -347,3 +360,16 @@ def test_target_settings_are_checked(tmp_path):
         bad.write_text(path.read_text().replace(old, new))
         with pytest.raises(ValueError):
             load_config(bad)
+
+
+def test_a_ranker_config_must_leave_room_for_its_right_songs(tmp_path):
+    import pytest
+
+    from recsys.ranker import load_ranker_config
+
+    path = tmp_path / "ranker_5k_x.toml"
+    write_ranker_config(path, "configs/retriever.toml", 10)  # 5 wrong songs from the first 15, 10 right: fits
+    assert load_ranker_config(path).target_songs == 10
+    path.write_text(path.read_text().replace("target_songs = 10", "target_songs = 11"))
+    with pytest.raises(ValueError):  # 5 wrong songs can't be found among 15 if 11 may be right
+        load_ranker_config(path)
