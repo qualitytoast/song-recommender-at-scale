@@ -127,6 +127,8 @@ class RankerConfig:
     predict_steps: int     # multi-token prediction: correction heads that each score candidates as the song that
                            # many steps ahead (1 = the usual one only, which stays the one used); a training aid
     predict_decay: float   # loss weight of head h: predict_decay ** (h - 1)
+    predict_targets: str   # what correction head h (h >= 2) scores candidates as: "exact" = the song h steps ahead;
+                           # "next" = one of the target_songs songs from h steps ahead on (weighted like the usual)
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -150,13 +152,22 @@ class RankerConfig:
         if not isinstance(self.predict_steps, int) or self.predict_steps < 1 or not 0 < self.predict_decay <= 1:
             raise ValueError(f"need an integer predict_steps >= 1 and 0 < predict_decay <= 1, got "
                              f"{self.predict_steps}, {self.predict_decay}")
-        if self.negatives > self.negatives_from - max(self.target_songs, self.predict_steps):  # never right ones
-            raise ValueError(f"negatives ({self.negatives}) must leave room for the "
-                             f"{max(self.target_songs, self.predict_steps)} right songs among the first "
-                             f"negatives_from ({self.negatives_from}) shortlist songs")
+        if self.predict_targets not in ("exact", "next"):
+            raise ValueError(f"predict_targets must be exact or next, got {self.predict_targets!r}")
         unknown = sorted(set(self.features) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown features {unknown}; known: {list(GROUPS)}")
+        if self.negatives > self.negatives_from - self.songs_ahead:  # wrong songs are never right ones
+            raise ValueError(f"negatives ({self.negatives}) must leave room for the {self.songs_ahead} right songs "
+                             f"among the first negatives_from ({self.negatives_from}) shortlist songs")
+
+    @property
+    def songs_ahead(self):
+        """Right-song slots per training example: the usual correction's target_songs and the multi-token heads'
+        (the song predict_steps ahead, or target_songs songs from there)."""
+        if self.predict_targets == "next":
+            return self.target_songs + self.predict_steps - 1
+        return max(self.target_songs, self.predict_steps)
 
     def search_name(self):
         return "exact" if self.search == "exact" else f"ivf nlist={self.ivf_nlist} nprobe={self.ivf_nprobe}"
@@ -605,8 +616,8 @@ def train_ranker(config_path, seed):
     # Right songs: each window's next one, or its next target_songs (case_targets); a window is trained on if
     # its shortlist holds at least one (train_windows "in_shortlist") or always ("all": its next song counts
     # whether shortlisted or not, with its own retriever score, as with_negatives does).
-    # With multi-token heads, each example also holds the songs up to predict_steps ahead (slots: S).
-    S = max(rc.target_songs, rc.predict_steps)
+    # With multi-token heads, each example also holds the songs further ahead they score (slots: S).
+    S = rc.songs_ahead
     T_rank = case_targets(ds.Y_rank, ds.H_rank, ds.O_rank, S)
     shortlisted_targets = targets_valid(train_ids, T_rank)
     in_list = shortlisted_targets[:, 0]
@@ -621,9 +632,15 @@ def train_ranker(config_path, seed):
     train_ids, train_scores, train_true = train_ids[rows], train_scores[rows], train_true[rows]
     weights = torch.from_numpy(target_weights(rc.target_songs, rc.target_decay)).float()
     # Each head's loss: (weights over the S slots, the head's own weight). The usual head: its target_songs goal;
-    # head h: the song h steps ahead alone, weighted predict_decay^(h-1).
-    head_losses = [(torch.cat([weights, torch.zeros(S - rc.target_songs)]), 1.0)] + [
-        (torch.eye(S)[h], rc.predict_decay ** h) for h in range(1, rc.predict_steps)]
+    # head h + 1: the song h steps after the next ("exact") or target_songs songs from there ("next", weighted
+    # like the usual), weighted predict_decay^h.
+    def head_weights(start, n, w):
+        out = torch.zeros(S)
+        out[start:start + n] = w
+        return out
+    head_losses = [(head_weights(0, rc.target_songs, weights), 1.0)] + [
+        (head_weights(h, 1, torch.ones(1)) if rc.predict_targets == "exact"
+         else head_weights(h, rc.target_songs, weights), rc.predict_decay ** h) for h in range(1, rc.predict_steps)]
     val_cases = ScoredCases(ds, XI_val, N_val, Y_val, LI_val, H_val, ds.O_val, rc.target_songs, rc.target_decay,
                             device, columns=10)
     T_val = val_cases.T[:, :rc.target_songs]  # the right songs of its training loss
@@ -780,6 +797,7 @@ def train_ranker(config_path, seed):
                "train_windows_used": len(rows), "features": featurizer.names if featurizer else [],
                "target_songs": rc.target_songs, "target_decay": rc.target_decay,
                "predict_steps": rc.predict_steps, "predict_decay": rc.predict_decay,
+               "predict_targets": rc.predict_targets,
                "best_check": best_check, "best_val_ndcg": stopper.best, "retriever_val_ndcg": log[0]["val_ndcg"],
                "checks_run": len(log), "train_seconds": round(time.perf_counter() - start, 1), "git_commit": commit,
                "git_dirty": dirty}

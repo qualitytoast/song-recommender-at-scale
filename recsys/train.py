@@ -248,19 +248,20 @@ def train(config_path, train_seed):
     # instead of stored, so memory doesn't grow with either.
     several = t.target_songs > 1 or t.predict_steps > 1
     if several:
-        # a chunk's own next songs and the songs just after it, as far as either goal looks ahead
-        width = X_train.shape[1] + max(t.target_songs, t.predict_steps) - 1
+        # a chunk's own next songs and the songs just after it, as far as any head looks ahead
+        width = X_train.shape[1] + t.songs_ahead - 1
         weights = torch.from_numpy(target_weights(t.target_songs, t.target_decay)).float().to(device)
         step_weights = target_weights(t.predict_steps, t.predict_decay).tolist()  # head h: predict_decay^(h-1)
-        one = torch.ones(1, device=device)
+        step_targets = torch.ones(1, device=device) if t.predict_targets == "exact" else weights
 
     def forward_several(X, N, positions, T, candidates, real, correction):
-        """The usual head's loss (its target_songs goal) plus each multi-token head's: the exact song h steps
-        ahead for head h, weighted predict_decay^(h-1)."""
+        """The usual head's loss (its target_songs goal) plus each multi-token head's, weighted predict_decay^(h-1):
+        head h's right answer is the song h steps ahead ("exact"), or the target_songs songs from there ("next",
+        weighted like the usual head's)."""
         logits = model.step_logits(X, N, candidates)
         loss = multi_target_loss(logits[0], positions, T, weights, candidates, real, correction)
         for h in range(1, len(logits)):
-            loss = loss + step_weights[h] * multi_target_loss(logits[h], positions, T, one, candidates, real,
+            loss = loss + step_weights[h] * multi_target_loss(logits[h], positions, T, step_targets, candidates, real,
                                                               correction, offset=h)
         return loss
     if t.compile:  # same model and weights; only how the GPU runs the step changes
@@ -385,7 +386,7 @@ def train(config_path, train_seed):
                "num_params": num_params, "eval_every_targets": t.eval_every_targets,
                "best_check": best_check, "best_epochs": log[best_check]["epochs"],
                "target_songs": t.target_songs, "target_decay": t.target_decay, "predict_steps": t.predict_steps,
-               "predict_decay": t.predict_decay, "best_val_ndcg": stopper.best,
+               "predict_decay": t.predict_decay, "predict_targets": t.predict_targets, "best_val_ndcg": stopper.best,
                "best_val_next_ndcg": log[best_check]["val_next_ndcg@10"], "checks_run": len(log),
                "epochs_run": round(log[-1]["epochs"], 2),
                "train_seconds": round(train_seconds, 1), "val_seconds_total": round(sum(val_seconds), 1),

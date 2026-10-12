@@ -157,7 +157,7 @@ def test_rank_targets_matches_rank_and_loss_and_leaves_inputs_out_of_the_top():
         np.testing.assert_array_equal(top[row], np.argsort(-scores, kind="stable")[:5])
 
 
-def write_config(path, store, genres, target_songs, decay=0.8, steps=1):
+def write_config(path, store, genres, target_songs, decay=0.8, steps=1, kind="exact"):
     path.write_text(f"""
 data_seed = 42
 train_seeds = [1]
@@ -210,6 +210,7 @@ target_songs = {target_songs}
 target_decay = {decay}
 predict_steps = {steps}
 predict_decay = 0.5
+predict_targets = "{kind}"
 """)
 
 
@@ -257,7 +258,7 @@ def test_training_on_the_next_songs_end_to_end(trained, monkeypatch):
             assert ("trained_for_ndcg@10" in r) == (n > 1)
 
 
-def write_ranker_config(path, retriever, target_songs, decay=0.8, steps=1):
+def write_ranker_config(path, retriever, target_songs, decay=0.8, steps=1, kind="exact"):
     path.write_text(f"""
 [ranker]
 retriever = "{retriever}"
@@ -289,6 +290,7 @@ target_songs = {target_songs}
 target_decay = {decay}
 predict_steps = {steps}
 predict_decay = 0.5
+predict_targets = "{kind}"
 """)
 
 

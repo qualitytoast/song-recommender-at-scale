@@ -109,6 +109,8 @@ class TrainConfig:
                            # 2.. predict the exact song 2.. steps ahead, a training aid that makes the shared part
                            # look further ahead
     predict_decay: float   # loss weight of head h: predict_decay ** (h - 1) (head 1: 1)
+    predict_targets: str   # what head h (h >= 2) predicts: "exact" = the song h steps ahead; "next" = the target_songs
+                           # songs from h steps ahead on, weighted like head 1's (head 1's goal, shifted h - 1 later)
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
@@ -118,6 +120,7 @@ class TrainConfig:
         if not isinstance(self.target_songs, int) or self.target_songs < 1 or not 0 < self.target_decay <= 1:
             raise ValueError(f"need an integer target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
                              f"{self.target_decay}")
+        _check_choice("predict_targets", self.predict_targets, ("exact", "next"))
         if not isinstance(self.predict_steps, int) or self.predict_steps < 1 or not 0 < self.predict_decay <= 1:
             raise ValueError(f"need an integer predict_steps >= 1 and 0 < predict_decay <= 1, got "
                              f"{self.predict_steps}, {self.predict_decay}")
@@ -125,6 +128,14 @@ class TrainConfig:
                 self.objective != "every_position" or self.softmax != "sampled" or self.augmenting):
             raise ValueError("target_songs or predict_steps > 1 is implemented for every-position training with "
                              "sampled softmax and no augmentation")
+
+    @property
+    def songs_ahead(self):
+        """How many songs after each position training looks at: head 1's target_songs, and the multi-token
+        heads' (the song predict_steps ahead, or target_songs songs from there)."""
+        if self.predict_targets == "next":
+            return self.target_songs + self.predict_steps - 1
+        return max(self.target_songs, self.predict_steps)
 
     @property
     def augmenting(self):
