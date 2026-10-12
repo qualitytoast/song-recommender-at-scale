@@ -75,3 +75,39 @@ def sampled_softmax_loss(logits, Y, candidates, real, correction):
     scores = scores.masked_fill(accidental | ~real[None, :], float("-inf"))
     labels = own.masked_fill(targets == -100, -100)
     return nn.functional.cross_entropy(scores, labels, ignore_index=-100)
+
+
+def multi_target_loss(logits, positions, T, weights, candidates, real, correction):
+    """Sampled softmax when each position has several right answers: its next len(weights) songs.
+
+    The candidates are T (chunks, W) flattened (each chunk's songs after its first, data.chunk_targets: the
+    first L columns are its positions' own next songs) plus random songs, as candidate_set builds from T.
+    logits (chunks, L, len(candidates)); positions (chunks, L) True for real positions. Position k of chunk c
+    has right answers T[c, k], T[c, k + 1], ...: column c * W + k + d for the song d + 1 steps ahead, unless it
+    is -100 (past the playlist's end, unknown) or repeats a nearer one. Each right answer is scored against the
+    position's wrong answers only (every real candidate that isn't one of its right songs), never against the
+    others: -log(e^s / (e^s + sum over wrong answers)); a position's loss is the weighted mean over its right
+    answers, the batch's the mean over positions. With one weight it equals sampled_softmax_loss."""
+    B, L = positions.shape
+    W, n = T.shape[1], len(weights)
+    assert W >= L + n - 1, f"T needs the {L + n - 1} songs after each chunk's first, has {W}"
+    P = B * L
+    scores = logits.reshape(P, len(candidates)) - correction
+    k = torch.arange(L, device=T.device)
+    cols = (torch.arange(B, device=T.device)[:, None, None] * W + k[None, :, None]
+            + torch.arange(n, device=T.device)[None, None, :]).reshape(P, n)         # (P, n) right-answer columns
+    songs = T.reshape(-1)[cols]                                                      # their songs, -100 if none
+    valid = (songs != -100) & positions.reshape(P, 1)
+    for d in range(1, n):  # a song repeated within the next n counts once, at its nearest place
+        valid[:, d] &= ~(songs[:, d:d + 1] == songs[:, :d]).any(dim=1)
+    right = torch.zeros_like(scores, dtype=torch.bool)
+    for d in range(n):
+        right |= (songs[:, d:d + 1] == candidates[None, :]) & valid[:, d:d + 1]
+    wrong = scores.masked_fill(right | ~real[None, :], float("-inf"))
+    lse_wrong = torch.logsumexp(wrong, dim=1, keepdim=True)
+    s = scores.gather(1, cols)
+    losses = torch.logaddexp(s, lse_wrong) - s                                       # (P, n)
+    w = weights.to(scores.dtype)[None, :] * valid
+    per_position = (losses * w).sum(dim=1) / w.sum(dim=1).clamp(min=1e-12)
+    used = valid.any(dim=1)
+    return (per_position * used).sum() / used.sum().clamp(min=1)

@@ -2,6 +2,7 @@
 training step for a config, to decide which speed-ups are worth making.
 
     python scripts/profile_training_step.py --config configs/p3_50k.toml
+    python scripts/profile_training_step.py --config ... --device cpu --seconds 60 --speed-only
 
 Two measurements:
   1. Real speed: steps run exactly as in training (no waiting between phases), averaged.
@@ -56,13 +57,17 @@ def main():
     ap.add_argument("--negatives", type=int, help="random songs per batch (sampled_negatives) instead of the config's")
     ap.add_argument("--compile", action="store_true",
                     help="torch.compile the forward pass and loss (fuses small GPU operations)")
+    ap.add_argument("--device", choices=["mps", "cpu"], help="where to train (default: the GPU if there is one)")
+    ap.add_argument("--seconds", type=float, help="time steps for this long instead of --steps (runs side by side)")
+    ap.add_argument("--speed-only", action="store_true", help="only the real speed, not the breakdown")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     t = cfg.train
     assert t.objective == "every_position" and t.softmax == "sampled", "profiles the p3 training setup"
+    assert t.target_songs == 1, "profiles training on the next song (train.py's target_songs > 1 step isn't here)"
     ds = build_dataset(cfg)
-    device = pick_device()
+    device = torch.device(args.device) if args.device else pick_device()
     torch.manual_seed(1)
     model = build_model(cfg, ds).to(device)
     lazy = t.optimizer == "lazy_adamw"
@@ -143,13 +148,18 @@ def main():
         step(i)
     sync(device)
     start = time.perf_counter()
-    for i in range(args.steps):
-        loss = step(i)
+    n = 0
+    while (time.perf_counter() - start < args.seconds) if args.seconds else n < args.steps:
+        loss = step(n)
+        n += 1
     loss.item()
-    real_ms = (time.perf_counter() - start) / args.steps * 1000
+    real_ms = (time.perf_counter() - start) / n * 1000
     steps_per_epoch = -(-len(X) // B)
-    print(f"\n1. real speed: {real_ms:.1f} ms per step x {steps_per_epoch:,} steps = "
-          f"{real_ms * steps_per_epoch / 60000:.1f} min per epoch")
+    print(f"\n1. real speed on {device.type} ({n:,} steps from {time.strftime('%H:%M:%S', time.localtime(start))}): "
+          f"{real_ms:.1f} ms per step x {steps_per_epoch:,} steps = {real_ms * steps_per_epoch / 60000:.1f} min per epoch",
+          flush=True)
+    if args.speed_only:
+        return
 
     timings = {}
     for i in range(args.steps):

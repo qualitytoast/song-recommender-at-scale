@@ -28,3 +28,5 @@ correction_hidden = 0      # the correction is a weighted sum of its inputs
 exclude_input = true       # was false: songs in the retriever's input are left out of the shortlist
 val_set = "separate"       # was "retriever": validation windows outside the retriever's sample
 windows = "full"           # training, validation and held-out cases: full windows of 10 songs
+target_songs = 1           # the next song only
+target_decay = 1.0
