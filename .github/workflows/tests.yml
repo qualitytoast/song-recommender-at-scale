@@ -1,10 +1,12 @@
-# Runs the test suite on every push and pull request (continuous integration). The tests build their own
+# Runs the test suite on every pull request and every push to main (continuous integration); main only
+# takes changes through pull requests whose "pytest" check passed (the "Protect main" ruleset). The tests build their own
 # tiny bundle, shard processes and fake Redis, so they need no data or model files. PyTorch comes from
 # its CPU-only index, as in docker/Dockerfile (GitHub's machines have no GPU).
 name: Tests
 
 on:
   push:
+    branches: [main]   # a branch's own pushes are tested through its pull request, not twice
   pull_request:
   workflow_dispatch:
 
