@@ -53,7 +53,8 @@ def main():
 
     run_dir = run_dir_for(args.config, args.seed)
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden,
+                             rc.predict_steps).to(device)
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
     check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])

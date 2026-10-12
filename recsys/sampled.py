@@ -77,7 +77,7 @@ def sampled_softmax_loss(logits, Y, candidates, real, correction):
     return nn.functional.cross_entropy(scores, labels, ignore_index=-100)
 
 
-def multi_target_loss(logits, positions, T, weights, candidates, real, correction):
+def multi_target_loss(logits, positions, T, weights, candidates, real, correction, offset=0):
     """Sampled softmax when each position has several right answers: its next len(weights) songs.
 
     The candidates are T (chunks, W) flattened (each chunk's songs after its first, data.chunk_targets: the
@@ -87,14 +87,15 @@ def multi_target_loss(logits, positions, T, weights, candidates, real, correctio
     is -100 (past the playlist's end, unknown) or repeats a nearer one. Each right answer is scored against the
     position's wrong answers only (every real candidate that isn't one of its right songs), never against the
     others: -log(e^s / (e^s + sum over wrong answers)); a position's loss is the weighted mean over its right
-    answers, the batch's the mean over positions. With one weight it equals sampled_softmax_loss."""
+    answers, the batch's the mean over positions. With one weight it equals sampled_softmax_loss. offset: the right
+    answers start that many songs later (a multi-token prediction head for the song offset + 1 steps ahead)."""
     B, L = positions.shape
     W, n = T.shape[1], len(weights)
-    assert W >= L + n - 1, f"T needs the {L + n - 1} songs after each chunk's first, has {W}"
+    assert W >= L + offset + n - 1, f"T needs the {L + offset + n - 1} songs after each chunk's first, has {W}"
     P = B * L
     scores = logits.reshape(P, len(candidates)) - correction
     k = torch.arange(L, device=T.device)
-    cols = (torch.arange(B, device=T.device)[:, None, None] * W + k[None, :, None]
+    cols = (torch.arange(B, device=T.device)[:, None, None] * W + k[None, :, None] + offset
             + torch.arange(n, device=T.device)[None, None, :]).reshape(P, n)         # (P, n) right-answer columns
     songs = T.reshape(-1)[cols]                                                      # their songs, -100 if none
     valid = (songs != -100) & positions.reshape(P, 1)

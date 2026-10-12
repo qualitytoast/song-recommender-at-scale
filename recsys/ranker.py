@@ -168,7 +168,7 @@ def load_ranker_config(path):
 
 
 class CandidateRanker(nn.Module):
-    def __init__(self, retriever, n_features=0, hidden=0):
+    def __init__(self, retriever, n_features=0, hidden=0, predict_steps=1):
         super().__init__()
         self.retriever = copy.deepcopy(retriever)  # fine-tuned; starts as the retriever
         dim = self.retriever.output.in_features
@@ -180,23 +180,22 @@ class CandidateRanker(nn.Module):
         # (set_feature_scale): a weighted sum of them (hidden = 0), or a small network with
         # `hidden` units that can combine them. Its last layer starts at zero, so it still
         # changes nothing before training.
-        if hidden:
-            self.correction = nn.Sequential(nn.Linear(dim + n_features, hidden), nn.ReLU(), nn.Linear(hidden, 1))
-            last = self.correction[-1]
-        else:
-            self.correction = last = nn.Linear(dim + n_features, 1)
-        nn.init.zeros_(last.weight)
-        nn.init.zeros_(last.bias)
+        self.correction = correction_layer(dim + n_features, hidden)
         if n_features:
             self.register_buffer("feature_mean", torch.zeros(n_features))
             self.register_buffer("feature_std", torch.ones(n_features))
+        # Multi-token prediction: one more correction per step further ahead, scoring each candidate as the song
+        # 2, 3, ... steps ahead (a training aid; forward(steps=True)). Made last, like the retriever's step heads.
+        self.step_corrections = nn.ModuleList(correction_layer(dim + n_features, hidden)
+                                              for _ in range(predict_steps - 1))
 
-    def forward(self, ids, names, candidates, base_scores, features=None, lengths=None):
+    def forward(self, ids, names, candidates, base_scores, features=None, lengths=None, steps=False):
         """ids (b, L) context songs; names (b, w) name word IDs; candidates (b, C) song
         IDs; base_scores (b, C) the retriever's scores for them; features (b, C, n_features)
         their extra inputs, if the ranker uses them; lengths (b,) the real context songs per
         row when ids is padded after them (any-length cases), so candidates never see the
-        padding. Returns (b, C) scores."""
+        padding. Returns (b, C) scores; with steps, a list of them, from the usual correction
+        and then each multi-token one (step_corrections)."""
         r = self.retriever
         L = ids.shape[1]
         context = r.embed_songs(ids) + r.position_embedding(torch.arange(L, device=ids.device))
@@ -211,7 +210,22 @@ class CandidateRanker(nn.Module):
             context, cand = ranker_block(block, context, cand, later, blank)
         if features is not None:
             cand = torch.cat([cand, (features - self.feature_mean) / self.feature_std], dim=-1)
+        if steps:
+            return [base_scores + c(cand).squeeze(-1) for c in [self.correction, *self.step_corrections]]
         return base_scores + self.correction(cand).squeeze(-1)
+
+
+def correction_layer(inputs, hidden):
+    """A ranker correction: a weighted sum of its inputs (hidden = 0) or a small network with `hidden` units
+    that can combine them, its last layer starting at zero (no effect before training)."""
+    if hidden:
+        layer = nn.Sequential(nn.Linear(inputs, hidden), nn.ReLU(), nn.Linear(hidden, 1))
+        last = layer[-1]
+    else:
+        layer = last = nn.Linear(inputs, 1)
+    nn.init.zeros_(last.weight)
+    nn.init.zeros_(last.bias)
+    return layer
 
 
 def ranker_block(block, context, cand, later, blank=None):
@@ -591,18 +605,25 @@ def train_ranker(config_path, seed):
     # Right songs: each window's next one, or its next target_songs (case_targets); a window is trained on if
     # its shortlist holds at least one (train_windows "in_shortlist") or always ("all": its next song counts
     # whether shortlisted or not, with its own retriever score, as with_negatives does).
-    T_rank = case_targets(ds.Y_rank, ds.H_rank, ds.O_rank, rc.target_songs)
+    # With multi-token heads, each example also holds the songs up to predict_steps ahead (slots: S).
+    S = max(rc.target_songs, rc.predict_steps)
+    T_rank = case_targets(ds.Y_rank, ds.H_rank, ds.O_rank, S)
     shortlisted_targets = targets_valid(train_ids, T_rank)
     in_list = shortlisted_targets[:, 0]
     every = rc.train_windows == "all"
-    rows = np.arange(len(ds.Y_rank)) if every else np.flatnonzero(shortlisted_targets.any(axis=1))
+    rows = (np.arange(len(ds.Y_rank)) if every
+            else np.flatnonzero(shortlisted_targets[:, :rc.target_songs].any(axis=1)))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
     T_tr = T_rank[rows]
-    V_tr = shortlisted_targets[rows] | (every & (np.arange(rc.target_songs) == 0))[None, :]
+    V_tr = shortlisted_targets[rows] | (every & (np.arange(S) == 0))[None, :]
     any_length = rc.windows == "any_length"  # contexts are then padded after their real songs
     L_tr, L_val = (ds.LI_rank[rows], LI_val) if any_length else (None, None)
     train_ids, train_scores, train_true = train_ids[rows], train_scores[rows], train_true[rows]
     weights = torch.from_numpy(target_weights(rc.target_songs, rc.target_decay)).float()
+    # Each head's loss: (weights over the S slots, the head's own weight). The usual head: its target_songs goal;
+    # head h: the song h steps ahead alone, weighted predict_decay^(h-1).
+    head_losses = [(torch.cat([weights, torch.zeros(S - rc.target_songs)]), 1.0)] + [
+        (torch.eye(S)[h], rc.predict_decay ** h) for h in range(1, rc.predict_steps)]
     val_cases = ScoredCases(ds, XI_val, N_val, Y_val, LI_val, H_val, ds.O_val, rc.target_songs, rc.target_decay,
                             device, columns=10)
     T_val = val_cases.T[:, :rc.target_songs]  # the right songs of its training loss
@@ -611,7 +632,8 @@ def train_ranker(config_path, seed):
           f"{time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} {in_list.mean():.1%}", flush=True)
 
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden,
+                             rc.predict_steps).to(device)
     if rc.freeze_tables:
         freeze_tables(ranker)
     num_params = sum(p.numel() for p in ranker.parameters())
@@ -716,8 +738,15 @@ def train_ranker(config_path, seed):
                                             rc.negatives, negative_gen, rc.negatives_from)
             context, cands, base = X[idx].to(device), candidates.to(device), base.to(device)
             f = None if train_features is None else train_features(idx.numpy(), context, cands, base)
-            scores = ranker(context, N[idx].to(device), cands, base, f, None if lengths is None else lengths[idx].to(device))
-            loss = targets_loss(scores, V[idx].to(device), weights.to(device))
+            context_lengths = None if lengths is None else lengths[idx].to(device)
+            if rc.predict_steps == 1:
+                scores = ranker(context, N[idx].to(device), cands, base, f, context_lengths)
+                loss = targets_loss(scores, V[idx].to(device), weights.to(device))
+            else:
+                heads = ranker(context, N[idx].to(device), cands, base, f, context_lengths, steps=True)
+                valid = V[idx].to(device)
+                loss = sum(factor * targets_loss(scores, valid & (w > 0).to(device)[None, :], w.to(device))
+                           for scores, (w, factor) in zip(heads, head_losses))
             optimizer.zero_grad()
             loss.backward()
             if lazy:  # placeholder slots (right songs not shortlisted) get no gradient: count a wrong song instead
@@ -750,6 +779,7 @@ def train_ranker(config_path, seed):
                "num_params": num_params, "new_params": new_params, "trained_params": trained,
                "train_windows_used": len(rows), "features": featurizer.names if featurizer else [],
                "target_songs": rc.target_songs, "target_decay": rc.target_decay,
+               "predict_steps": rc.predict_steps, "predict_decay": rc.predict_decay,
                "best_check": best_check, "best_val_ndcg": stopper.best, "retriever_val_ndcg": log[0]["val_ndcg"],
                "checks_run": len(log), "train_seconds": round(time.perf_counter() - start, 1), "git_commit": commit,
                "git_dirty": dirty}
@@ -792,7 +822,8 @@ def evaluate_ranker(config_path, seed, all_held_out=False, windows=None):
         rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever, vectors, device, sets)
     search_seconds = time.perf_counter() - start
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names) if featurizer else 0, rc.correction_hidden,
+                             rc.predict_steps).to(device)
     checkpoint = torch.load(run_dir / "best.pt", weights_only=True)
     check_vocab(checkpoint, ds.vocab, run_dir / "best.pt")
     ranker.load_state_dict(checkpoint["model"])

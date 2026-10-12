@@ -50,7 +50,7 @@ def make_cases(args):
     ids, scores = ids[rows], scores[rows]
     X, N, Y, lengths = ds.X_test[rows], ds.N_test[rows], ds.Y_test[rows], ds.LI_test[rows]
     featurizer = make_featurizer(rc, ds, retriever, device)
-    ranker = CandidateRanker(retriever, len(featurizer.names), rc.correction_hidden).to(device)
+    ranker = CandidateRanker(retriever, len(featurizer.names), rc.correction_hidden, rc.predict_steps).to(device)
     path = run_dir_for(args.ranker, args.seed) / "best.pt"
     checkpoint = torch.load(path, weights_only=True)
     check_vocab(checkpoint, ds.vocab, path)

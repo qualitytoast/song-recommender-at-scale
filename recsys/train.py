@@ -242,16 +242,26 @@ def train(config_path, train_seed):
         logits = model(X, N, hidden, all_positions=every_position, candidates=candidates)
         return sampled_softmax_loss(logits, Y, candidates, real, correction)
 
-    # Training on each position's next target_songs songs: the songs after every chunk are looked up per batch
-    # (data.chunk_targets) instead of stored, so memory doesn't grow with target_songs.
-    several = t.target_songs > 1
+    # Training on each position's next target_songs songs, and/or with multi-token prediction heads for the songs
+    # 2.. predict_steps steps ahead: the songs after every chunk are looked up per batch (data.chunk_targets)
+    # instead of stored, so memory doesn't grow with either.
+    several = t.target_songs > 1 or t.predict_steps > 1
     if several:
-        width = X_train.shape[1] + t.target_songs - 1  # a chunk's own next songs and the songs just after it
+        # a chunk's own next songs and the songs just after it, as far as either goal looks ahead
+        width = X_train.shape[1] + max(t.target_songs, t.predict_steps) - 1
         weights = torch.from_numpy(target_weights(t.target_songs, t.target_decay)).float().to(device)
+        step_weights = target_weights(t.predict_steps, t.predict_decay).tolist()  # head h: predict_decay^(h-1)
+        one = torch.ones(1, device=device)
 
     def forward_several(X, N, positions, T, candidates, real, correction):
-        logits = model(X, N, None, all_positions=True, candidates=candidates)
-        return multi_target_loss(logits, positions, T, weights, candidates, real, correction)
+        """The usual head's loss (its target_songs goal) plus each multi-token head's: the exact song h steps
+        ahead for head h, weighted predict_decay^(h-1)."""
+        logits = model.step_logits(X, N, candidates)
+        loss = multi_target_loss(logits[0], positions, T, weights, candidates, real, correction)
+        for h in range(1, len(logits)):
+            loss = loss + step_weights[h] * multi_target_loss(logits[h], positions, T, one, candidates, real,
+                                                              correction, offset=h)
+        return loss
     if t.compile:  # same model and weights; only how the GPU runs the step changes
         forward_loss = torch.compile(forward_loss)
         forward_several = torch.compile(forward_several)
@@ -322,7 +332,7 @@ def train(config_path, train_seed):
                 X, hidden = X.gather(1, reorder.to(device)), hidden.to(device)
                 if every_position:
                     Y = Y.masked_fill(ignored_targets(hidden, mid_shuffle.to(device)), -100)
-            if several:  # each position's next target_songs songs are its right answers
+            if several:  # the next target_songs songs (and, per extra head, the song further ahead)
                 T_cpu = chunk_targets(ds.fit_songs, ds.fit_offsets, ds.Gc_train[order_cpu[i:i + batch_size].numpy()],
                                       width)
                 T = torch.from_numpy(T_cpu).to(device)
@@ -373,7 +383,8 @@ def train(config_path, train_seed):
     summary = {"config": str(config_path), "train_seed": train_seed, "device": str(device),
                "num_params": num_params, "eval_every_targets": t.eval_every_targets,
                "best_check": best_check, "best_epochs": log[best_check]["epochs"],
-               "target_songs": t.target_songs, "target_decay": t.target_decay, "best_val_ndcg": stopper.best,
+               "target_songs": t.target_songs, "target_decay": t.target_decay, "predict_steps": t.predict_steps,
+               "predict_decay": t.predict_decay, "best_val_ndcg": stopper.best,
                "best_val_next_ndcg": log[best_check]["val_next_ndcg@10"], "checks_run": len(log),
                "epochs_run": round(log[-1]["epochs"], 2),
                "train_seconds": round(train_seconds, 1), "val_seconds_total": round(sum(val_seconds), 1),
