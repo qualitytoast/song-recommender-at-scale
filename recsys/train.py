@@ -173,7 +173,8 @@ class ScoredCases:
 def git_state():
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                             capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(["git", "status", "--porcelain"],
+    # Changes to tracked files only: runs/ is in the repository, so a run's own new output files mustn't count.
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
                                 capture_output=True, text=True).stdout.strip())
     return commit, dirty
 
