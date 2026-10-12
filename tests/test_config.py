@@ -47,6 +47,8 @@ softmax = "full"
 sampled_negatives = 0
 negative_power = 0.0
 compile = false
+target_songs = 1
+target_decay = 1.0
 """
 
 

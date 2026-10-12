@@ -100,12 +100,23 @@ class TrainConfig:
     negative_power: float  # random songs drawn by (target frequency)^power; 0 = uniform
     compile: bool          # torch.compile the training step's forward pass and loss (sampled softmax
                            # only): fuses many small GPU operations into fewer, same math
+    target_songs: int      # right answers at each position: the next this many songs of the playlist (1 = the
+                           # next song only); each is scored against the wrong songs, not against the others
+    target_decay: float    # weight of the song d steps ahead: target_decay ** (d - 1) (1 = all equal). Early
+                           # stopping uses NDCG@10 over the same weighted songs (with 1 song: plain NDCG@10)
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
         _check_choice("softmax", self.softmax, ("full", "sampled"))
         if self.compile and self.softmax != "sampled":
             raise ValueError("compile is implemented for the sampled-softmax training step")
+        if self.target_songs < 1 or not 0 < self.target_decay <= 1:
+            raise ValueError(f"need target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
+                             f"{self.target_decay}")
+        if self.target_songs > 1 and (self.objective != "every_position" or self.softmax != "sampled"
+                                      or self.augmenting):
+            raise ValueError("target_songs > 1 is implemented for every-position training with sampled softmax "
+                             "and no augmentation")
 
     @property
     def augmenting(self):

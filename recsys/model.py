@@ -270,6 +270,32 @@ def rank_and_loss(model, X, N, Y, device, max_scores=2**26, lengths=None):
 
 
 @torch.no_grad()
+def rank_targets(model, X, N, T, device, max_scores=2**26, lengths=None, k=10):
+    """For each case: the rank of each of its target songs T (cases, n) among all songs (1 = top, as
+    rank_and_loss; 0 where T is -1: no such target), the cross-entropy loss of its first target, and its top k
+    songs with its input songs left out (as served). Computed a chunk of cases at a time, like rank_and_loss.
+    Returns numpy (ranks (cases, n), losses (cases,), top (cases, k))."""
+    model.eval()
+    chunk = max(1, max_scores // model.output.out_features)
+    vectors, bias = model.output_vectors()
+    ranks, losses, tops = [], [], []
+    for i in range(0, len(X), chunk):
+        x = torch.from_numpy(X[i:i + chunk]).to(device)
+        t = torch.from_numpy(T[i:i + chunk]).to(device)
+        n = None if lengths is None else torch.from_numpy(lengths[i:i + chunk]).to(device)
+        logits = last_real(model.hidden_states(x, torch.from_numpy(N[i:i + chunk]).to(device)), n) @ vectors.T + bias
+        true = logits.gather(1, t.clamp(min=0))
+        r = torch.stack([(logits > true[:, d:d + 1]).sum(dim=1) + 1 for d in range(t.shape[1])], dim=1)
+        ranks.append(torch.where(t >= 0, r, 0).cpu())
+        losses.append((torch.logsumexp(logits, dim=1) - true[:, 0]).cpu())
+        real = torch.ones_like(x, dtype=torch.float) if n is None else (
+            torch.arange(x.shape[1], device=device)[None, :] < n[:, None]).float()
+        inputs = torch.zeros_like(logits).scatter_add_(1, x, real) > 0
+        tops.append(logits.masked_fill(inputs, float("-inf")).topk(k, dim=1).indices.cpu())
+    return torch.cat(ranks).numpy(), torch.cat(losses).numpy(), torch.cat(tops).numpy()
+
+
+@torch.no_grad()
 def predict(model, X, N, device, batch_size=512):
     """Logits for every row of X (numpy song IDs, with name word IDs N) as numpy, dropout off.
 

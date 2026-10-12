@@ -44,3 +44,39 @@ def ndcg_at_k(logits, targets, k=10):
 def hits_at_k(logits, targets, k=10):
     """Per-example bool: did the true song land in the top k?"""
     return target_ranks(logits, targets) <= k
+
+
+def target_weights(n, decay):
+    """Weight of each of n target songs: decay ** (steps ahead - 1), so 1 for the next song."""
+    return decay ** np.arange(n, dtype=np.float64)
+
+
+def multi_target_gains(ranks, weights, k=10):
+    """Per-case NDCG@k when several songs are right, each as relevant as its weight: ranks (cases, n) of each
+    case's target songs (0 = no such target: past the playlist's end, outside the vocab or a repeat). The sum of
+    weight / log2(1 + rank) over targets in the top k, over the best possible sum (the targets' weights, largest
+    first, at ranks 1, 2, ...). With one target per case it is gains_from_ranks."""
+    ranks = np.asarray(ranks)
+    valid = ranks > 0
+    w = np.where(valid, np.broadcast_to(np.asarray(weights, dtype=np.float64), ranks.shape), 0.0)
+    found = valid & (ranks <= k)
+    dcg = np.where(found, w / np.log2(np.where(found, ranks, 1) + 1.0), 0.0).sum(axis=1)
+    best = -np.sort(-w, axis=1)[:, :k]
+    idcg = (best / np.log2(np.arange(2, best.shape[1] + 2))).sum(axis=1)
+    return np.where(idcg > 0, dcg / np.where(idcg > 0, idcg, 1.0), 0.0)
+
+
+def later_precision(top, later, n_songs):
+    """Per case: the share of its top songs (cases, k) that its playlist goes on to contain (later: sorted keys
+    case * n_songs + song, data.later_keys)."""
+    keys = np.arange(len(top))[:, None] * n_songs + np.asarray(top)
+    return np.isin(keys, later).mean(axis=1)
+
+
+def artist_variety(top, song_artist, last_songs):
+    """Per case: (how many different artists its top songs (cases, k) have, the share of them by the artist of
+    its last input song)."""
+    artists = np.asarray(song_artist)[np.asarray(top)]
+    ordered = np.sort(artists, axis=1)
+    distinct = (ordered[:, 1:] != ordered[:, :-1]).sum(axis=1) + 1
+    return distinct, (artists == np.asarray(song_artist)[last_songs][:, None]).mean(axis=1)

@@ -118,6 +118,10 @@ class RankerConfig:
     windows: str           # "full": windows of the retriever's context_length songs; "any_length": every
                            # song with a known song right before it, 1 up to input_length songs (decides
                            # the training, validation and held-out cases, whatever the retriever config says)
+    target_songs: int      # right answers per window: the next this many songs that the shortlist holds (1 =
+                           # the next song only), each scored against the window's sampled wrong songs
+    target_decay: float    # weight of the song d steps ahead: target_decay ** (d - 1); early stopping uses
+                           # NDCG@10 over the same weighted songs (with 1 song: plain NDCG@10)
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -135,6 +139,9 @@ class RankerConfig:
             raise ValueError(f"val_set must be retriever or separate, got {self.val_set!r}")
         if self.correction_hidden < 0:
             raise ValueError(f"correction_hidden must be 0 or more, got {self.correction_hidden}")
+        if self.target_songs < 1 or not 0 < self.target_decay <= 1:
+            raise ValueError(f"need target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
+                             f"{self.target_decay}")
         unknown = sorted(set(self.features) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown features {unknown}; known: {list(GROUPS)}")

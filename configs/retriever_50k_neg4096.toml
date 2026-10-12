@@ -49,3 +49,5 @@ softmax = "sampled"       # was "full": each batch scores its true next songs + 
 sampled_negatives = 4096  # was 8192
 negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
 compile = true            # forward pass and loss compiled
+target_songs = 1          # the next song only (recsys/config.py)
+target_decay = 1.0

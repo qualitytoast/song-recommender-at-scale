@@ -49,3 +49,5 @@ softmax = "sampled"       # was "full": each batch scores its true next songs + 
 sampled_negatives = 8192  # was 1024
 negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
 compile = false           # torch.compile off: plain PyTorch
+target_songs = 1          # the next song only (recsys/config.py)
+target_decay = 1.0
