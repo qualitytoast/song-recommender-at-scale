@@ -1,0 +1,12 @@
+{
+  "config": "configs/p2_artist.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 4999035,
+  "best_epoch": 3,
+  "best_val_ndcg": 0.06319493512880126,
+  "epochs_run": 20,
+  "train_seconds": 226.4,
+  "git_commit": "2081525",
+  "git_dirty": false
+}

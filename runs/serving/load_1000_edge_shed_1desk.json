@@ -1,0 +1,117 @@
+[
+  {
+    "label": "edge_shed_1desk",
+    "settings": {
+      "BATCH": "16"
+    },
+    "frontdesk_copies": 1,
+    "shard_copies": 1,
+    "users": 1000,
+    "/recommend": {
+      "requests": 16133,
+      "failures": 5883,
+      "per_s": 264.5588714619545,
+      "p50_ms": 420.0,
+      "p99_ms": 920.0
+    },
+    "/songs": {
+      "requests": 145669,
+      "failures": 112171,
+      "per_s": 2388.7699898959554,
+      "p50_ms": 280.0,
+      "p99_ms": 540.0
+    },
+    "Aggregated": {
+      "requests": 161802,
+      "failures": 118054,
+      "per_s": 2653.32886135791,
+      "p50_ms": 290.0,
+      "p99_ms": 560.0
+    },
+    "outcomes": {
+      "/recommend": {
+        "answered": 10316,
+        "answered_p50_ms": 456.4981664298102,
+        "answered_p99_ms": 975.4426419734967,
+        "busy": 5886,
+        "busy_p50_ms": 325.0994374975562,
+        "other_failures": 0
+      },
+      "/songs": {
+        "answered": 33780,
+        "answered_p50_ms": 439.88058308605105,
+        "answered_p99_ms": 601.6652037436143,
+        "busy": 112554,
+        "busy_p50_ms": 265.9644380910322,
+        "other_failures": 0
+      }
+    },
+    "health": {
+      "status": "ok",
+      "version": "f73f0d4e1e71",
+      "songs": 1053328,
+      "device": "cpu",
+      "shards": [
+        {
+          "index": 0,
+          "address": "shard-0:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 1,
+          "address": "shard-1:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 2,
+          "address": "shard-2:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        },
+        {
+          "index": 3,
+          "address": "shard-3:50051",
+          "up": true,
+          "skipped_for_s": 0.0
+        }
+      ],
+      "cache": {
+        "hits": 105453,
+        "misses": 4339,
+        "errors": 62,
+        "hit_rate": 0.9605
+      },
+      "batching": {
+        "batches": 1276,
+        "mean_size": 5.2,
+        "largest": 16,
+        "dropped_waited_too_long": 42
+      },
+      "answers": {
+        "total": 18727,
+        "partial": 0,
+        "cached": 12052
+      },
+      "admission": {
+        "recommend": {
+          "admitted": 18727,
+          "rejected_full": 2816,
+          "rejected_waited": 0,
+          "pending": 0,
+          "max_pending": 64,
+          "max_wait_ms": 1000.0
+        },
+        "songs": {
+          "admitted": 133517,
+          "rejected_full": 0,
+          "rejected_waited": 0,
+          "pending": 0,
+          "max_pending": 512,
+          "max_wait_ms": null
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,42 @@
+# Phase 3, step 2d: both fixes: 8,192 popularity-weighted random negatives.
+# sampled_negatives and negative_power differ from p3_sampled.toml (p3_neg8k + p3_popneg).
+
+data_seed = 42           # playlist split, same as every Phase 1 run
+train_seeds = [1, 2, 3]  # was [42]: three runs, results averaged
+
+[data]
+folder = "data/mpd"
+max_playlists = 5000
+min_playlist_len = 4   # v1 kept playlists with more than 3 tracks
+min_freq = 2           # songs seen fewer times than this are dropped
+song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
+vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
+context_length = 10    # predict the 11th song from the previous 10
+test_split = 0.1       # fraction of playlists held out (same 500 playlists as v1)
+validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
+val_split = 0.1          # was 0.0: 80/10/10 train / validation / held-out playlists
+val_size = 0             # was 3000; unused with separate_playlists
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
+init = "pytorch"         # was "v1": PyTorch's default starting weights
+features = ["artist", "album", "duration", "playlist_name", "genre"]  # was without "genre"
+
+[train]
+optimizer = "adamw"    # decoupled weight decay
+lr = 1e-3
+weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
+batch_size = 32
+epochs = 100           # was 40: ~2.4x fewer optimizer steps per epoch (952 vs 2,316), so the peak may come later
+min_epochs = 10       # was 20: best epochs are now ~5
+patience = 10
+augment_mask = 0.0      # training-window augmentation off
+augment_crop = 0
+augment_reorder = 0.0
+objective = "every_position"  # was "last_position": predict the next song at every position
+softmax = "sampled"       # was "full": each batch scores its true next songs + random songs
+sampled_negatives = 8192  # was 1024
+negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75

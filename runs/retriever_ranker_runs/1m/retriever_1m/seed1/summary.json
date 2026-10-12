@@ -1,0 +1,17 @@
+{
+  "config": "configs/retriever_1m.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 200640208,
+  "eval_every_targets": 10148467,
+  "best_check": 34,
+  "best_epochs": 8.75,
+  "best_val_ndcg": 0.14044639269969822,
+  "checks_run": 40,
+  "epochs_run": 10.0,
+  "train_seconds": 4513.5,
+  "val_seconds_total": 591.5,
+  "val_seconds_per_check": 14.79,
+  "git_commit": "478da8c",
+  "git_dirty": false
+}

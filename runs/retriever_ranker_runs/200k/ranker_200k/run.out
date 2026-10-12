@@ -1,0 +1,21 @@
+runs/retriever_ranker_runs/retriever_ranker_200k/seed1 | 1,470,511 ranker windows, 20,000 val windows | shortlists (ivf nlist=2048 nprobe=128) in 204s | train recall@500 62.3%
+83,268,597 params: the retriever's + 193 new (candidate marker, position, correction)
+check   0 | 0 windows | train loss 0.0000 | val loss 4.3800 | val NDCG@10 0.1216 Hits@10 0.185 Hits@1 0.072 | train 0s + val 8s  *best
+check   1 | 294,016 windows | train loss 4.4521 | val loss 4.2534 | val NDCG@10 0.1200 Hits@10 0.182 Hits@1 0.072 | train 98s + val 7s
+check   2 | 588,032 windows | train loss 4.3885 | val loss 4.1997 | val NDCG@10 0.1171 Hits@10 0.177 Hits@1 0.070 | train 88s + val 7s
+check   3 | 882,048 windows | train loss 4.3524 | val loss 4.1631 | val NDCG@10 0.1168 Hits@10 0.177 Hits@1 0.070 | train 82s + val 8s
+check   4 | 1,176,000 windows | train loss 4.3313 | val loss 4.1302 | val NDCG@10 0.1151 Hits@10 0.175 Hits@1 0.068 | train 84s + val 8s
+check   5 | 1,470,016 windows | train loss 4.3016 | val loss 4.1064 | val NDCG@10 0.1156 Hits@10 0.176 Hits@1 0.068 | train 85s + val 9s  no improvement 1/5
+check   6 | 1,764,015 windows | train loss 4.2684 | val loss 4.0814 | val NDCG@10 0.1131 Hits@10 0.174 Hits@1 0.066 | train 86s + val 7s  no improvement 2/5
+check   7 | 2,058,031 windows | train loss 4.2509 | val loss 4.0588 | val NDCG@10 0.1131 Hits@10 0.174 Hits@1 0.066 | train 87s + val 8s  no improvement 3/5
+check   8 | 2,352,047 windows | train loss 4.2392 | val loss 4.0423 | val NDCG@10 0.1130 Hits@10 0.174 Hits@1 0.066 | train 91s + val 8s  no improvement 4/5
+check   9 | 2,646,063 windows | train loss 4.2190 | val loss 4.0250 | val NDCG@10 0.1136 Hits@10 0.175 Hits@1 0.066 | train 87s + val 8s  no improvement 5/5
+early stop at check 9
+best val NDCG@10 0.1216 at check 0 (retriever alone 0.1216) | 17.9 min
+
+runs/retriever_ranker_runs/retriever_ranker_200k/seed1/best.pt (check 0) | held-out 836,433 windows | shortlists (ivf nlist=2048 nprobe=128) 122s | reranking 277s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 500
+retriever + ranker (top 500)          0.1255    0.075    0.146    0.190     0.640
+retriever alone                       0.1255    0.075    0.146    0.190     0.640
+retriever alone, exact search         0.1257    0.075    0.146    0.190     0.640
+most-popular                          0.0032    0.001    0.004    0.007     0.151

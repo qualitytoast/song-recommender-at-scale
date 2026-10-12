@@ -1,0 +1,48 @@
+runs/retriever_ranker_runs/ranker_50k_rerank250/seed1 | 302,495 ranker windows (155,388 trained on), 20,000 val windows | shortlists (ivf nlist=2048 nprobe=128) in 23s | train recall@250 51.4%
+35,427,179 params: the retriever's + 200 new (candidate marker, position, correction); 35,427,179 trained
+extra inputs (mean / std): same_artist 0.0863/0.222, same_album 0.0295/0.114, genre_match 0.35/0.266, last_same_artist 0.146/0.353, log_after_last 0.747/0.918, log_after_context 2.12/1.35, context_with_pair 0.383/0.283
+check   0 | 0 windows | train loss 0.0000 | val loss 3.3513 | val NDCG@10 0.1179 Hits@10 0.180 Hits@1 0.069 | train 0s + val 6s  *best
+check   1 | 31,104 windows | train loss 3.3411 | val loss 3.3227 | val NDCG@10 0.1214 Hits@10 0.185 Hits@1 0.071 | train 13s + val 5s  *best
+check   2 | 62,208 windows | train loss 3.3226 | val loss 3.3067 | val NDCG@10 0.1237 Hits@10 0.189 Hits@1 0.072 | train 9s + val 7s  *best
+check   3 | 93,312 windows | train loss 3.2939 | val loss 3.2976 | val NDCG@10 0.1254 Hits@10 0.191 Hits@1 0.073 | train 9s + val 6s  *best
+check   4 | 124,416 windows | train loss 3.2969 | val loss 3.2915 | val NDCG@10 0.1269 Hits@10 0.193 Hits@1 0.074 | train 10s + val 5s  *best
+check   5 | 155,516 windows | train loss 3.2826 | val loss 3.2874 | val NDCG@10 0.1274 Hits@10 0.194 Hits@1 0.075 | train 9s + val 5s  *best
+check   6 | 186,620 windows | train loss 3.2788 | val loss 3.2831 | val NDCG@10 0.1280 Hits@10 0.194 Hits@1 0.075 | train 10s + val 5s  *best
+check   7 | 217,724 windows | train loss 3.2754 | val loss 3.2791 | val NDCG@10 0.1283 Hits@10 0.195 Hits@1 0.075 | train 9s + val 5s  *best
+check   8 | 248,828 windows | train loss 3.2698 | val loss 3.2762 | val NDCG@10 0.1284 Hits@10 0.194 Hits@1 0.076 | train 10s + val 5s  *best
+check   9 | 279,932 windows | train loss 3.2567 | val loss 3.2729 | val NDCG@10 0.1290 Hits@10 0.195 Hits@1 0.076 | train 9s + val 6s  *best
+check  10 | 311,032 windows | train loss 3.2811 | val loss 3.2694 | val NDCG@10 0.1293 Hits@10 0.196 Hits@1 0.077 | train 8s + val 6s  *best
+check  11 | 342,136 windows | train loss 3.2656 | val loss 3.2666 | val NDCG@10 0.1288 Hits@10 0.195 Hits@1 0.076 | train 9s + val 5s  no improvement 1/5
+check  12 | 373,240 windows | train loss 3.2487 | val loss 3.2646 | val NDCG@10 0.1294 Hits@10 0.196 Hits@1 0.077 | train 9s + val 6s  *best
+check  13 | 404,344 windows | train loss 3.2372 | val loss 3.2620 | val NDCG@10 0.1296 Hits@10 0.196 Hits@1 0.077 | train 9s + val 5s  *best
+check  14 | 435,448 windows | train loss 3.2557 | val loss 3.2603 | val NDCG@10 0.1295 Hits@10 0.196 Hits@1 0.077 | train 9s + val 5s  no improvement 1/5
+check  15 | 466,548 windows | train loss 3.2540 | val loss 3.2586 | val NDCG@10 0.1296 Hits@10 0.196 Hits@1 0.077 | train 9s + val 5s  *best
+check  16 | 497,652 windows | train loss 3.2344 | val loss 3.2576 | val NDCG@10 0.1296 Hits@10 0.195 Hits@1 0.077 | train 9s + val 6s  *best
+check  17 | 528,756 windows | train loss 3.2431 | val loss 3.2554 | val NDCG@10 0.1297 Hits@10 0.196 Hits@1 0.077 | train 9s + val 6s  *best
+check  18 | 559,860 windows | train loss 3.2351 | val loss 3.2547 | val NDCG@10 0.1296 Hits@10 0.195 Hits@1 0.077 | train 8s + val 6s  no improvement 1/5
+check  19 | 590,900 windows | train loss 3.2373 | val loss 3.2525 | val NDCG@10 0.1297 Hits@10 0.196 Hits@1 0.077 | train 9s + val 6s  no improvement 2/5
+check  20 | 622,000 windows | train loss 3.2455 | val loss 3.2520 | val NDCG@10 0.1297 Hits@10 0.196 Hits@1 0.077 | train 9s + val 5s  no improvement 3/5
+check  21 | 653,104 windows | train loss 3.2335 | val loss 3.2505 | val NDCG@10 0.1297 Hits@10 0.196 Hits@1 0.077 | train 9s + val 5s  no improvement 4/5
+check  22 | 684,208 windows | train loss 3.2222 | val loss 3.2499 | val NDCG@10 0.1295 Hits@10 0.196 Hits@1 0.076 | train 9s + val 5s  no improvement 5/5
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/ranker.py", line 556, in <module>
+    evaluate_ranker(args.config, seed)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/ranker.py", line 543, in evaluate_ranker
+    f"{r[f'recall@{rc.shortlist}']:>10.3f}")
+       ~^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'recall@250'
+early stop at check 22
+best val NDCG@10 0.1297 at check 17 (retriever alone 0.1179) | 6.0 min
+
+runs/retriever_ranker_runs/ranker_50k_rerank250/seed1/best.pt (check 17) | held-out 159,081 windows | shortlists (ivf nlist=2048 nprobe=128) 14s | reranking 39s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 250
+
+runs/retriever_ranker_runs/ranker_50k_rerank250/seed1/best.pt (check 17) | held-out 159,081 windows | shortlists (ivf nlist=2048 nprobe=128) 13s | reranking 37s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 250
+retriever + ranker (top 250)          0.1292    0.075    0.151    0.197     0.544
+retriever alone                       0.1171    0.068    0.137    0.179     0.544
+retriever alone, exact search         0.1172    0.068    0.137    0.179     0.543
+most-popular                          0.0034    0.001    0.004    0.007     0.104

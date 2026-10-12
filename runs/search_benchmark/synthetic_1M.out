@@ -1,0 +1,24 @@
+synthetic_1053328: 1,053,328 songs x 65 numbers | 5,000 queries | top 500
+{"method": "exact (mps GPU)", "build_s": 0.0, "memory_mb": 274, "queries_per_s": 294, "search_recall": 1.0, "latency_p50_ms": 6.379645550623536, "latency_p99_ms": 8.123391759581864, "end_to_end_p50_ms": 6.379645550623536, "end_to_end_p99_ms": 8.123391759581864}
+{"method": "flat", "build_s": 0.0, "memory_mb": 274, "queries_per_s": 2522, "search_recall": 0.9999984000000001, "latency_p50_ms": 6.195771042257547, "latency_p99_ms": 16.743433293886447, "end_to_end_p50_ms": 6.415250478312373, "end_to_end_p99_ms": 11.627148727420716}
+{"method": "flat, 4 shards", "build_s": 0.0, "memory_mb": 274, "queries_per_s": 1855, "search_recall": 0.9999984000000001, "latency_p50_ms": 7.198291947133839, "latency_p99_ms": 10.384185099974273, "end_to_end_p50_ms": 6.406728993169963, "end_to_end_p99_ms": 14.957789173349731}
+{"method": "ivf nlist=4096 nprobe=16", "build_s": 52.8, "memory_mb": 283, "queries_per_s": 42760, "search_recall": 0.09252359999999998, "latency_p50_ms": 0.3104164497926831, "latency_p99_ms": 0.33941661473363466, "end_to_end_p50_ms": 0.24218752514570951, "end_to_end_p99_ms": 0.39901121053844685}
+{"method": "ivf nlist=4096 nprobe=64", "build_s": 52.0, "memory_mb": 283, "queries_per_s": 9419, "search_recall": 0.22604200000000002, "latency_p50_ms": 0.4094585310667753, "latency_p99_ms": 0.7510948809795069, "end_to_end_p50_ms": 0.45533361844718456, "end_to_end_p99_ms": 0.49101668410003185}
+{"method": "ivf nlist=4096 nprobe=256", "build_s": 52.8, "memory_mb": 283, "queries_per_s": 2454, "search_recall": 0.4840348, "latency_p50_ms": 1.2855209643021226, "latency_p99_ms": 2.012735921889536, "end_to_end_p50_ms": 0.9644166566431522, "end_to_end_p99_ms": 1.0569651005789638}
+{"method": "ivf nprobe=64, 4 shards", "build_s": 13.3, "memory_mb": 283, "queries_per_s": 6483, "search_recall": 0.18760559999999996, "latency_p50_ms": 0.22012507542967796, "latency_p99_ms": 0.3247932344675064, "end_to_end_p50_ms": 0.26666640769690275, "end_to_end_p99_ms": 0.31339994398877014}
+{"method": "hnsw M=32 ef=512", "build_s": 217.5, "memory_mb": 561, "queries_per_s": 1838, "search_recall": 0.7179327999999999, "latency_p50_ms": 2.85560404881835, "latency_p99_ms": 3.300880140159279, "end_to_end_p50_ms": 2.93637509457767, "end_to_end_p99_ms": 3.2581752073019734}
+{"method": "hnsw M=32 ef=1024", "build_s": 165.2, "memory_mb": 561, "queries_per_s": 1074, "search_recall": 0.8560492000000001, "latency_p50_ms": 5.892604007385671, "latency_p99_ms": 7.058683359064162, "end_to_end_p50_ms": 4.937500576488674, "end_to_end_p99_ms": 7.2909086523577535}
+{"method": "hnsw ef=512, 4 shards", "build_s": 113.5, "memory_mb": 561, "queries_per_s": 689, "search_recall": 0.9423632000000002, "latency_p50_ms": 2.0194376120343804, "latency_p99_ms": 2.396146957762538, "end_to_end_p50_ms": 2.1276045590639114, "end_to_end_p99_ms": 2.9955366719514007}
+
+method                           build s     MB  queries/s  recall  p50 ms  p99 ms  e2e p50  e2e p99
+exact (mps GPU)                      0.0    274        294   1.000    6.38    8.12     6.38     8.12
+flat                                 0.0    274      2,522   1.000    6.20   16.74     6.42    11.63
+flat, 4 shards                       0.0    274      1,855   1.000    7.20   10.38     6.41    14.96
+ivf nlist=4096 nprobe=16            52.8    283     42,760   0.093    0.31    0.34     0.24     0.40
+ivf nlist=4096 nprobe=64            52.0    283      9,419   0.226    0.41    0.75     0.46     0.49
+ivf nlist=4096 nprobe=256           52.8    283      2,454   0.484    1.29    2.01     0.96     1.06
+ivf nprobe=64, 4 shards             13.3    283      6,483   0.188    0.22    0.32     0.27     0.31
+hnsw M=32 ef=512                   217.5    561      1,838   0.718    2.86    3.30     2.94     3.26
+hnsw M=32 ef=1024                  165.2    561      1,074   0.856    5.89    7.06     4.94     7.29
+hnsw ef=512, 4 shards              113.5    561        689   0.942    2.02    2.40     2.13     3.00
+saved /Users/nathanhung/Projects/song-recommender-at-scale/runs/search_benchmark/synthetic_1053328.json

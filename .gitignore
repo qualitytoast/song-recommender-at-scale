@@ -4,6 +4,15 @@ __pycache__/
 .DS_Store
 .claude/
 CLAUDE.md
-runs/
 bundles/
 docker/bluegreen/edge.conf
+# runs/: the training history (configs, logs, eval results) is kept; checkpoints, cached shortlists and
+# other big binaries are not (40 GB; GitHub refuses files over 100 MB), nor test cases copied from the
+# MPD (its terms don't allow sharing the data) or per-request load-test logs
+runs/**/*.pt
+runs/**/*.npz
+runs/**/*.npy
+runs/**/*.faiss
+runs/shortlist_cache/
+runs/serving/**/cases.json
+runs/serving/*_outcomes.json

@@ -1,0 +1,15 @@
+{
+  "config": "configs/retriever_ranker_200k.toml",
+  "train_seed": 1,
+  "retriever": "configs/p3_200k_partA.toml",
+  "search": "ivf nlist=2048 nprobe=128",
+  "num_params": 83268597,
+  "new_params": 193,
+  "best_check": 0,
+  "best_val_ndcg": 0.121554443834323,
+  "retriever_val_ndcg": 0.121554443834323,
+  "checks_run": 10,
+  "train_seconds": 1072.8,
+  "git_commit": "3d205ec",
+  "git_dirty": false
+}

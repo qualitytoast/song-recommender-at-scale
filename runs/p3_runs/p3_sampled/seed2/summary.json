@@ -1,0 +1,12 @@
+{
+  "config": "configs/p3_sampled.toml",
+  "train_seed": 2,
+  "device": "mps",
+  "num_params": 7202491,
+  "best_epoch": 3,
+  "best_val_ndcg": 0.05610042523477107,
+  "epochs_run": 20,
+  "train_seconds": 213.4,
+  "git_commit": "e2e0597",
+  "git_dirty": false
+}

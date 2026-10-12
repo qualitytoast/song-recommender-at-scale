@@ -1,0 +1,38 @@
+runs/retriever_ranker_runs/retriever_50k_compile/seed1 | device mps | 166,627 songs | 239,397 train chunks (1,832,555 targets) | 20,000 val | 35,426,979 params
+check   0 | epoch  0.25 | train loss 9.1419 | val loss 9.0549 | val NDCG@10 0.0110 | train 13.9s + val 3.9s  *best
+check   1 | epoch  0.50 | train loss 7.9785 | val loss 8.3076 | val NDCG@10 0.0250 | train 11.4s + val 3.9s  *best
+check   2 | epoch  0.75 | train loss 7.4677 | val loss 7.9380 | val NDCG@10 0.0385 | train 11.3s + val 4.1s  *best
+W1009 17:38:42.438000 67782 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1806] [0/1] Not enough SMs to use max_autotune_gemm mode
+check   3 | epoch  1.00 | train loss 7.2159 | val loss 7.7300 | val NDCG@10 0.0516 | train 16.9s + val 4.0s  *best
+check   4 | epoch  1.25 | train loss 6.7416 | val loss 7.6005 | val NDCG@10 0.0652 | train 9.0s + val 3.9s  *best
+check   5 | epoch  1.50 | train loss 6.6716 | val loss 7.4963 | val NDCG@10 0.0759 | train 9.0s + val 3.9s  *best
+check   6 | epoch  1.75 | train loss 6.6045 | val loss 7.4106 | val NDCG@10 0.0837 | train 8.8s + val 3.9s  *best
+check   7 | epoch  2.00 | train loss 6.5512 | val loss 7.3393 | val NDCG@10 0.0935 | train 8.9s + val 4.0s  *best
+check   8 | epoch  2.25 | train loss 6.0300 | val loss 7.3685 | val NDCG@10 0.0984 | train 9.0s + val 4.0s  *best
+check   9 | epoch  2.50 | train loss 6.0652 | val loss 7.3436 | val NDCG@10 0.1033 | train 9.0s + val 4.0s  *best
+check  10 | epoch  2.75 | train loss 6.0740 | val loss 7.2980 | val NDCG@10 0.1038 | train 8.9s + val 4.0s  *best
+check  11 | epoch  3.00 | train loss 6.0889 | val loss 7.2674 | val NDCG@10 0.1094 | train 9.1s + val 3.9s  *best
+check  12 | epoch  3.25 | train loss 5.5580 | val loss 7.3649 | val NDCG@10 0.1101 | train 8.9s + val 4.2s  *best
+check  13 | epoch  3.50 | train loss 5.6446 | val loss 7.3488 | val NDCG@10 0.1099 | train 9.8s + val 4.0s  no improvement 1/5
+check  14 | epoch  3.75 | train loss 5.6939 | val loss 7.3049 | val NDCG@10 0.1125 | train 8.9s + val 4.0s  *best
+check  15 | epoch  4.00 | train loss 5.7332 | val loss 7.2781 | val NDCG@10 0.1151 | train 8.9s + val 3.9s  *best
+check  16 | epoch  4.25 | train loss 5.2594 | val loss 7.4215 | val NDCG@10 0.1147 | train 8.9s + val 3.9s  no improvement 1/5
+check  17 | epoch  4.50 | train loss 5.3518 | val loss 7.4041 | val NDCG@10 0.1142 | train 8.9s + val 3.9s  no improvement 2/5
+check  18 | epoch  4.75 | train loss 5.4128 | val loss 7.3633 | val NDCG@10 0.1168 | train 8.9s + val 3.9s  *best
+check  19 | epoch  5.00 | train loss 5.4741 | val loss 7.3383 | val NDCG@10 0.1175 | train 8.9s + val 4.0s  *best
+check  20 | epoch  5.25 | train loss 5.0375 | val loss 7.4951 | val NDCG@10 0.1152 | train 8.9s + val 3.9s  no improvement 1/5
+check  21 | epoch  5.50 | train loss 5.1537 | val loss 7.4570 | val NDCG@10 0.1167 | train 8.9s + val 4.1s  no improvement 2/5
+check  22 | epoch  5.75 | train loss 5.2161 | val loss 7.4305 | val NDCG@10 0.1162 | train 9.1s + val 4.0s  no improvement 3/5
+check  23 | epoch  6.00 | train loss 5.2746 | val loss 7.3914 | val NDCG@10 0.1168 | train 9.0s + val 3.9s  no improvement 4/5
+check  24 | epoch  6.25 | train loss 4.9087 | val loss 7.5482 | val NDCG@10 0.1168 | train 8.8s + val 3.9s  no improvement 5/5
+early stop at check 24
+best val NDCG@10 0.1175 at check 19 (5.00 epochs) | 5.8 min, of which validation 1.7 min | saved runs/retriever_ranker_runs/retriever_50k_compile/seed1/best.pt
+
+runs/retriever_ranker_runs/retriever_50k_compile/seed1/best.pt (check 19)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.1175    0.068    0.136    0.181    0.426    0.650    0.739    0.813    0.889
+full held-out                  159,081    0.1172    0.067    0.137    0.182    0.425    0.654    0.742    0.815    0.891
+most-popular (full held-out)   159,081    0.0034    0.001    0.004    0.007    0.052    0.172    0.271    0.401    0.592
+
+most common next songs in training: HUMBLE. (1027x), Congratulations (944x), One Dance (933x)
+model / most-popular NDCG@10: 34.5x

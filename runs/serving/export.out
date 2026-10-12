@@ -1,0 +1,19 @@
+bundles/ranker_1m_any_length-61dd89c16797
+       69.09 real        63.07 user         4.57 sys
+         12977799168  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2722163  page reclaims
+               14974  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                8859  voluntary context switches
+               52695  involuntary context switches
+        350254637167  instructions retired
+        177502589011  cycles elapsed
+         22983623816  peak memory footprint

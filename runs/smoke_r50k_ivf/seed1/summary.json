@@ -1,0 +1,13 @@
+{
+  "config": "/private/tmp/claude-501/-Users-nathanhung-Projects-song-recommender-at-scale/3075f761-1d25-4f7f-916a-041374374f97/scratchpad/smoke_r50k_ivf.toml",
+  "train_seed": 1,
+  "retriever": "configs/p3_50k_partA.toml",
+  "search": "ivf nlist=2048 nprobe=128",
+  "best_check": 5,
+  "best_val_ndcg": 0.11787923223996609,
+  "retriever_val_ndcg": 0.1059585860991443,
+  "checks_run": 6,
+  "train_seconds": 112.4,
+  "git_commit": "def5048",
+  "git_dirty": true
+}

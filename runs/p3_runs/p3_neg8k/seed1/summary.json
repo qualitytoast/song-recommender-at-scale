@@ -1,0 +1,12 @@
+{
+  "config": "configs/p3_neg8k.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 7202491,
+  "best_epoch": 5,
+  "best_val_ndcg": 0.06791407480081166,
+  "epochs_run": 20,
+  "train_seconds": 379.0,
+  "git_commit": "81ea651",
+  "git_dirty": false
+}

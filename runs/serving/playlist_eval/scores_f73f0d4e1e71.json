@@ -1,0 +1,74 @@
+[
+  {
+    "max_per_artist": 0,
+    "mix": 0.0,
+    "all": {
+      "next_hit@10": 0.2406,
+      "later_p@10": 0.16562000000000363,
+      "artists": 5.749,
+      "last_artist": 0.44329999999999964,
+      "cases": 5000
+    },
+    "mixed": {
+      "next_hit@10": 0.1184,
+      "later_p@10": 0.1300799999999994,
+      "artists": 7.5552,
+      "last_artist": 0.2454399999999999,
+      "cases": 1250
+    }
+  },
+  {
+    "max_per_artist": 2,
+    "mix": 0.0,
+    "all": {
+      "next_hit@10": 0.1976,
+      "later_p@10": 0.1504800000000033,
+      "artists": 8.3122,
+      "last_artist": 0.15332000000000826,
+      "cases": 5000
+    },
+    "mixed": {
+      "next_hit@10": 0.1128,
+      "later_p@10": 0.13607999999999923,
+      "artists": 8.736,
+      "last_artist": 0.12031999999999948,
+      "cases": 1250
+    }
+  },
+  {
+    "max_per_artist": 0,
+    "mix": 0.5,
+    "all": {
+      "next_hit@10": 0.2242,
+      "later_p@10": 0.17708000000000368,
+      "artists": 6.6872,
+      "last_artist": 0.2968199999999994,
+      "cases": 5000
+    },
+    "mixed": {
+      "next_hit@10": 0.1048,
+      "later_p@10": 0.14679999999999918,
+      "artists": 8.5504,
+      "last_artist": 0.09327999999999975,
+      "cases": 1250
+    }
+  },
+  {
+    "max_per_artist": 2,
+    "mix": 0.5,
+    "all": {
+      "next_hit@10": 0.1854,
+      "later_p@10": 0.15826000000000348,
+      "artists": 8.4516,
+      "last_artist": 0.11576000000000056,
+      "cases": 5000
+    },
+    "mixed": {
+      "next_hit@10": 0.1008,
+      "later_p@10": 0.1482399999999992,
+      "artists": 8.9624,
+      "last_artist": 0.06576000000000023,
+      "cases": 1250
+    }
+  }
+]

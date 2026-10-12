@@ -1,0 +1,10 @@
+{
+  "config": "configs/v1_baseline.toml",
+  "device": "mps",
+  "best_epoch": 27,
+  "best_val_ndcg": 0.030132704486642126,
+  "epochs_run": 38,
+  "train_seconds": 300.1,
+  "git_commit": "1afdcf8",
+  "git_dirty": false
+}

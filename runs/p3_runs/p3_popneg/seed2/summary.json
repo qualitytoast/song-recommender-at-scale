@@ -1,0 +1,12 @@
+{
+  "config": "configs/p3_popneg.toml",
+  "train_seed": 2,
+  "device": "mps",
+  "num_params": 7202491,
+  "best_epoch": 5,
+  "best_val_ndcg": 0.06213953933950168,
+  "epochs_run": 20,
+  "train_seconds": 199.7,
+  "git_commit": "81ea651",
+  "git_dirty": false
+}

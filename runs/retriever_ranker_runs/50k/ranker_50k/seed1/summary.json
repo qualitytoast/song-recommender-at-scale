@@ -1,0 +1,15 @@
+{
+  "config": "configs/retriever_ranker_50k_b128.toml",
+  "train_seed": 1,
+  "retriever": "configs/p3_50k_partA_b128.toml",
+  "search": "exact",
+  "num_params": 35427172,
+  "new_params": 193,
+  "best_check": 0,
+  "best_val_ndcg": 0.11780649268515779,
+  "retriever_val_ndcg": 0.11780649268515779,
+  "checks_run": 10,
+  "train_seconds": 371.3,
+  "git_commit": "0e683f9",
+  "git_dirty": false
+}

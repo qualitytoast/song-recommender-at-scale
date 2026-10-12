@@ -1,0 +1,12 @@
+{
+  "config": "configs/r_50k.toml",
+  "train_seed": 2,
+  "retriever": "configs/p3_50k_partA.toml",
+  "best_check": 5,
+  "best_val_ndcg": 0.12262595110381272,
+  "retriever_val_ndcg": 0.10803462992965761,
+  "checks_run": 11,
+  "train_seconds": 455.4,
+  "git_commit": "01c1322",
+  "git_dirty": false
+}

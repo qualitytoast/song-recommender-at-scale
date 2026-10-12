@@ -1,0 +1,24 @@
+real_p3_200k_partA_412404: 412,404 songs x 65 numbers | 5,000 queries | top 500
+{"method": "exact (mps GPU)", "build_s": 0.0, "memory_mb": 107, "queries_per_s": 705, "search_recall": 1.0, "latency_p50_ms": 2.5590419536456466, "latency_p99_ms": 3.4253312204964455, "end_to_end_p50_ms": 2.5590419536456466, "end_to_end_p99_ms": 3.4253312204964455, "true_song_in_top_k": 0.6502}
+{"method": "flat", "build_s": 0.0, "memory_mb": 107, "queries_per_s": 6559, "search_recall": 0.9999984000000001, "latency_p50_ms": 1.6260419506579638, "latency_p99_ms": 1.9987337244674563, "end_to_end_p50_ms": 2.281395602039993, "end_to_end_p99_ms": 2.517112393397837, "true_song_in_top_k": 0.6502}
+{"method": "flat, 4 shards", "build_s": 0.0, "memory_mb": 107, "queries_per_s": 4837, "search_recall": 0.9999984000000001, "latency_p50_ms": 2.759624971076846, "latency_p99_ms": 4.547315274830906, "end_to_end_p50_ms": 2.853978890925646, "end_to_end_p99_ms": 3.5053229448385537, "true_song_in_top_k": 0.6502}
+{"method": "ivf nlist=2048 nprobe=16", "build_s": 10.3, "memory_mb": 111, "queries_per_s": 25938, "search_recall": 0.8401824000000001, "latency_p50_ms": 0.14322949573397636, "latency_p99_ms": 0.31285240547731474, "end_to_end_p50_ms": 0.18110452219843864, "end_to_end_p99_ms": 0.336815332993865, "true_song_in_top_k": 0.6356}
+{"method": "ivf nlist=2048 nprobe=64", "build_s": 10.4, "memory_mb": 111, "queries_per_s": 17954, "search_recall": 0.9654936, "latency_p50_ms": 0.2538964617997408, "latency_p99_ms": 0.44153456110507067, "end_to_end_p50_ms": 0.2867294242605567, "end_to_end_p99_ms": 0.36563138477504253, "true_song_in_top_k": 0.6518}
+{"method": "ivf nlist=2048 nprobe=256", "build_s": 10.3, "memory_mb": 111, "queries_per_s": 4516, "search_recall": 0.995014, "latency_p50_ms": 0.7129166042432189, "latency_p99_ms": 1.3896419922821164, "end_to_end_p50_ms": 0.7399999303743243, "end_to_end_p99_ms": 0.9394707996398209, "true_song_in_top_k": 0.6508}
+{"method": "ivf nprobe=64, 4 shards", "build_s": 2.5, "memory_mb": 111, "queries_per_s": 10566, "search_recall": 0.8992, "latency_p50_ms": 0.1649374607950449, "latency_p99_ms": 0.26515412144362926, "end_to_end_p50_ms": 0.2071870258077979, "end_to_end_p99_ms": 0.2510610269382596, "true_song_in_top_k": 0.6378}
+{"method": "hnsw M=32 ef=512", "build_s": 22.2, "memory_mb": 219, "queries_per_s": 9409, "search_recall": 0.945298, "latency_p50_ms": 0.7144580595195293, "latency_p99_ms": 1.1696294043213122, "end_to_end_p50_ms": 0.7377915317192674, "end_to_end_p99_ms": 1.163594927638769, "true_song_in_top_k": 0.649}
+{"method": "hnsw M=32 ef=1024", "build_s": 22.4, "memory_mb": 219, "queries_per_s": 3817, "search_recall": 0.9689711999999999, "latency_p50_ms": 1.7970630433410406, "latency_p99_ms": 2.654049303382635, "end_to_end_p50_ms": 1.824457896873355, "end_to_end_p99_ms": 2.5419162213802338, "true_song_in_top_k": 0.649}
+{"method": "hnsw ef=512, 4 shards", "build_s": 15.2, "memory_mb": 219, "queries_per_s": 2150, "search_recall": 0.9811863999999999, "latency_p50_ms": 0.845166970975697, "latency_p99_ms": 1.0470698773860925, "end_to_end_p50_ms": 0.9366045705974102, "end_to_end_p99_ms": 1.1545013100840151, "true_song_in_top_k": 0.6494}
+
+method                           build s     MB  queries/s  recall  p50 ms  p99 ms  e2e p50  e2e p99  true@k
+exact (mps GPU)                      0.0    107        705   1.000    2.56    3.43     2.56     3.43   0.650
+flat                                 0.0    107      6,559   1.000    1.63    2.00     2.28     2.52   0.650
+flat, 4 shards                       0.0    107      4,837   1.000    2.76    4.55     2.85     3.51   0.650
+ivf nlist=2048 nprobe=16            10.3    111     25,938   0.840    0.14    0.31     0.18     0.34   0.636
+ivf nlist=2048 nprobe=64            10.4    111     17,954   0.965    0.25    0.44     0.29     0.37   0.652
+ivf nlist=2048 nprobe=256           10.3    111      4,516   0.995    0.71    1.39     0.74     0.94   0.651
+ivf nprobe=64, 4 shards              2.5    111     10,566   0.899    0.16    0.27     0.21     0.25   0.638
+hnsw M=32 ef=512                    22.2    219      9,409   0.945    0.71    1.17     0.74     1.16   0.649
+hnsw M=32 ef=1024                   22.4    219      3,817   0.969    1.80    2.65     1.82     2.54   0.649
+hnsw ef=512, 4 shards               15.2    219      2,150   0.981    0.85    1.05     0.94     1.15   0.649
+saved /Users/nathanhung/Projects/song-recommender-at-scale/runs/search_benchmark/real_p3_200k_partA_412404.json
