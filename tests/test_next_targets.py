@@ -1,5 +1,10 @@
 """Training and judging on the next several songs of a playlist (target_songs, target_decay)."""
+import csv
+import json
+import os
+
 import numpy as np
+import pytest
 import torch
 from torch import nn
 
@@ -194,23 +199,33 @@ target_decay = {decay}
 """)
 
 
-def test_training_on_the_next_songs_end_to_end(tmp_path, monkeypatch):
-    import csv
-    import json
-
-    from recsys.evaluate import evaluate
+@pytest.fixture(scope="module")
+def trained(tmp_path_factory):
+    """A tiny store, and retrievers trained on it with 1 and 3 target songs (in the folder's runs/)."""
     from recsys.mpd_store import build_store
     from recsys.train import train
     from test_mpd_store import random_mpd
 
-    raw = random_mpd(tmp_path)
-    build_store(raw, tmp_path / "store")
-    monkeypatch.chdir(tmp_path)
+    tmp = tmp_path_factory.mktemp("next_targets")
+    build_store(random_mpd(tmp), tmp / "store")
+    old = os.getcwd()
+    os.chdir(tmp)
+    try:
+        for n in (1, 3):
+            write_config(tmp / f"retriever_5k_next{n}.toml", tmp / "store", tmp / "genres.jsonl", n)
+            train(tmp / f"retriever_5k_next{n}.toml", 1)
+        yield tmp
+    finally:
+        os.chdir(old)
+
+
+def test_training_on_the_next_songs_end_to_end(trained, monkeypatch):
+    from recsys.evaluate import evaluate
+
+    monkeypatch.chdir(trained)
     for n in (1, 3):
-        config = tmp_path / f"retriever_5k_next{n}.toml"
-        write_config(config, tmp_path / "store", tmp_path / "genres.jsonl", n)
-        train(config, 1)
-        run = tmp_path / "runs/retriever_ranker_runs/5k" / config.stem / "seed1"
+        config = trained / f"retriever_5k_next{n}.toml"
+        run = trained / "runs/retriever_ranker_runs/5k" / config.stem / "seed1"
         rows = list(csv.DictReader(open(run / "log.csv")))
         assert len(rows) >= 2
         for row in rows:
@@ -227,9 +242,98 @@ def test_training_on_the_next_songs_end_to_end(tmp_path, monkeypatch):
             assert ("trained_for_ndcg@10" in r) == (n > 1)
 
 
-def test_target_settings_are_checked(tmp_path):
-    import pytest
+def write_ranker_config(path, retriever, target_songs, decay=0.8):
+    path.write_text(f"""
+[ranker]
+retriever = "{retriever}"
+train_seeds = [1]
+shortlist = 15
+search = "exact"
+ivf_nlist = 0
+ivf_nprobe = 0
+negatives = 5
+negatives_from = 15
+optimizer = "lazy_adamw"
+lr = 0.003
+new_lr = 0.003
+weight_decay = 0.0
+batch_size = 16
+epochs = 2
+eval_every_examples = 60
+min_checks = 1
+patience = 3
+val_windows = 1000
+train_windows = "in_shortlist"
+freeze_tables = false
+features = ["overlap", "cooccurrence"]
+correction_hidden = 4
+exclude_input = true
+val_set = "retriever"
+windows = "any_length"
+target_songs = {target_songs}
+target_decay = {decay}
+""")
 
+
+def test_ranker_on_the_next_songs_end_to_end(trained, monkeypatch):
+    from recsys.ranker import evaluate_ranker, train_ranker
+
+    monkeypatch.chdir(trained)
+    for n in (1, 3):
+        config = trained / f"ranker_5k_next{n}.toml"
+        write_ranker_config(config, trained / f"retriever_5k_next{n}.toml", n)
+        train_ranker(config, 1)
+        evaluate_ranker(config, 1)
+        run = trained / "runs/retriever_ranker_runs/5k" / config.stem / "seed1"
+        rows = list(csv.DictReader(open(run / "log.csv")))
+        assert len(rows) >= 2 and all(0 <= float(r["val_later@10"]) <= 1 for r in rows)
+        if n == 1:
+            assert all(r["val_ndcg"] == r["val_next_ndcg@10"] for r in rows)
+        results = json.loads((run / "eval_any_length.json").read_text())
+        for name in ("retriever + ranker (top 15)", "retriever alone", "validation: retriever + ranker"):
+            assert {"ndcg@10", "later@10", "artists@10"} <= results[name].keys()
+            assert ("trained_for_ndcg@10" in results[name]) == (n > 1)
+
+
+def test_with_one_target_ranker_examples_and_loss_are_as_before():
+    from recsys.ranker import sample_negatives, targets_loss, with_negatives, with_targets
+
+    torch.manual_seed(0)
+    short_ids = torch.stack([torch.randperm(30)[:12] for _ in range(6)]).int()
+    short_scores = torch.sort(torch.randn(6, 12), dim=1, descending=True).values
+    y = short_ids[torch.arange(6), torch.tensor([0, 3, 5, 1, 11, 7])].long()
+    true = torch.randn(6)
+    old = with_negatives(short_ids, short_scores, true, y, 4, torch.Generator().manual_seed(3), 10)
+    new = with_targets(short_ids, short_scores, true, y[:, None], 4, torch.Generator().manual_seed(3), 10)
+    torch.testing.assert_close(new[0], old[0])
+    torch.testing.assert_close(new[1], old[1])
+    scores = torch.randn(6, 5)
+    torch.testing.assert_close(targets_loss(scores, torch.ones(6, 1, dtype=torch.bool), torch.ones(1)),
+                               nn.functional.cross_entropy(scores, torch.zeros(6, dtype=torch.long)))
+    # several right songs: none of them is ever drawn as a wrong one
+    T = short_ids[:, :4].long()
+    pos = sample_negatives(short_ids, T, 6, torch.Generator().manual_seed(1))
+    wrong = short_ids.gather(1, pos)
+    assert not (wrong[:, :, None] == T[:, None, :]).any()
+    cands, base = with_targets(short_ids, short_scores, true, T, 6, torch.Generator().manual_seed(1))
+    torch.testing.assert_close(cands[:, :4], T)
+    torch.testing.assert_close(base[:, 1:4], short_scores[:, 1:4])  # later right songs: their shortlist scores
+    torch.testing.assert_close(base[:, 0], true)                     # the next song: its retriever score
+
+
+def test_final_target_ranks():
+    from recsys.ranker import MISSED, final_ranks, final_target_ranks, top_songs
+
+    short_ids = np.array([[5, 6, 7, 8], [1, 2, 3, 4]])
+    rerank = np.array([[0.1, 0.9, 0.5, 0.2], [4.0, 3.0, 2.0, 1.0]])
+    T = np.array([[6, 9, 8], [4, -1, 1]])
+    ranks = final_target_ranks(rerank, short_ids, T)
+    np.testing.assert_array_equal(ranks, [[1, MISSED, 3], [4, 0, 1]])
+    np.testing.assert_array_equal(ranks[:, 0], final_ranks(rerank, short_ids, T[:, 0]))
+    np.testing.assert_array_equal(top_songs(rerank, short_ids, k=2), [[6, 7], [1, 2]])
+
+
+def test_target_settings_are_checked(tmp_path):
     from recsys.config import load_config
 
     path = tmp_path / "retriever_5k_x.toml"

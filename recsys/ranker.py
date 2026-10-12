@@ -75,14 +75,16 @@ from torch import nn
 
 from recsys.baselines import popularity_ranks, popularity_scores
 from recsys.config import load_config
-from recsys.data import build_dataset
-from recsys.evaluate import by_length, eval_file, evaluation_config, print_by_length, score
+from recsys.data import build_dataset, case_targets
+from recsys.evaluate import (by_length, eval_file, evaluation_config, playlist_scores, print_by_length,
+                             print_playlist_scores, score)
 from recsys.lazy_adam import LazyAdamW, is_table, lr_groups, used_rows
 from recsys.model import build_model, rank_and_loss
 from recsys.rank_features import (GROUPS, CandidateFeatures, history_matrix, membership_keys, neighbour_lists,
                                   pair_counts, playlist_vectors)
 from recsys.search import ExactSearch, SearchWorker, query_vectors, song_vectors
-from recsys.train import EarlyStopping, git_state, pick_device, run_dir_for
+from recsys.metrics import target_weights
+from recsys.train import EarlyStopping, ScoredCases, git_state, pick_device, run_dir_for
 
 MISSED = 10**9  # rank given to a true song that isn't in the shortlist: never in any top k
 
@@ -323,11 +325,12 @@ def drop_input_songs(ids, scores, inputs, lengths, k):
 
 
 def sample_negatives(short_ids, y, n, generator, top=None):
-    """For each row, n distinct shortlist positions whose song isn't the true song y,
-    chosen uniformly (CPU tensors), from the first `top` positions only if given.
+    """For each row, n distinct shortlist positions whose song isn't the true song y (rows,), or any of the
+    right songs y (rows, k), chosen uniformly (CPU tensors), from the first `top` positions only if given.
     Returns (rows, n) positions."""
     keys = torch.rand(short_ids.shape, generator=generator)
-    keys[short_ids == y[:, None]] = 2.0  # the true song is never a negative
+    right = y[:, None] if y.dim() == 1 else y
+    keys[(short_ids[:, :, None] == right[:, None, :]).any(dim=-1)] = 2.0  # a right song is never a negative
     if top is not None:
         keys[:, top:] = 2.0  # nor is a song past the first `top`
     return torch.topk(keys, n, dim=1, largest=False).indices
@@ -340,6 +343,60 @@ def with_negatives(short_ids, short_scores, true_scores, y, n, generator, top=No
     pos = sample_negatives(short_ids, y, n, generator, top)
     return (torch.cat([y[:, None], short_ids.gather(1, pos).long()], dim=1),
             torch.cat([true_scores[:, None], short_scores.gather(1, pos)], dim=1))
+
+
+def with_targets(short_ids, short_scores, true_scores, T, n, generator, top=None):
+    """with_negatives when each row has several right songs T (rows, k), the next song first (data.next_targets;
+    -1 for none): (candidates, base scores), each (rows, k + n): the k right songs (the next one with its
+    retriever score true_scores, each later one with its shortlist score, 0 if the shortlist doesn't hold it:
+    such a slot is a placeholder the loss leaves out, see targets_valid), then n wrong songs sampled from the
+    first `top` shortlist positions (none of the k). With k = 1 it is with_negatives."""
+    pos = sample_negatives(short_ids, T, n, generator, top)
+    match = short_ids[:, None, :] == T[:, :, None]                                   # (rows, k, K)
+    later = (short_scores[:, None, :] * match).sum(dim=-1)                           # 0 where not shortlisted
+    right_scores = torch.cat([true_scores[:, None], later[:, 1:]], dim=1)
+    return (torch.cat([T.clamp(min=0).long(), short_ids.gather(1, pos).long()], dim=1),
+            torch.cat([right_scores, short_scores.gather(1, pos)], dim=1))
+
+
+def targets_valid(short_ids, T, next_always=False, chunk=100000):
+    """(rows, k) bool numpy: which right songs T (rows, k; -1 for none) a row's shortlist holds; column 0 is
+    always True with next_always (training on every window, its next song shortlisted or not). A chunk of rows
+    at a time: rows x k x K comparisons at once would be gigabytes at 1M."""
+    out = np.zeros(T.shape, dtype=bool)
+    for i in range(0, len(T), chunk):
+        out[i:i + chunk] = (short_ids[i:i + chunk, None, :] == T[i:i + chunk, :, None]).any(axis=-1)
+    out &= T >= 0
+    if next_always:
+        out[:, 0] = True
+    return out
+
+
+def targets_loss(scores, valid, weights):
+    """The ranker's loss with several right songs: scores (rows, k + n) for with_targets' candidates, valid
+    (rows, k) the right songs that count, weights (k,). Each right song is scored against the row's n wrong
+    songs only, -log(e^s / (e^s + sum over wrong)); a row's loss is the weighted mean over its right songs, the
+    batch's the mean over rows. With k = 1 it is the cross-entropy of column 0."""
+    k = valid.shape[1]
+    s = scores[:, :k]
+    losses = torch.logaddexp(s, torch.logsumexp(scores[:, k:], dim=1, keepdim=True)) - s
+    w = weights.to(scores.dtype)[None, :] * valid
+    per_row = (losses * w).sum(dim=1) / w.sum(dim=1).clamp(min=1e-12)
+    used = valid.any(dim=1)
+    return (per_row * used).sum() / used.sum().clamp(min=1)
+
+
+def final_target_ranks(rerank_scores, short_ids, T):
+    """final_ranks for each of several right songs T (rows, k): (rows, k), MISSED where the shortlist doesn't
+    hold the song, 0 where there is no such song (-1)."""
+    ranks = np.stack([final_ranks(rerank_scores, short_ids, T[:, d]) for d in range(T.shape[1])], axis=1)
+    return np.where(T >= 0, ranks, 0)
+
+
+def top_songs(rerank_scores, short_ids, k=10):
+    """Each row's top k shortlist songs by rerank_scores (the order recommendations are served in)."""
+    order = np.argsort(-rerank_scores, axis=1, kind="stable")[:, :k]
+    return np.take_along_axis(short_ids, order, axis=1)
 
 
 def final_ranks(rerank_scores, short_ids, y):
@@ -525,12 +582,23 @@ def train_ranker(config_path, seed):
     ((train_ids, train_scores, train_true), (val_ids, val_scores, val_true)), from_cache = cached_shortlists(
         rc, run_dir_for(rc.retriever, seed) / "best.pt", retriever, vectors, device,
         [(ds.XI_rank, ds.N_rank, ds.Y_rank, ds.LI_rank), (XI_val, N_val, Y_val, LI_val)])
-    in_list = shortlisted(train_ids, ds.Y_rank)
-    rows = np.flatnonzero(in_list) if rc.train_windows == "in_shortlist" else np.arange(len(ds.Y_rank))
+    # Right songs: each window's next one, or its next target_songs (case_targets); a window is trained on if
+    # its shortlist holds at least one (train_windows "in_shortlist") or always ("all": its next song counts
+    # whether shortlisted or not, with its own retriever score, as with_negatives does).
+    T_rank = case_targets(ds.Y_rank, ds.H_rank, ds.O_rank, rc.target_songs)
+    shortlisted_targets = targets_valid(train_ids, T_rank)
+    in_list = shortlisted_targets[:, 0]
+    every = rc.train_windows == "all"
+    rows = np.arange(len(ds.Y_rank)) if every else np.flatnonzero(shortlisted_targets.any(axis=1))
     X_tr, N_tr, Y_tr = ds.X_rank[rows], ds.N_rank[rows], ds.Y_rank[rows]
+    T_tr = T_rank[rows]
+    V_tr = shortlisted_targets[rows] | (every & (np.arange(rc.target_songs) == 0))[None, :]
     any_length = rc.windows == "any_length"  # contexts are then padded after their real songs
     L_tr, L_val = (ds.LI_rank[rows], LI_val) if any_length else (None, None)
     train_ids, train_scores, train_true = train_ids[rows], train_scores[rows], train_true[rows]
+    weights = torch.from_numpy(target_weights(rc.target_songs, rc.target_decay)).float()
+    val_cases = ScoredCases(ds, XI_val, N_val, Y_val, LI_val, H_val, ds.O_val, rc.target_songs, rc.target_decay,
+                            device)
     print(f"{run_dir} | {len(ds.Y_rank):,} ranker windows ({len(rows):,} trained on), {len(Y_val):,} val windows | "
           f"shortlists ({rc.search_name()}{', cached' if from_cache == 2 else ''}) in "
           f"{time.perf_counter() - start:.0f}s | train recall@{rc.shortlist} {in_list.mean():.1%}", flush=True)
@@ -557,6 +625,7 @@ def train_ranker(config_path, seed):
     stopper = EarlyStopping(rc.min_checks, rc.patience)
     order_gen, negative_gen = torch.Generator().manual_seed(seed), torch.Generator().manual_seed(seed + 3_000_000)
     X, N, Y = (torch.from_numpy(a) for a in (X_tr, N_tr, Y_tr))
+    T, V = torch.from_numpy(T_tr), torch.from_numpy(V_tr)
     lengths = None if L_tr is None else torch.from_numpy(L_tr)
     short_ids, short_scores, true_scores = (torch.from_numpy(a) for a in (train_ids, train_scores, train_true))
     train_nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_rank[rows], N_tr, ds.LI_rank[rows], device)
@@ -566,17 +635,19 @@ def train_ranker(config_path, seed):
     # Validation loss: the training loss on validation windows of the kind trained on (all, or
     # those with the true song shortlisted), their negatives drawn once (own generator, so
     # training's draws don't change) and reused at every check.
-    loss_rows = np.arange(len(Y_val)) if rc.train_windows == "all" else np.flatnonzero(shortlisted(val_ids, Y_val))
-    val_cands, val_base = (t.numpy() for t in with_negatives(
-        *(torch.from_numpy(a[loss_rows]) for a in (val_ids, val_scores, val_true, Y_val)), rc.negatives,
+    val_shortlisted = targets_valid(val_ids, val_cases.T)
+    loss_rows = np.arange(len(Y_val)) if every else np.flatnonzero(val_shortlisted.any(axis=1))
+    val_valid = torch.from_numpy(val_shortlisted[loss_rows] | (every & (np.arange(rc.target_songs) == 0))[None, :])
+    val_cands, val_base = (t.numpy() for t in with_targets(
+        *(torch.from_numpy(a[loss_rows]) for a in (val_ids, val_scores, val_true, val_cases.T)), rc.negatives,
         torch.Generator().manual_seed(seed + 4_000_000), rc.negatives_from))
     loss_lengths = None if L_val is None else L_val[loss_rows]
     loss_features = feature_fn(featurizer, val_ids[loss_rows], val_scores[loss_rows], H_val, loss_rows, device,
                                None if val_nbrs is None else val_nbrs[loss_rows], loss_lengths)
     if featurizer is not None:  # standardize the extra inputs with a fixed sample of training examples
         sample = np.sort(np.random.RandomState(seed).choice(len(Y_tr), min(20000, len(Y_tr)), replace=False))
-        cands, base = with_negatives(
-            *(torch.from_numpy(a[sample]) for a in (train_ids, train_scores, train_true, Y_tr)), rc.negatives,
+        cands, base = with_targets(
+            *(torch.from_numpy(a[sample]) for a in (train_ids, train_scores, train_true, T_tr)), rc.negatives,
             torch.Generator().manual_seed(seed + 5_000_000), rc.negatives_from)
         set_feature_scale(ranker, train_features, sample, X_tr, cands.numpy(), base.numpy(), device)
         print("extra inputs (mean / std): " + ", ".join(
@@ -592,26 +663,31 @@ def train_ranker(config_path, seed):
         if not math.isfinite(train_loss):
             raise FloatingPointError(f"Ranker training loss became {train_loss} by check {check}.")
         train_seconds, val_start = time.perf_counter() - interval_start, time.perf_counter()
-        ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features,
-                                   lengths=L_val), val_ids, Y_val)
-        result = score(ranks)
+        reranked = rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features, lengths=L_val)
+        ranks = final_target_ranks(reranked, val_ids, val_cases.T)
+        result = score(ranks[:, 0])  # the next song
+        playlist = val_cases.summary(ranks, top_songs(reranked, val_ids))
+        ndcg = playlist["ndcg@10"]  # over the right songs it trains on: what early stopping uses
         sampled = torch.from_numpy(rerank(ranker, X_val[loss_rows], N_val[loss_rows], val_cands, val_base, device,
                                           features=loss_features, lengths=loss_lengths))
-        val_loss = nn.functional.cross_entropy(sampled, torch.zeros(len(loss_rows), dtype=torch.long)).item()
+        val_loss = targets_loss(sampled, val_valid, weights).item()
         val_seconds = time.perf_counter() - val_start
-        improved, stop = stopper.update(check, result["ndcg@10"])
+        improved, stop = stopper.update(check, ndcg)
         if improved:
             best_check = check
             torch.save({"model": ranker.state_dict(), "vocab": ds.vocab, "config": asdict(rc), "check": check,
-                        "val_ndcg": result["ndcg@10"]}, run_dir / "best.pt")
+                        "val_ndcg": ndcg}, run_dir / "best.pt")
         log.append({"check": check, "examples": seen, "train_loss": train_loss, "val_loss": val_loss,
-                    "val_ndcg": result["ndcg@10"],
+                    "val_ndcg": ndcg, "val_next_ndcg@10": result["ndcg@10"],
                     "val_hits10": result["hits@10"], "val_hits1": result["hits@1"],
+                    **{f"val_{k}": v for k, v in playlist.items() if k not in ("ndcg@10", "next_ndcg@10")},
                     "train_seconds": round(train_seconds, 2), "val_seconds": round(val_seconds, 2)})
         note = "  *best" if improved else (
             f"  no improvement {stopper.bad_checks}/{stopper.patience}" if check >= stopper.min_checks else "")
+        trained_for = f" (next {rc.target_songs}: {ndcg:.4f})" if rc.target_songs > 1 else ""
         print(f"check {check:3d} | {seen:,} windows | train loss {train_loss:.4f} | val loss {val_loss:.4f} | "
-              f"val NDCG@10 {result['ndcg@10']:.4f} Hits@10 {result['hits@10']:.3f} Hits@1 {result['hits@1']:.3f} | "
+              f"val NDCG@10 {result['ndcg@10']:.4f}{trained_for} Hits@10 {result['hits@10']:.3f} "
+              f"Hits@1 {result['hits@1']:.3f} | later {playlist['later@10']:.3f} | "
               f"train {train_seconds:.0f}s + val {val_seconds:.0f}s{note}", flush=True)
         loss_sum.zero_()
         steps = 0
@@ -626,16 +702,19 @@ def train_ranker(config_path, seed):
         order = torch.randperm(len(Y), generator=order_gen)
         for i in range(0, len(Y), rc.batch_size):
             idx = order[i:i + rc.batch_size]
-            candidates, base = with_negatives(short_ids[idx], short_scores[idx], true_scores[idx], Y[idx],
-                                              rc.negatives, negative_gen, rc.negatives_from)
+            candidates, base = with_targets(short_ids[idx], short_scores[idx], true_scores[idx], T[idx],
+                                            rc.negatives, negative_gen, rc.negatives_from)
             context, cands, base = X[idx].to(device), candidates.to(device), base.to(device)
             f = None if train_features is None else train_features(idx.numpy(), context, cands, base)
             scores = ranker(context, N[idx].to(device), cands, base, f, None if lengths is None else lengths[idx].to(device))
-            loss = nn.functional.cross_entropy(scores, torch.zeros(len(idx), dtype=torch.long, device=device))
+            loss = targets_loss(scores, V[idx].to(device), weights.to(device))
             optimizer.zero_grad()
             loss.backward()
-            if lazy:
-                optimizer.step(ranker_rows(X[idx].numpy(), candidates.numpy(), N[idx].numpy(), song_features,
+            if lazy:  # placeholder slots (right songs not shortlisted) get no gradient: count a wrong song instead
+                k = T.shape[1]
+                used = torch.cat([torch.where(V[idx], candidates[:, :k], candidates[:, k:k + 1]), candidates[:, k:]],
+                                 dim=1)
+                optimizer.step(ranker_rows(X[idx].numpy(), used.numpy(), N[idx].numpy(), song_features,
                                            song_genres, device, None if L_tr is None else L_tr[idx.numpy()]))
             else:
                 optimizer.step()
@@ -660,6 +739,7 @@ def train_ranker(config_path, seed):
     summary = {"config": str(config_path), "train_seed": seed, "retriever": rc.retriever, "search": rc.search_name(),
                "num_params": num_params, "new_params": new_params, "trained_params": trained,
                "train_windows_used": len(rows), "features": featurizer.names if featurizer else [],
+               "target_songs": rc.target_songs, "target_decay": rc.target_decay,
                "best_check": best_check, "best_val_ndcg": stopper.best, "retriever_val_ndcg": log[0]["val_ndcg"],
                "checks_run": len(log), "train_seconds": round(time.perf_counter() - start, 1), "git_commit": commit,
                "git_dirty": dirty}
@@ -710,20 +790,30 @@ def evaluate_ranker(config_path, seed, all_held_out=False, windows=None):
     lengths, val_lengths = (ds.LI_test, LI_val) if any_length else (None, None)
     nbrs = window_neighbours(featurizer, ds, retriever, ds.XI_test, ds.N_test, ds.LI_test, device)
     features = feature_fn(featurizer, ids, scores, ds.H_test, np.arange(len(ds.Y_test)), device, nbrs, lengths)
-    ranks = final_ranks(rerank(ranker, ds.X_test, ds.N_test, ids, scores, device, features=features,
-                               lengths=lengths), ids, ds.Y_test)
+    reranked = rerank(ranker, ds.X_test, ds.N_test, ids, scores, device, features=features, lengths=lengths)
     rerank_seconds = time.perf_counter() - rerank_start
+    cases = ScoredCases(ds, ds.XI_test, ds.N_test, ds.Y_test, ds.LI_test, ds.H_test, ds.O_test, rc.target_songs,
+                        rc.target_decay, device)
+    all_ranks = final_target_ranks(reranked, ids, cases.T)
+    ranks = all_ranks[:, 0]
     val_nbrs = window_neighbours(featurizer, ds, retriever, XI_val, N_val, LI_val, device)
     val_features = feature_fn(featurizer, val_ids, val_scores, H_val, np.arange(len(Y_val)), device, val_nbrs,
                               val_lengths)
-    val_ranks = final_ranks(rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features,
-                                   lengths=val_lengths), val_ids, Y_val)
-    retriever_ranks = final_ranks(scores, ids, ds.Y_test)  # its own order within its shortlist = its full ranks
+    val_reranked = rerank(ranker, X_val, N_val, val_ids, val_scores, device, features=val_features,
+                          lengths=val_lengths)
+    val_cases = ScoredCases(ds, XI_val, N_val, Y_val, LI_val, H_val, ds.O_val, rc.target_songs, rc.target_decay,
+                            device)
+    val_all_ranks = final_target_ranks(val_reranked, val_ids, val_cases.T)
+    val_ranks = val_all_ranks[:, 0]
+    retriever_all_ranks = final_target_ranks(scores, ids, cases.T)  # its own order within its shortlist
+    retriever_ranks = retriever_all_ranks[:, 0]                      # = its full ranks
     pop, _ = popularity_scores(ds.Y_train, len(ds.vocab))
     scored = lambda r: score(r, (rc.shortlist,))  # with recall at the shortlist size, whatever it is
     pair = f"retriever + ranker (top {rc.shortlist})"
     results = {"best_check": checkpoint["check"], "search": rc.search_name(), "windows": windows,
-               pair: scored(ranks), "retriever alone": scored(retriever_ranks)}
+               pair: {**scored(ranks), **playlist_scores(cases, all_ranks, top_songs(reranked, ids))},
+               "retriever alone": {**scored(retriever_ranks),
+                                   **playlist_scores(cases, retriever_all_ranks, ids[:, :10])}}
     if rc.search != "exact":  # what approximate search costs: the retriever's own ranking of every song
         results["retriever alone, exact search"] = retriever_exact_score(rc, seed, ds, retriever, device, scored,
                                                                          all_held_out, windows)
@@ -731,8 +821,11 @@ def evaluate_ranker(config_path, seed, all_held_out=False, windows=None):
         full = ds.LI_test == longest
         results[f"{pair}, {longest} songs"] = scored(ranks[full])
         results[f"retriever alone, {longest} songs"] = scored(retriever_ranks[full])
-    results["validation: retriever + ranker"] = scored(val_ranks)
-    results["validation: retriever alone"] = scored(final_ranks(val_scores, val_ids, Y_val))
+    results["validation: retriever + ranker"] = {**scored(val_ranks), **playlist_scores(
+        val_cases, val_all_ranks, top_songs(val_reranked, val_ids))}
+    val_alone = final_target_ranks(val_scores, val_ids, val_cases.T)
+    results["validation: retriever alone"] = {**scored(val_alone[:, 0]), **playlist_scores(
+        val_cases, val_alone, val_ids[:, :10])}
     results.update({"most-popular": scored(popularity_ranks(pop, ds.Y_test)),
                     "search_seconds": round(search_seconds, 1), "rerank_seconds": round(rerank_seconds, 1),
                     "total_seconds": round(time.perf_counter() - start, 1)})
@@ -744,6 +837,7 @@ def evaluate_ranker(config_path, seed, all_held_out=False, windows=None):
         if isinstance(r, dict):
             print(f"{name:34}{r['ndcg@10']:>10.4f}{r['hits@1']:>9.3f}{r['hits@5']:>9.3f}{r['hits@10']:>9.3f}"
                   f"{r[f'recall@{rc.shortlist}']:>10.3f}")
+    print_playlist_scores(results)
     if any_length:
         results["by length: retriever + ranker"] = by_length(ranks, lengths, longest, scored)
         results["by length: retriever alone"] = by_length(retriever_ranks, lengths, longest, scored)
