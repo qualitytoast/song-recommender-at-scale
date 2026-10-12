@@ -1138,7 +1138,7 @@ lengths (retriever 0.1190 -> 0.1363, pair 0.1512 -> 0.1681).
 
 **Serving, phase A: the 1M pair behind a REST API** (2026-10-10, `e45c01a`, `35ef551`). The pair
 `retriever_1m` + `ranker_1m_any_length` is exported once (`python -m recsys.export`, 69 s) to a 2.2 GB
-bundle, `bundles/ranker_1m_any_length-61dd89c16797`:
+bundle, `bundles/ranker_1m_any_length-61dd89c16797` (since replaced by `f73f0d4e1e71`, below, and deleted):
 - one precomputed input vector per song for each model (song + artist + album + length + genre vectors
   added up once), 270 MB each
 - the search vectors (274 MB) and the saved IVF index (283 MB, 4,096 clusters)
@@ -1190,3 +1190,177 @@ reads it) and song IDs pre-sorted by track and by artist name (new version `f73f
 - Display names aren't unique: some songs exist twice in the MPD under different URIs (an album and a
   single version: "Odd Look - Kavinsky" in 871 and 137 playlists). The menu shows both; showing the album
   would tell them apart.
+
+# Serving, phase B: a distributed system
+
+The same pair and bundle (`f73f0d4e1e71`), served with the song catalog split across processes, then
+made to survive failures and heavy traffic. Every stage was checked against the single-process answers
+or measured under load on the Mac (the load generator, locust, runs on the same machine, so the heaviest
+tests are as much a test of the Mac as of the system).
+
+**Stage 1: the catalog split across gRPC shards** (2026-10-10, `790679e`, `89e8642`). `recsys.shard_slices`
+cuts the bundle into N slices: shard *i* holds the songs with ID % N == *i*, with an IVF index of their
+search vectors built on the full index's cluster centres (so the shards' top lists merged are exactly the
+full index's top list), both models' input vectors, artist, album and genres, and the appeared-together
+pairs whose later song it holds. Each shard is a gRPC server (`recsys.shard`); the front desk
+(`recsys.frontdesk`) keeps only the models' shared layers and the song names, and answers a request in
+three rounds, each sent to the shards involved at once: the input songs' rows, the search (every shard,
+top lists merged by score, then song ID), the candidates' rows and counts. Messages are protobuf with
+arrays as raw bytes (no pickle), and every one carries the bundle version, which a shard refuses if it
+differs. `python -m recsys.launch --shards N` starts the shards and the front desk.
+
+| 2,000 held-out requests (`serving_check.py`) | Same top 10 as offline | Work p50 | End to end p50 | Front desk memory |
+|---|---|---|---|---|
+| One process (phase A) | 2,000 of 2,000 | 1.00 ms | 1.50 ms | 2.4 GB + 1.4 GB search process |
+| 1 shard | 2,000 of 2,000 | 3.73 ms | 4.72 ms | 0.8 GB |
+| 2 shards | 2,000 of 2,000 | 4.58 ms | 5.89 ms | 0.8 GB |
+| 4 shards | 2,000 of 2,000 | 4.62 ms | 5.64 ms | 0.8 GB |
+
+- Exact same answers at every shard count: the slicing, the merged search and the per-request song tables
+  change nothing.
+- The price is ~3 ms of network rounds (4 shards, p50: input songs 0.71 ms, search 1.05 ms, candidates
+  1.21 ms), and it barely depends on the number of shards, since each round asks them all at once.
+
+**Stage 2: containers** (2026-10-10, `6598877`, `ed55028`). One Docker image (CPU PyTorch; the bundle
+mounted, not baked in, so a new model needs no new image) runs every part; `docker-compose.yml` starts 4
+shards, the front desk and Redis, with health checks and restart policies.
+
+| 4 shards in Docker | Same top 10 as offline | Work p50 / p99 | End to end p50 / p99 |
+|---|---|---|---|
+| PyTorch's default threads | 2,000 of 2,000 | 17.2 / 23.8 ms | 19.2 / 26.2 ms |
+| One PyTorch thread (`OMP_NUM_THREADS=1`) | 2,000 of 2,000 | 8.1 / 10.6 ms | 10.0 / 13.3 ms |
+
+- In a container, PyTorch started a thread per core for every tiny operation; for one small request at a
+  time, coordinating them cost more than the work. One thread halved it. (Copies of the front desk, not
+  threads, are how it uses more cores.)
+- Memory: front desk 0.75 GB, each shard ~0.5 GB, nginx, Redis and autoheal ~0.1 GB together: ~2.9 GB
+  for everything, against 3.8 GB for the single process.
+
+**Stage 3: fault tolerance** (2026-10-10, `4c5ea85`, `60cb0bc`; autoheal 2026-10-11, `60d4b4a`, `ec59d08`).
+Per-call deadlines (250 ms in Docker); calls to a shard that's down retried (up to 3 attempts); copies of
+a shard used in turn, skipping unhealthy ones (gRPC health checks); answers built from the shards that
+did answer, flagged `partial` with `missing_shards`; 503 only if no shard holding an input song answered.
+`scripts/chaos.py` sends requests one after another while it kills shard 1's program (Docker restarts
+the container) and then freezes shard 2's (alive but silent):
+
+| Version | Kill: partial / failed | Complete again after | Freeze: requests in the phase, p50 | Partial / failed |
+|---|---|---|---|---|
+| Deadlines + 1 retry | 76 / 2 | 2.4 s | 54, **519 ms** | 46 / 0 |
+| + circuit breaker, 3 attempts, 0.1-1 s reconnects | 14 / 0 | 1.1 s | 1,880, 8.6 ms | 1,806 / 59 |
+| + autoheal (frozen container restarted; cache off) | 13 / 0 | 1.1 s | 2,922, 12.6 ms | 652 / 23 |
+
+- Without the breaker, a frozen shard made *every* request wait out its deadline: 54 requests in 20 s.
+  The breaker skips a shard for 1 s after it misses a deadline, so only one request in a second pays.
+- The breaker reacts to missed deadlines only: a shard that's down fails at once, costs no waiting, and
+  tripping on it took a dead copy's live twin out too (the first, flaky version did).
+- gRPC's default reconnect backoff (up to 2 minutes) kept a restarted shard unused; 0.1-1 s fixed it.
+- With autoheal, the frozen shard's failing health check gets its container restarted: complete answers
+  again 11.2 s after the freeze, where before it stayed frozen. The failed requests (59, 23) were all
+  one-song playlists whose only song lives on the frozen shard: nothing left to recommend from.
+
+**Stage 4: front-desk copies behind nginx** (2026-10-10, `cea230d`). `docker compose --scale frontdesk=N`
+and nginx (least connections) in front. Locust users each type into the menu and ask for recommendations,
+back to back:
+
+| Recommendations | 1 user | 16 users | 64 users |
+|---|---|---|---|
+| 1 front desk | 6.9/s, p50 16 ms | 58/s, p50 140 ms | 58/s, p50 690 ms |
+| 3 front desks | 5.6/s, p50 17 ms | 92/s, p50 28 ms | 182/s, p50 220 ms, p99 310 ms |
+
+- One front desk tops out at 58/s (its CPU work, one thread); three give 3.1x, with no failures.
+
+**Stage 5: zero-downtime updates** (2026-10-10, `3b2e454`). Blue/green (`scripts/bluegreen.py`): the new
+version starts as a complete second stack (its bundle a hard-linked copy marked as a new release, so its
+version differs), an entrance nginx switches to it by graceful reload once it's healthy (5.2 s), and the
+old stack is stopped once drained. Requests kept flowing throughout:
+
+| Requests | Errors | Partial | Answered by old / new | p50 / p99 | Within 2 s of the switch |
+|---|---|---|---|---|---|
+| 6,126 | 0 | 0 | 3,446 / 2,680 | 5.6 / 14.0 ms | 660 requests, max 15 ms |
+
+**Stage 6: a shared cache and batching** (2026-10-10, `e3eb880`, `37129f6`). One Redis cache for every
+front desk (keys include the model version; partial answers never stored; if Redis fails, skip it and
+compute), and dynamic batching (requests within 2 ms answered together, up to 16, each shard asked once
+per round for the batch). One front desk, back to back (another session than stage 4: compare within):
+
+| One front desk | 16 users: per s, p50, p99 | 64 users: per s, p50, p99 |
+|---|---|---|
+| Neither | 105/s, 33 ms, 67 ms | 107/s, 370 ms, 470 ms |
+| Batching | 115/s, 20 ms, 43 ms | 180/s, 180 ms, 280 ms |
+| Cache (hits 95% / 98%) | 123/s, 3 ms, 63 ms | 226/s, 10 ms, 2.2 s |
+| Both | 131/s, 3 ms, 35 ms | 241/s, 15 ms, 210 ms |
+
+- Batching pays under load (1.7x at 64 users) and costs nothing at light load.
+- The cache's hit rate is this test's (users cycle through 2,000 playlists); real traffic would repeat less.
+  Alone, its misses still queue one at a time behind each other (p99 2.2 s); with batching they clear
+  together (210 ms).
+
+**1,000 users and overload** (2026-10-11, `af32b1f`, `60d4b4a`, `b2673a8`). 3 front desks with batching and
+cache; "browsing" users pause 2-8 s between actions:
+
+| 1,000 users | Recommendations/s | p50 | p99 | Failed |
+|---|---|---|---|---|
+| Back to back, nginx's defaults | 74 | 1.3 s | 5.4 s | 2,306 of 4,444 |
+| Back to back, nginx with 8,192 connections per worker | 52 | 2.3 s | 4.7 s | 0 |
+| Browsing, same | 42 | 520 ms | 2.6 s | 0 |
+| Back to back, + overload changes | 205 | 455 ms | 1.15 s | 0 |
+| Browsing, + overload changes | 50 | **15 ms** | **182 ms** | 0 (menu: p50 1.9 ms, p99 57 ms) |
+
+- nginx's default 512 connections dropped half the requests; a worker per core with 8,192 each fixed it.
+- The biggest gain was finding that requests waited for *threads*, not for the models: FastAPI runs plain
+  endpoints in a pool of 40 threads, so request 41 waited even with the CPU idle. The pool now fits every
+  admitted request.
+- Overload protection: each front desk admits at most 64 recommendation requests at once and drops any
+  that waited 1 s without starting (`recsys/admission.py`); nginx admits at most 96 per front desk and
+  answers the rest itself. Either way: 503 with `Retry-After: 1`, at once, instead of a long wait.
+
+One front desk, 1,000 users back to back (far more than it can answer):
+
+| | Answered p50 / p99 | Turned away | A refusal took (p50) |
+|---|---|---|---|
+| Front desk refuses (admission only) | 1.8 / 2.3 s | 2,494 | 799 ms |
+| nginx refuses first (as seen by locust) | 456 / 975 ms | 5,886 | 325 ms |
+| Same, as seen by one separate visitor (`scripts/probe.py`) | 21 / 119 ms | | 1.5 ms |
+
+- A front desk that is already saturated is slow even to say no; nginx can refuse without touching it.
+- Locust's own timings include its own overload (it shares the Mac's CPU); the probe, sending one
+  request at a time from outside the crowd, shows what a visitor actually sees.
+- The container health check (`/live`) is answered on the event loop, never queued behind requests, so a
+  busy front desk isn't mistaken for a frozen one and restarted.
+
+**A webpage** (2026-10-11, `433608a`, `fe422e4`). `web/`, served by the front desk at `/`: type-ahead
+search (`/songs`), the playlist in the address bar (a link reopens the same recommendations), Spotify's
+embedded player, light and dark mode, phone layouts. Plain HTML, CSS and JavaScript.
+
+**Varied recommendations** (2026-10-11, `66b9c22`, `4fbd452`). Trying the webpage showed the top 10
+following the playlist's *last* song, often all by its artist (a varied 10-song playlist ending in Daft
+Punk got 9 Daft Punk songs). On 2,000 held-out cases, the next song is by the last song's artist 23% of
+the time, but the ranker gave that artist 42% of its top 10 (the retriever 30%); on varied playlists (3+
+songs, all different artists) 6% vs 27%. Picking the 10 individually most likely next songs concentrates
+on that artist: their share of the next-song chance sits on a few songs, everyone else's is spread thin.
+
+Two request settings, no retraining: `max_per_artist` (default 2: going down the ranker's order of all
+100 candidates, skip a song once its artist has 2 in the top 10) and `mix` (default 0.5: the playlist
+vector averages the retriever's guesses after every song, the last weighing 1, the one before 0.5, then
+0.25, ...). A new evaluation (`scripts/playlist_eval.py`, 5,000 held-out cases) adds *later in the
+playlist*: the share of the top 10 that the playlist goes on to contain.
+
+| Setting | Next song in the top 10 | Later in the playlist | Different artists | By the last song's artist |
+|---|---|---|---|---|
+| Neither (the models as trained) | 24.1% | 16.6% | 5.7 | 44.3% |
+| Artist limit 2 | 19.8% | 15.0% | 8.3 | 15.3% |
+| Mix 0.5 | 22.4% | 17.7% | 6.7 | 29.7% |
+| **Both (served)** | **18.5%** | **15.8%** | **8.5** | **11.6%** |
+
+| Varied playlists (1,250 cases) | Next song in the top 10 | Later in the playlist | By the last song's artist |
+|---|---|---|---|
+| Neither | 11.8% | 13.0% | 24.5% |
+| Both | 10.1% | 14.8% | 6.6% |
+
+- Mix weights tried: 0.3, 0.4, 0.5, 0.6, 1.0; 0.5 had the best "later in the playlist" score. Mixing the
+  ranker's per-prefix scores too (as probabilities or as raw scores) was worse at every weight.
+- The artist limit lowers "later in the playlist" over all playlists (16.6% -> 15.0%): many real playlists
+  do repeat artists. It's a choice for variety, not accuracy; on varied playlists it costs nothing there.
+- The real fix is in training (predict songs that belong in the playlist, not only the very next one);
+  these settings are the no-retraining version. `"max_per_artist": 0, "mix": 0` give the models' own
+  answers, which the checks against the offline evaluation use.
