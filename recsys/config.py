@@ -104,6 +104,11 @@ class TrainConfig:
                            # next song only); each is scored against the wrong songs, not against the others
     target_decay: float    # weight of the song d steps ahead: target_decay ** (d - 1) (1 = all equal). Early
                            # stopping uses NDCG@10 over the same weighted songs (with 1 song: plain NDCG@10)
+    predict_steps: int     # multi-token prediction: heads that each predict the song that many steps ahead (1 =
+                           # the usual head only). Head 1 keeps the target_songs goal and is the one used; heads
+                           # 2.. predict the exact song 2.. steps ahead, a training aid that makes the shared part
+                           # look further ahead
+    predict_decay: float   # loss weight of head h: predict_decay ** (h - 1) (head 1: 1)
 
     def __post_init__(self):
         _check_choice("objective", self.objective, ("last_position", "every_position"))
@@ -113,10 +118,13 @@ class TrainConfig:
         if not isinstance(self.target_songs, int) or self.target_songs < 1 or not 0 < self.target_decay <= 1:
             raise ValueError(f"need an integer target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
                              f"{self.target_decay}")
-        if self.target_songs > 1 and (self.objective != "every_position" or self.softmax != "sampled"
-                                      or self.augmenting):
-            raise ValueError("target_songs > 1 is implemented for every-position training with sampled softmax "
-                             "and no augmentation")
+        if not isinstance(self.predict_steps, int) or self.predict_steps < 1 or not 0 < self.predict_decay <= 1:
+            raise ValueError(f"need an integer predict_steps >= 1 and 0 < predict_decay <= 1, got "
+                             f"{self.predict_steps}, {self.predict_decay}")
+        if (self.target_songs > 1 or self.predict_steps > 1) and (
+                self.objective != "every_position" or self.softmax != "sampled" or self.augmenting):
+            raise ValueError("target_songs or predict_steps > 1 is implemented for every-position training with "
+                             "sampled softmax and no augmentation")
 
     @property
     def augmenting(self):

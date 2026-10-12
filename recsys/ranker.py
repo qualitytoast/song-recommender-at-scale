@@ -124,6 +124,9 @@ class RankerConfig:
                            # the next song only), each scored against the window's sampled wrong songs
     target_decay: float    # weight of the song d steps ahead: target_decay ** (d - 1); early stopping uses
                            # NDCG@10 over the same weighted songs (with 1 song: plain NDCG@10)
+    predict_steps: int     # multi-token prediction: correction heads that each score candidates as the song that
+                           # many steps ahead (1 = the usual one only, which stays the one used); a training aid
+    predict_decay: float   # loss weight of head h: predict_decay ** (h - 1)
 
     def __post_init__(self):
         if self.optimizer not in ("adamw", "lazy_adamw"):
@@ -144,9 +147,13 @@ class RankerConfig:
         if not isinstance(self.target_songs, int) or self.target_songs < 1 or not 0 < self.target_decay <= 1:
             raise ValueError(f"need an integer target_songs >= 1 and 0 < target_decay <= 1, got {self.target_songs}, "
                              f"{self.target_decay}")
-        if self.negatives > self.negatives_from - self.target_songs:  # wrong songs are never right ones
-            raise ValueError(f"negatives ({self.negatives}) must leave room for the {self.target_songs} right songs "
-                             f"among the first negatives_from ({self.negatives_from}) shortlist songs")
+        if not isinstance(self.predict_steps, int) or self.predict_steps < 1 or not 0 < self.predict_decay <= 1:
+            raise ValueError(f"need an integer predict_steps >= 1 and 0 < predict_decay <= 1, got "
+                             f"{self.predict_steps}, {self.predict_decay}")
+        if self.negatives > self.negatives_from - max(self.target_songs, self.predict_steps):  # never right ones
+            raise ValueError(f"negatives ({self.negatives}) must leave room for the "
+                             f"{max(self.target_songs, self.predict_steps)} right songs among the first "
+                             f"negatives_from ({self.negatives_from}) shortlist songs")
         unknown = sorted(set(self.features) - set(GROUPS))
         if unknown:
             raise ValueError(f"unknown features {unknown}; known: {list(GROUPS)}")
