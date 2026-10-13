@@ -29,3 +29,6 @@ val_set = "separate"       # was "retriever": validation windows outside the ret
 windows = "any_length"  # was "full": training, validation and held-out cases of 1 up to 10 songs
 target_songs = 5  # was 1: the next 5 songs, the song d steps ahead weighing 0.8^(d-1) (those the shortlist holds)
 target_decay = 0.8  # nearer songs weigh more
+predict_steps = 1          # the usual head only (multi-token prediction off)
+predict_decay = 1.0
+predict_targets = "exact"        # (unused with predict_steps = 1)

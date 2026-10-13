@@ -123,7 +123,8 @@ def config(**changes):
                     batch_size=64, epochs=1, eval_every_examples=10, min_checks=1, patience=1, val_windows=10,
                     train_windows="all", freeze_tables=False, features=[], correction_hidden=0,
                     exclude_input=False, val_set="retriever", windows="full", target_songs=1,
-                    target_decay=1.0)
+                    target_decay=1.0, predict_steps=1, predict_decay=1.0,
+                    predict_targets="exact")
     return RankerConfig(**{**settings, **changes})
 
 

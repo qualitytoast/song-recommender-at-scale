@@ -51,3 +51,6 @@ negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
 compile = true            # forward pass and loss compiled
 target_songs = 5  # was 1: the next 5 songs, equal weights
 target_decay = 1.0  # 1 = equal weights
+predict_steps = 1         # the usual head only (multi-token prediction off)
+predict_decay = 1.0
+predict_targets = "exact"         # (unused with predict_steps = 1)

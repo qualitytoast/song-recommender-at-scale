@@ -69,6 +69,22 @@ class TransformerBlock(nn.Module):
         return self.norm2(x + self.dropout(self.ffn(x)))
 
 
+class StepHead(nn.Module):
+    """A multi-token prediction head: turns the playlist vector h into one for the song further ahead, h + a small
+    feed-forward network of LayerNorm(h). Its last layer starts at zero, so it starts as a copy of the usual head;
+    it scores songs with the same output vectors."""
+
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.norm = nn.LayerNorm(embed_dim)
+        self.ffn = nn.Sequential(nn.Linear(embed_dim, 4 * embed_dim), nn.ReLU(), nn.Linear(4 * embed_dim, embed_dim))
+        nn.init.zeros_(self.ffn[-1].weight)
+        nn.init.zeros_(self.ffn[-1].bias)
+
+    def forward(self, h):
+        return h + self.ffn(self.norm(h))
+
+
 class SongRecommender(nn.Module):
     """song_features: {name: per-song ID array}, e.g. {"artist": ids} where ids[i] is
     song i's artist. Each feature adds a learned vector per ID on two sides:
@@ -83,11 +99,14 @@ class SongRecommender(nn.Module):
     Each genre gets a learned input and output vector; a song's genre vector is the
     average over its genres, used on both sides like the song features. A song
     whose artist has no genres gets a zero genre vector.
+
+    predict_steps > 1 adds multi-token prediction heads (StepHead) for the songs 2, 3, ... steps
+    ahead, a training aid (step_logits); everything else, and serving, uses the usual head.
     """
 
     def __init__(self, vocab_size, embed_dim, context_length, num_layers, dropout,
                  scale_attention, init, song_features=None, name_word_count=None,
-                 song_genres=None, mask_token=False, causal=False):
+                 song_genres=None, mask_token=False, causal=False, predict_steps=1):
         super().__init__()
         self.song_embedding = nn.Embedding(vocab_size, embed_dim)
         self.position_embedding = nn.Embedding(context_length, embed_dim)
@@ -132,6 +151,8 @@ class SongRecommender(nn.Module):
                 torch.zeros(count, embed_dim), freeze=False, padding_idx=0)
         # Learned stand-in for songs hidden by training-time augmentation (recsys/augment.py).
         self.mask_vector = nn.Parameter(torch.zeros(embed_dim)) if mask_token else None
+        # Made last, so every other weight starts as it would without them.
+        self.step_heads = nn.ModuleList(StepHead(embed_dim) for _ in range(predict_steps - 1))
 
     def hidden_states(self, ids, names=None, hidden=None):
         """The transformer's output at every position, (batch, seq, embed_dim): the
@@ -183,12 +204,7 @@ class SongRecommender(nn.Module):
         x = self.hidden_states(ids, names, hidden)
         h = x if all_positions else last_real(x, lengths)
         if candidates is not None:  # sampled softmax: score only these songs
-            vectors = self.output.weight[candidates]
-            for name in self.feature_names:
-                vectors = vectors + self.output_features[name](self.song_feature_ids(name)[candidates])
-            if self.output_genres is not None:
-                vectors = vectors + self.mean_vector(self.output_genres, self.song_genres[candidates])
-            return h @ vectors.T + self.output.bias[candidates]
+            return self.score_candidates(h, candidates)
         logits = self.output(h)  # h . output row + bias, per song
         # Every candidate song's feature vectors summed: (vocab_size, embed_dim)
         candidates = [self.output_features[name](self.song_feature_ids(name)) for name in self.feature_names]
@@ -197,6 +213,21 @@ class SongRecommender(nn.Module):
         if candidates:
             logits = logits + h @ sum(candidates).T
         return logits
+
+    def score_candidates(self, h, candidates):
+        """Scores of the songs candidates (1-D IDs) for playlist vectors h (..., embed_dim): (..., len(candidates))."""
+        vectors = self.output.weight[candidates]
+        for name in self.feature_names:
+            vectors = vectors + self.output_features[name](self.song_feature_ids(name)[candidates])
+        if self.output_genres is not None:
+            vectors = vectors + self.mean_vector(self.output_genres, self.song_genres[candidates])
+        return h @ vectors.T + self.output.bias[candidates]
+
+    def step_logits(self, ids, names, candidates):
+        """Training with multi-token prediction: the candidates' scores at every position from each head, the
+        usual one (the next song) first, then step_heads' (2, 3, ... steps ahead): a list of (batch, seq, C)."""
+        x = self.hidden_states(ids, names)
+        return [self.score_candidates(head(x), candidates) for head in [nn.Identity(), *self.step_heads]]
 
     def output_vectors(self):
         """(vectors (vocab, embed_dim), bias (vocab,)): each song's output row plus its feature
@@ -242,7 +273,7 @@ def build_model(cfg, ds):
     return SongRecommender(len(ds.vocab), m.embed_dim, cfg.data.input_length, m.num_layers,
                            m.dropout, m.scale_attention, m.init, song_features, name_word_count,
                            song_genres, mask_token=cfg.train.augmenting,
-                           causal=cfg.train.objective == "every_position")
+                           causal=cfg.train.objective == "every_position", predict_steps=cfg.train.predict_steps)
 
 
 @torch.no_grad()

@@ -52,3 +52,6 @@ negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
 compile = false           # torch.compile off: plain PyTorch
 target_songs = 1          # the next song only (recsys/config.py)
 target_decay = 1.0
+predict_steps = 1         # the usual head only (multi-token prediction off)
+predict_decay = 1.0
+predict_targets = "exact"         # (unused with predict_steps = 1)

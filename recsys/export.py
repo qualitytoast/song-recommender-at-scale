@@ -147,7 +147,8 @@ def export(ranker_config, seed=1, out_root="bundles"):
     ranker_path, retriever_path = run_dir_for(ranker_config, seed) / "best.pt", run_dir_for(rc.retriever, seed) / "best.pt"
     checkpoint = torch.load(ranker_path, weights_only=True)
     check_vocab(checkpoint, ds.vocab, ranker_path)
-    ranker = CandidateRanker(retriever, sum(len(GROUPS[g]) for g in rc.features), rc.correction_hidden).to(device)
+    ranker = CandidateRanker(retriever, sum(len(GROUPS[g]) for g in rc.features), rc.correction_hidden,
+                             rc.predict_steps).to(device)
     ranker.load_state_dict(checkpoint["model"])
     settings = {"shortlist": rc.shortlist, "exclude_input": rc.exclude_input, "ivf_nlist": rc.ivf_nlist,
                 "ivf_nprobe": rc.ivf_nprobe, "features": rc.features, "correction_hidden": rc.correction_hidden,
