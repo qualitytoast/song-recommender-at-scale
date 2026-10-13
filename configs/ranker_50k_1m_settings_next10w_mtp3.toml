@@ -31,4 +31,5 @@ target_songs = 10  # was 1: the next 10 songs, the song d steps ahead weighing 0
 target_decay = 0.8  # nearer songs weigh more
 predict_steps = 3  # was 1: 3 heads, the usual + 2 multi-token ones
 predict_decay = 0.5  # head h's loss weighs 0.5^(h-1): 1, 0.5, 0.25
-predict_targets = "exact"  # extra heads predict the exact song 2 / 3 steps ahead
+predict_songs = 1  # extra heads: exactly the song 2 / 3 steps ahead
+predict_songs_decay = 1.0

@@ -1,8 +1,8 @@
 # Stage 2 (50k): multi-token prediction heads, on the stage 1 pick (today's retriever + next-10-weighted ranker).
-# Change from ranker_50k_mtp3_next10w (same retriever): 3 correction heads (next).
+# Change from ranker_50k_1m_settings_next10w (same retriever): 3 correction heads (next).
 
 [ranker]
-retriever = "configs/retriever_50k_mtp3.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k_mtp3/seed<s>/best.pt
+retriever = "configs/retriever_50k_1m_settings.toml"  # seed s uses runs/retriever_ranker_runs/50k/retriever_50k_1m_settings/seed<s>/best.pt
 train_seeds = [1]          # 1 seed per run
 shortlist = 100            # step 2: rerank the retriever's top 100
 search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)

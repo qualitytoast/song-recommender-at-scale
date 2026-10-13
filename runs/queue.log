@@ -32,3 +32,12 @@
 2026-10-13 12:23:53 start ranker_50k_1m_settings_next10w
 2026-10-13 12:27:36 done ranker_50k_1m_settings_next10w in 3 min
 2026-10-13 12:27:36 queue finished
+2026-10-13 12:53:08 queue of 7: configs/ranker_50k_1m_settings_next10w_mtp3.toml configs/ranker_50k_1m_settings_next10w_mtp3next.toml configs/retriever_50k_mtp3.toml configs/ranker_50k_mtp3_base.toml configs/ranker_50k_mtp3_next10w.toml configs/ranker_50k_mtp3_next10w_mtp3.toml configs/ranker_50k_mtp3_next10w_mtp3next.toml
+2026-10-13 12:53:11 start ranker_50k_1m_settings_next10w_mtp3
+2026-10-13 12:57:13 done ranker_50k_1m_settings_next10w_mtp3 in 4 min
+2026-10-13 12:57:16 start ranker_50k_1m_settings_next10w_mtp3next
+2026-10-13 13:01:19 finished ranker_50k_1m_settings_next10w_mtp3next (queue cut to stop after the 3-head retriever)
+2026-10-13 13:01:19 queue of 1: configs/retriever_50k_mtp3.toml
+2026-10-13 13:01:21 start retriever_50k_mtp3
+2026-10-13 13:01:31 FAILED retriever_50k_mtp3 after 0 min (see runs/retriever_ranker_runs/50k/retriever_50k_mtp3/run.out)
+2026-10-13 13:01:31 queue finished
