@@ -1,0 +1,54 @@
+runs/retriever_ranker_runs/50k/ranker_50k_1m_settings_next10w/seed1 | 455,994 ranker windows (323,370 trained on), 20,000 val windows | shortlists (ivf nlist=2048 nprobe=128, cached) in 1s | train recall@100 36.1%
+35,431,780 params: the retriever's + 4,801 new (candidate marker, position, correction); 35,431,780 trained
+extra inputs (mean / std): same_artist 0.0687/0.206, same_album 0.0201/0.101, genre_match 0.321/0.264, last_same_artist 0.116/0.32, log_after_last 0.687/0.897, log_after_context 1.8/1.35, context_with_pair 0.359/0.302
+check   0 | 0 windows | train loss 0.0000 | val loss 3.3227 | val NDCG@10 0.1122 (next 10: 0.0878) Hits@10 0.173 Hits@1 0.064 | later 0.123 | train 0s + val 4s  *best
+check   1 | 39,424 windows | train loss 3.2849 | val loss 3.2220 | val NDCG@10 0.1231 (next 10: 0.0989) Hits@10 0.190 Hits@1 0.069 | later 0.136 | train 7s + val 4s  *best
+check   2 | 78,848 windows | train loss 3.2022 | val loss 3.1932 | val NDCG@10 0.1242 (next 10: 0.1013) Hits@10 0.191 Hits@1 0.070 | later 0.141 | train 6s + val 4s  *best
+check   3 | 118,272 windows | train loss 3.1846 | val loss 3.1824 | val NDCG@10 0.1240 (next 10: 0.1014) Hits@10 0.191 Hits@1 0.070 | later 0.142 | train 6s + val 4s  *best
+check   4 | 157,696 windows | train loss 3.1728 | val loss 3.1771 | val NDCG@10 0.1243 (next 10: 0.1018) Hits@10 0.192 Hits@1 0.070 | later 0.144 | train 6s + val 4s  *best
+check   5 | 197,120 windows | train loss 3.1691 | val loss 3.1725 | val NDCG@10 0.1236 (next 10: 0.1013) Hits@10 0.192 Hits@1 0.069 | later 0.144 | train 6s + val 4s  no improvement 1/5
+check   6 | 236,544 windows | train loss 3.1618 | val loss 3.1693 | val NDCG@10 0.1238 (next 10: 0.1017) Hits@10 0.192 Hits@1 0.070 | later 0.145 | train 6s + val 4s  no improvement 2/5
+check   7 | 275,968 windows | train loss 3.1566 | val loss 3.1663 | val NDCG@10 0.1238 (next 10: 0.1020) Hits@10 0.192 Hits@1 0.069 | later 0.145 | train 6s + val 4s  *best
+check   8 | 315,392 windows | train loss 3.1600 | val loss 3.1636 | val NDCG@10 0.1237 (next 10: 0.1018) Hits@10 0.192 Hits@1 0.069 | later 0.145 | train 6s + val 4s  no improvement 1/5
+check   9 | 354,602 windows | train loss 3.1431 | val loss 3.1631 | val NDCG@10 0.1238 (next 10: 0.1020) Hits@10 0.193 Hits@1 0.069 | later 0.146 | train 6s + val 5s  *best
+check  10 | 394,026 windows | train loss 3.1443 | val loss 3.1606 | val NDCG@10 0.1234 (next 10: 0.1017) Hits@10 0.192 Hits@1 0.069 | later 0.146 | train 6s + val 4s  no improvement 1/5
+check  11 | 433,450 windows | train loss 3.1365 | val loss 3.1597 | val NDCG@10 0.1235 (next 10: 0.1022) Hits@10 0.191 Hits@1 0.070 | later 0.147 | train 6s + val 4s  *best
+check  12 | 472,874 windows | train loss 3.1269 | val loss 3.1586 | val NDCG@10 0.1233 (next 10: 0.1021) Hits@10 0.191 Hits@1 0.069 | later 0.147 | train 5s + val 4s  no improvement 1/5
+check  13 | 512,298 windows | train loss 3.1234 | val loss 3.1573 | val NDCG@10 0.1239 (next 10: 0.1026) Hits@10 0.192 Hits@1 0.070 | later 0.148 | train 5s + val 4s  *best
+check  14 | 551,722 windows | train loss 3.1367 | val loss 3.1550 | val NDCG@10 0.1231 (next 10: 0.1019) Hits@10 0.191 Hits@1 0.069 | later 0.147 | train 5s + val 4s  no improvement 1/5
+check  15 | 591,146 windows | train loss 3.1301 | val loss 3.1541 | val NDCG@10 0.1225 (next 10: 0.1018) Hits@10 0.190 Hits@1 0.069 | later 0.148 | train 5s + val 4s  no improvement 2/5
+check  16 | 630,570 windows | train loss 3.1177 | val loss 3.1532 | val NDCG@10 0.1228 (next 10: 0.1020) Hits@10 0.190 Hits@1 0.069 | later 0.147 | train 5s + val 4s  no improvement 3/5
+check  17 | 670,036 windows | train loss 3.1157 | val loss 3.1541 | val NDCG@10 0.1229 (next 10: 0.1022) Hits@10 0.191 Hits@1 0.069 | later 0.148 | train 6s + val 4s  no improvement 4/5
+check  18 | 709,204 windows | train loss 3.1152 | val loss 3.1529 | val NDCG@10 0.1230 (next 10: 0.1022) Hits@10 0.190 Hits@1 0.069 | later 0.148 | train 5s + val 4s  no improvement 5/5
+early stop at check 18
+best val NDCG@10 0.1026 at check 13 (retriever alone 0.0878) | 3.0 min
+
+runs/retriever_ranker_runs/50k/ranker_50k_1m_settings_next10w/seed1/best.pt (check 13) | held-out 200,000 windows | shortlists (ivf nlist=2048 nprobe=128, cached) 0s | reranking 27s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 100
+retriever + ranker (top 100)          0.1269    0.073    0.150    0.193     0.381
+retriever alone                       0.1139    0.066    0.134    0.173     0.381
+retriever alone, exact search         0.1075    0.061    0.127    0.166     0.378
+retriever + ranker (top 100), 10 songs    0.1341    0.080    0.156    0.202     0.416
+retriever alone, 10 songs             0.1243    0.074    0.145    0.187     0.416
+validation: retriever + ranker        0.1239    0.070    0.146    0.192     0.380
+validation: retriever alone           0.1122    0.064    0.133    0.173     0.380
+most-popular                          0.0030    0.001    0.004    0.006     0.045
+
+NDCG@10 over the next songs; top 10       next 5    next 5 w     next 10   next 10 w    later@10  artists@10 last artist
+retriever + ranker (top 100)              0.1047      0.1097      0.0935      0.1048      0.1496      6.8434      0.2988
+retriever alone                           0.0884      0.0940      0.0775      0.0891      0.1240      7.1243      0.2725
+retriever alone, exact search             0.0804      0.0863      0.0698      0.0814      0.1233      7.1607      0.2713
+validation: retriever + ranker            0.1025      0.1074      0.0915      0.1026      0.1475      6.8488      0.2990
+validation: retriever alone               0.0871      0.0926      0.0763      0.0878      0.1234      7.0842      0.2767
+
+held-out by input length             n     alone  + ranker     gain
+  1 song                        14,393    0.0733    0.0905  +0.0173
+  2 songs                       11,975    0.0914    0.1102  +0.0188
+  3 songs                       10,373    0.0948    0.1129  +0.0181
+  4 songs                        9,196    0.1046    0.1221  +0.0175
+  5 songs                        8,222    0.1004    0.1191  +0.0187
+  6 songs                        7,408    0.1081    0.1264  +0.0183
+  7 songs                        6,758    0.1134    0.1315  +0.0181
+  8 songs                        6,237    0.1177    0.1351  +0.0174
+  9 songs                        5,795    0.1162    0.1308  +0.0146
+  10 songs                     119,643    0.1243    0.1341  +0.0098
