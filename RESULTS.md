@@ -1364,3 +1364,125 @@ playlist*: the share of the top 10 that the playlist goes on to contain.
 - The real fix is in training (predict songs that belong in the playlist, not only the very next one);
   these settings are the no-retraining version. `"max_per_artist": 0, "mix": 0` give the models' own
   answers, which the checks against the offline evaluation use.
+
+# Playlist fit: training for the songs that belong in a playlist
+
+The two serving settings above make the top 10 more varied without retraining. These runs try the fix in
+training: models that learn which songs belong in the playlist, not only which one comes next. All at 50k
+with the 1M settings (`retriever_50k_1m_settings` + `ranker_50k_1m_settings`: the baseline pair), one seed per
+run, scored on cases of any length (1 to 10 input songs; 20,000 validation cases, a fixed sample of 200,000
+held-out cases).
+
+Every run reports the same numbers, so models trained for different goals can be compared (`ScoredCases` in
+`recsys/train.py`, `recsys/metrics.py`):
+
+- *Next song:* NDCG@10 of the very next song, as before.
+- *Next 5, next 10:* NDCG@10 with any of the next 5 (10) songs counted as right (input songs left out).
+- *Later:* the share of the top 10 (input songs left out, as served) that the playlist goes on to contain,
+  `playlist_eval.py`'s "later in the playlist", now computed in training and evaluation too.
+- *Artists, last artist:* different artists in the top 10; the share of the top 10 by the last input song's
+  artist.
+- *Top-100 recall:* the share of cases whose next song is in the retriever's top 100 (the ranker can only
+  reorder those).
+
+**Stage 1: next-X targets** (2026-10-12, `439a43b`, `8093d2b`, `8334394`; results `9d1250f`, `10bf35d`).
+`target_songs = X` makes every training position count any of the next X songs as a right answer (X = 5 or
+10), all equally or weighted 0.8 per step further away (`target_decay`; "w" below). Each right answer is scored
+against the sampled wrong answers only, never against the other right answers, and early stopping uses
+NDCG@10 over the songs trained for. The ranker does the same on its shortlist (shortlisted next-X songs are
+right answers and are never drawn as wrong ones). Each next-X retriever got a baseline ranker (next song only)
+and a ranker trained on the same X, per the run rules.
+
+| Retriever trained on | Ranker trained on | Next song | Next 5 | Next 10 | Later | Artists | Last artist | Top-100 recall | Run time (retriever + ranker) |
+|---|---|---|---|---|---|---|---|---|---|
+| Next song | Next song (baseline) | 0.1371 | 0.1110 | 0.0969 | 0.1447 | 6.03 | 40.9% | 38.1% | 6.0 + 2.5 min |
+| Next song | **Next 10w (kept)** | 0.1269 | 0.1047 | 0.0935 | 0.1496 | 6.84 | 29.9% | 38.1% | (6.0) + 3.7 min |
+| Next 5 | Next song | 0.1106 | 0.1118 | 0.1002 | 0.1590 | 6.76 | 28.5% | 35.2% | 17.4 + 4.1 min |
+| Next 5 | Next 5 | 0.1040 | 0.1086 | 0.0988 | 0.1627 | 6.96 | 25.6% | 35.2% | 17.4 + 3.4 min |
+| Next 5w | Next song | 0.1165 | 0.1151 | 0.1023 | 0.1586 | 6.60 | 31.1% | 36.8% | 21.1 + 6.6 min |
+| Next 5w | Next 5w | 0.1093 | 0.1111 | 0.1000 | 0.1609 | 6.73 | 28.5% | 36.8% | 21.1 + 3.7 min |
+| Next 10 | Next song | 0.0990 | 0.1017 | 0.0938 | 0.1571 | 7.14 | 23.4% | 31.7% | 20.1 + 5.2 min |
+| Next 10 | Next 10 | 0.0881 | 0.0955 | 0.0906 | 0.1612 | 7.35 | 19.9% | 31.7% | 20.1 + 4.0 min |
+| Next 10w | Next song | 0.1112 | 0.1110 | 0.1003 | 0.1599 | 6.79 | 28.3% | 35.1% | 19.2 + 4.0 min |
+| Next 10w | Next 10w | 0.1014 | 0.1057 | 0.0979 | 0.1646 | 7.03 | 24.5% | 35.1% | 19.2 + 3.8 min |
+
+The retrievers alone:
+
+| Retriever trained on | Next song | Next 5 | Next 10 | Later | Top-100 recall | Checks (best) | Training | Run |
+|---|---|---|---|---|---|---|---|---|
+| Next song | 0.1075 | 0.0804 | 0.0698 | 0.1233 | 37.8% | 37 (31) | 4.0 min | 6.0 min |
+| Next 5 | 0.0512 | 0.0625 | 0.0606 | 0.1384 | 34.9% | 85 (79) | 15.4 min | 17.4 min |
+| Next 5w | 0.0619 | 0.0702 | 0.0659 | 0.1413 | 36.4% | 81 (75) | 17.0 min | 21.1 min |
+| Next 10 | 0.0367 | 0.0486 | 0.0519 | 0.1340 | 31.3% | 72 (66) | 17.9 min | 20.1 min |
+| Next 10w | 0.0482 | 0.0587 | 0.0593 | 0.1406 | 34.8% | 71 (65) | 17.1 min | 19.2 min |
+
+- Every next-X pair puts more of its top 10 later in the playlist (0.1571-0.1646 vs 0.1447, +9% to +14%)
+  and spreads it over more artists (last artist 20-31% vs 41%), and every one loses on the very next song
+  (-15% to -36%).
+- The next-X retrievers alone are worse than the baseline retriever even at the goal they trained for (next 5:
+  0.0625 vs 0.0804; next 10: 0.0519 vs 0.0698), with lower top-100 recall. They also ran about twice as many
+  checks (71-85 vs 37) at 1.7-2.3x the time per check: 17-21 min vs 6. Not explained yet.
+- On every next-X retriever, the ranker trained on the next song beats the matching next-X ranker on all three
+  NDCG@10s (next song, next 5, next 10); the next-X ranker has more "later" and more variety.
+- Kept (2026-10-13): the baseline retriever unchanged, with a ranker trained on the next 10 songs, weighted
+  (`ranker_50k_1m_settings_next10w`): later +3.4% (0.1496 vs 0.1447; validation 0.1475 vs 0.1422), last
+  artist 41% -> 30%, next song -7.4%. It needs no new retriever, so at 1M only the ranker would be retrained.
+  The next-10w pair gets more "later" (0.1646) but loses 26% on the next song and needs a 3x longer
+  retriever run.
+
+**Stage 2: multi-token heads** (2026-10-13, `ab9ecfb`, `32d2c12`, `e72c6c7`, `d531096`; results `bff0aa1`,
+`1f91640`). From DeepSeek-V3: extra outputs ("heads") trained to predict songs further ahead from the same
+reading of the playlist, alongside the usual one, so the shared model gets more training signal from the same
+data. Head h's loss weighs 0.5^(h-1) (1, 0.5, 0.25 with 3 heads). Only head 1 is used for validation,
+evaluation and serving; the extra heads aren't exported.
+
+- Retriever: each extra head is `h + small feed-forward(h)` (its last layer starts at zero, so the head starts
+  as a copy of h), scored against the same song vectors.
+- Ranker: each extra head is a copy of the ranker's correction network.
+- What the extra heads predict: "exact" (head h: exactly the song h steps ahead) or "shifted next 10" (head h:
+  the 10 songs from h steps ahead, weighted 0.8 per step: head 1's goal, shifted).
+
+Rankers with 3 heads on the baseline retriever, next to the kept ranker (held-out):
+
+| Ranker (next 10w) | Next song | Next 5 | Next 10 | Later | Artists | Last artist | Training | Run |
+|---|---|---|---|---|---|---|---|---|
+| No extra heads (kept) | 0.1269 | 0.1047 | 0.0935 | 0.1496 | 6.84 | 29.9% | 180 s | 3.7 min |
+| 3 heads, exact | 0.1267 | 0.1048 | 0.0935 | 0.1494 | 6.83 | 29.9% | 198 s | 4.0 min |
+| 3 heads, shifted next 10 | 0.1268 | 0.1048 | 0.0936 | 0.1501 | 6.83 | 29.9% | 202 s | 4.1 min |
+
+The 3-head retriever (exact), alone:
+
+| Retriever | Next song | Next 5 | Next 10 | Later | Artists | Last artist | Top-100 recall | Checks (best) | Training | Run |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Next song (baseline) | 0.1075 | 0.0804 | 0.0698 | 0.1233 | 7.16 | 27.1% | 37.8% | 37 (31) | 4.0 min | 6.0 min |
+| 3 heads, exact | 0.0892 | 0.0795 | 0.0712 | 0.1387 | 6.91 | 23.2% | 39.0% | 45 (39) | 25.1 min | 29.1 min |
+
+- The heads add nothing to the ranker: every difference is 0.0007 or less, within run-to-run noise (the same
+  ranker config re-run gave 0.1482-0.1492, phase B above), for 10-12% more training time. Dropped.
+- The 3-head retriever trades the next song (-17%) for "later" (+12.5%), like the next-X retrievers, but with
+  a higher top-100 recall (39.0% vs 37.8%). The retriever stays as it is, so it got no rankers. A second one
+  (head 1 on the next song, extra heads on the shifted next 10) was stopped at check 12 for the timing test
+  below and not re-run.
+- Cost, timed in the real training loop under the same conditions: a 3-head retriever check trains 2.5x as
+  long (18.4-19.0 vs 7.1-7.6 s). The expensive part of a retriever step is scoring each prediction against
+  ~4,600 songs (4,096 sampled + the batch's own) and the loss, and each head repeats it; the transformer itself
+  is cheap. The ranker scores 32 songs per window, so its heads cost little. An earlier "8x" compared against a
+  run from a day when the Mac's GPU was free (3.4 s per check); on 2026-10-13 other apps roughly halved its
+  speed.
+- torch.compile fused the 3 heads' scoring into one GPU kernel that went over Metal's limit on kernel
+  inputs; a graph break between heads (each head compiled separately) fixed it (`d531096`).
+
+**Where the retriever's time goes** (2026-10-13; speed-ups on hold). From the two retrievers' logs:
+
+| | Training between checks | Validation per check | Best check | Run ended |
+|---|---|---|---|---|
+| 50k (`retriever_50k_1m_settings`) | 3.4 s (56%) | 2.8 s (44%) | 8.0 epochs | 9.25 epochs |
+| 1M (`retriever_1m`) | ~90 s (87%) | ~14 s (13%) | 8.75 epochs | 10 epochs |
+
+Replaying each run's validation log under other stopping rules (no training): validating once an epoch instead
+of every quarter keeps the same best check at 50k and saves 34%, but at 1M saves 10% and misses the best
+check (-0.0026 validation). A patience of 3 checks instead of 5 saves 37% at 50k (-0.0014) but at 1M stops at
+epoch 4.5 (-0.0047): the 1M run kept climbing slowly from epoch 3.75 to 8.75. Ideas for later: a learning
+rate that decays over a fixed number of epochs (late in the 1M run validation bounces by ~0.002 between
+checks, a sign of steps too big for the end), validating once an epoch at 50k, starting retriever variants
+from the trained retriever, and 2,048 sampled wrong answers (only if the profiler shows at least 5%).
