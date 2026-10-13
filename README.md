@@ -150,6 +150,28 @@ At 1M the retriever gains +0.0152 (+12%) and the pair +0.0149 (+9.5%), with 2.6x
 more songs to choose from. The ranker adds about the same at both sizes (+0.024),
 so the gain comes from the better retriever, carried through.
 
+**Songs that belong in the playlist (50k).** Trained only on the very next
+song, the models mostly follow the playlist's last song. Two training changes
+aimed at the whole playlist were tested at 50k with the 1M settings, on inputs
+of any length: *next-X targets* (any of the next 5 or 10 songs counts as a right
+answer, equally or weighted 0.8 per step further away) and *multi-token heads*
+(from DeepSeek-V3: extra outputs that predict the songs 2 and 3 steps ahead,
+trained alongside the usual one). "Later" is the share of the top 10 that the
+playlist goes on to contain.
+
+| Pair (held-out, 50k) | Next song | Later | By the last song's artist | Run time |
+|---|---|---|---|---|
+| Both trained on the next song (baseline) | 0.1371 | 14.5% | 41% | 6.0 + 2.5 min |
+| **Same retriever, ranker trained on the next 10 (weighted)** | **0.1269** | **15.0%** | **30%** | ranker 3.7 min |
+| Both trained on the next 10 (weighted) | 0.1014 | 16.5% | 25% | 19.2 + 3.8 min |
+| Same retriever, next-10 ranker + 2 multi-token heads | 0.1268 | 15.0% | 30% | ranker 4.1 min |
+
+Every next-X pair put more of its top 10 later in the playlist and spread it
+over more artists, and every one lost on the very next song. The ranker-only
+change (bold) is kept: +3.4% "later" for -7.4% on the next song, with no new
+retriever. Multi-token heads added nothing to the ranker and cost the retriever
+17% on the next song at 2.5x the training time per check; they were dropped.
+
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
 uniform random negatives were clearly worse than popularity-weighted ones.
@@ -181,9 +203,11 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] A webpage: type-ahead song search, shareable playlist links, Spotify's embedded player
 - [x] More varied recommendations: at most 2 songs per artist, and guesses from the whole playlist
       mixed in, not only from its last song
+- [x] Training for the songs that belong in a playlist, tested at 50k: a ranker trained on the next 10
+      songs puts 3.4% more of its top 10 later in the playlist and cuts the last artist's share from 41%
+      to 30%, for -7.4% on the very next song; multi-token heads added nothing
 - [ ] Public hosting on Oracle Cloud's free tier (waiting for a free Arm machine)
-- [ ] Retrain for "songs that belong in this playlist" (any of the next several songs, not only the
-      very next one)
+- [ ] That ranker at 1M, served (see Future work)
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
@@ -252,6 +276,8 @@ raises "later in the playlist" from 13.0% to 14.8% and cuts the last artist's
 share from 24.5% to 6.6%. The artist limit trades some measured accuracy for
 variety: many real playlists do repeat artists. `"max_per_artist": 0, "mix": 0`
 gives the models' own answers, which the checks against the offline evaluation use.
+The same goal in training (a ranker trained on the next 10 songs) was tested at
+50k; see Results and Future work.
 
 ### The catalog split across processes (phase B)
 
@@ -405,19 +431,26 @@ layouts.
 
 The plan is Oracle Cloud's Always Free tier: one Arm machine (2 cores, 8 GB)
 runs the whole Docker Compose system (~2.9 GB), with Caddy for HTTPS. Free Arm
-machines are often out of capacity, so a GitHub Actions workflow
-(`.github/workflows/oracle-launch.yml`, running `scripts/oracle_launch.py`)
-asks for one every 5 minutes and turns itself off once it has it.
+machines are often out of capacity, so `scripts/oracle_launch.py` asks for one
+about once a minute from the Mac, going round the 3 data centers and 2 sizes,
+and stops once it has one. A GitHub Actions workflow
+(`.github/workflows/oracle-launch.yml`) can do the same every 5 minutes, but
+GitHub ran its schedule only a few times a day, so it is off.
 
-## Ideas to revisit after serving (before adding more data)
+## Future work
 
-Model and serving ideas to test once serving is done, before the ListenBrainz
-data comes in. Each would be a separate run, measured like every other change.
+Ideas to test before the ListenBrainz data comes in. Each would be a separate
+run, measured like every other change.
 
-- **Multi-token prediction** (from DeepSeek-V3/V4): train the model to predict
-  the next song *and* the one after it (and so on) from the same playlist
-  vector. More training signal from the same data, and a better fit for
-  recommending a short run of songs. One extra output and loss; test at 50k.
+- **The playlist-fit ranker at 1M** (next): train the ranker on the next 10
+  songs, weighted (`ranker_50k_1m_settings_next10w` at 50k), on the existing 1M
+  retriever, export it, re-tune `max_per_artist` and `mix` with
+  `scripts/playlist_eval.py` (its own top 10 is already more varied), and swap
+  it in with a blue/green update. Only the ranker is retrained.
+- **Faster retriever training** (on hold): at 50k, validation is 44% of a
+  retriever run; at 1M, the last 5 of ~9 epochs added only +0.005. Candidates:
+  a learning rate that decays over a fixed number of epochs, validating once an
+  epoch at 50k, starting retriever variants from the trained retriever.
 - **Low-precision song vectors for serving:** store the search index's song
   vectors in 8 bits instead of 32 (FAISS scalar quantization), about 4x less
   memory (282 MB → ~70 MB at 1M). Measure what it costs in search recall.
@@ -519,7 +552,7 @@ folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_
 | `recsys/batching.py`, `recsys/cache.py`, `recsys/admission.py`, `recsys/healthcheck.py`, `recsys/launch.py` | Batching, the Redis cache, overload limits, container health checks, the one-command launcher |
 | `docker/`, `docker-compose.yml` | The image, nginx, the blue/green stacks |
 | `web/` | The webpage |
-| `.github/workflows/`, `deploy/` | The Oracle Cloud launch workflow; the server's SSH public key |
+| `.github/workflows/`, `deploy/` | Tests on every pull request (CI) and the Oracle Cloud launch workflow; the server's SSH public key |
 | `recsys/metrics.py`, `recsys/baselines.py` | NDCG@k, Hits@k; most-popular baseline |
 | `scripts/` | v1 equivalence check, genre fetching, profiling, search benchmark, short-input test, serving check, chaos test, load tests (locust), probe, blue/green update, playlist evaluation, Oracle launch |
 | `configs/`, `tests/` | One config per run; tests |
