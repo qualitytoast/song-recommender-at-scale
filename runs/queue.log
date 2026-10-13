@@ -1,0 +1,34 @@
+2026-10-12 17:07:48 queue of 14: configs/retriever_50k_1m_settings.toml configs/ranker_50k_1m_settings.toml configs/retriever_50k_next5.toml configs/ranker_50k_next5_base.toml configs/ranker_50k_next5.toml configs/retriever_50k_next5w.toml configs/ranker_50k_next5w_base.toml configs/ranker_50k_next5w.toml configs/retriever_50k_next10.toml configs/ranker_50k_next10_base.toml configs/ranker_50k_next10.toml configs/retriever_50k_next10w.toml configs/ranker_50k_next10w_base.toml configs/ranker_50k_next10w.toml
+2026-10-12 17:07:48 start retriever_50k_1m_settings
+2026-10-12 17:13:50 done retriever_50k_1m_settings in 6 min
+2026-10-12 17:13:51 start ranker_50k_1m_settings
+2026-10-12 17:16:24 done ranker_50k_1m_settings in 2 min
+2026-10-12 17:16:24 start retriever_50k_next5
+2026-10-12 17:33:50 done retriever_50k_next5 in 17 min
+2026-10-12 17:33:51 start ranker_50k_next5_base
+2026-10-12 17:37:55 done ranker_50k_next5_base in 4 min
+2026-10-12 17:37:56 start ranker_50k_next5
+2026-10-12 17:41:19 done ranker_50k_next5 in 3 min
+2026-10-12 17:41:19 start retriever_50k_next5w
+2026-10-12 18:02:24 done retriever_50k_next5w in 21 min
+2026-10-12 18:02:26 start ranker_50k_next5w_base
+2026-10-12 18:09:04 done ranker_50k_next5w_base in 6 min
+2026-10-12 18:09:07 start ranker_50k_next5w
+2026-10-12 18:12:48 done ranker_50k_next5w in 3 min
+2026-10-12 18:12:49 start retriever_50k_next10
+2026-10-12 18:32:57 done retriever_50k_next10 in 20 min
+2026-10-12 18:32:58 start ranker_50k_next10_base
+2026-10-12 18:38:12 done ranker_50k_next10_base in 5 min
+2026-10-12 18:38:14 start ranker_50k_next10
+2026-10-12 18:42:15 done ranker_50k_next10 in 4 min
+2026-10-12 18:42:16 start retriever_50k_next10w
+2026-10-12 19:01:29 done retriever_50k_next10w in 19 min
+2026-10-12 19:01:31 start ranker_50k_next10w_base
+2026-10-12 19:05:31 done ranker_50k_next10w_base in 4 min
+2026-10-12 19:05:32 start ranker_50k_next10w
+2026-10-12 19:09:17 done ranker_50k_next10w in 3 min
+2026-10-12 19:09:17 queue finished
+2026-10-13 12:23:50 queue of 1: configs/ranker_50k_1m_settings_next10w.toml
+2026-10-13 12:23:53 start ranker_50k_1m_settings_next10w
+2026-10-13 12:27:36 done ranker_50k_1m_settings_next10w in 3 min
+2026-10-13 12:27:36 queue finished

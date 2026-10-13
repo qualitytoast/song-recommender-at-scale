@@ -1,0 +1,28 @@
+{
+  "config": "configs/ranker_50k_next10_base.toml",
+  "train_seed": 1,
+  "retriever": "configs/retriever_50k_next10.toml",
+  "search": "ivf nlist=2048 nprobe=128",
+  "num_params": 35431780,
+  "new_params": 4801,
+  "trained_params": 35431780,
+  "train_windows_used": 135176,
+  "features": [
+    "same_artist",
+    "same_album",
+    "genre_match",
+    "last_same_artist",
+    "log_after_last",
+    "log_after_context",
+    "context_with_pair"
+  ],
+  "target_songs": 1,
+  "target_decay": 1.0,
+  "best_check": 43,
+  "best_val_ndcg": 0.09836022614206874,
+  "retriever_val_ndcg": 0.04079026200620567,
+  "checks_run": 49,
+  "train_seconds": 281.7,
+  "git_commit": "2bf1a1d",
+  "git_dirty": true
+}

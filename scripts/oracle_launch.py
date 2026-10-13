@@ -26,6 +26,8 @@ from pathlib import Path
 import oci
 
 SHAPE = "VM.Standard.A1.Flex"
+# A dropped connection, a timeout, the network down after the Mac wakes up: waited out and retried, never fatal.
+NETWORK_ERRORS = (oci.exceptions.RequestException, oci.exceptions.ConnectTimeout, ConnectionError, TimeoutError)
 SIZES = [(2, 8), (1, 6)]  # (OCPUs, GB of memory), within the Always Free 2 OCPU / 12 GB
 
 
@@ -110,12 +112,23 @@ def main():
         return
 
     choices = [(domain, size) for domain in domains for size in SIZES]
-    attempt, wait = 0, args.every
+    attempt, wait, check = 0, args.every, False
     while True:
-        if attempt and attempt % len(choices) == 0 and (found := existing(compute, tenancy, args.name)):
-            log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")  # another copy's
-            report(done="true", ip=public_ip(config, compute, found[0]))
-            return
+        # Before each round, and after a network error (a launch may have gone through with only its reply lost):
+        # is there a machine already?
+        if check or (attempt and attempt % len(choices) == 0):
+            try:
+                found = existing(compute, tenancy, args.name)
+            except NETWORK_ERRORS as e:
+                wait = min(wait * 2, 600)
+                log(f"network error checking for the machine ({type(e).__name__}); next check in {wait:.0f}s")
+                time.sleep(wait + random.uniform(0, 5))
+                continue
+            check = False
+            if found:
+                log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")
+                report(done="true", ip=public_ip(config, compute, found[0]))
+                return
         domain, (ocpus, memory) = choices[(args.first + attempt) % len(choices)]
         attempt += 1
         details = oci.core.models.LaunchInstanceDetails(
@@ -137,6 +150,13 @@ def main():
                 log(f"STOPPED: unexpected error {e.status} {e.code}: {e.message}")
                 notify(f"Launch script stopped: {e.code}")
                 raise
+            if args.tries and attempt >= args.tries:
+                return
+            time.sleep(wait + random.uniform(0, 5))
+            continue
+        except NETWORK_ERRORS as e:  # the request may or may not have reached Oracle: check before asking again
+            wait, check = min(wait * 2, 600), True
+            log(f"try {attempt}: network error ({type(e).__name__}); checking for the machine, next try in {wait:.0f}s")
             if args.tries and attempt >= args.tries:
                 return
             time.sleep(wait + random.uniform(0, 5))
