@@ -31,4 +31,5 @@ target_songs = 5  # was 1: the next 5 songs, equal weights (those the shortlist 
 target_decay = 1.0  # 1 = equal weights
 predict_steps = 1          # the usual head only (multi-token prediction off)
 predict_decay = 1.0
-predict_targets = "exact"        # (unused with predict_steps = 1)
+predict_songs = 1          # each extra head: exactly the song that many steps ahead (unused with predict_steps = 1)
+predict_songs_decay = 1.0

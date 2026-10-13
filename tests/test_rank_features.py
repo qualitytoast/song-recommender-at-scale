@@ -124,7 +124,7 @@ def config(**changes):
                     train_windows="all", freeze_tables=False, features=[], correction_hidden=0,
                     exclude_input=False, val_set="retriever", windows="full", target_songs=1,
                     target_decay=1.0, predict_steps=1, predict_decay=1.0,
-                    predict_targets="exact")
+                    predict_songs=1, predict_songs_decay=1.0)
     return RankerConfig(**{**settings, **changes})
 
 
