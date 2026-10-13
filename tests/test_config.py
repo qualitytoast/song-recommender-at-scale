@@ -51,7 +51,8 @@ target_songs = 1
 target_decay = 1.0
 predict_steps = 1
 predict_decay = 1.0
-predict_targets = "exact"
+predict_songs = 1
+predict_songs_decay = 1.0
 """
 
 

@@ -88,10 +88,10 @@ def test_how_far_ahead_training_looks():
     base = dict(optimizer="lazy_adamw", lr=0.01, weight_decay=0.0, batch_size=8, epochs=1, eval_every_targets=10,
                 min_checks=1, patience=1, augment_mask=0.0, augment_crop=0, augment_reorder=0.0,
                 objective="every_position", softmax="sampled", sampled_negatives=4, negative_power=0.75,
-                compile=False, target_decay=1.0, predict_decay=0.5)
-    for n, steps, kind, ahead in [(1, 1, "exact", 1), (5, 1, "exact", 5), (1, 3, "exact", 3), (5, 3, "exact", 5),
-                                  (5, 3, "next", 7), (10, 3, "next", 12)]:
-        t = TrainConfig(**base, target_songs=n, predict_steps=steps, predict_targets=kind)
+                compile=False, target_decay=1.0, predict_decay=0.5, predict_songs_decay=1.0)
+    for n, steps, songs, ahead in [(1, 1, 1, 1), (5, 1, 1, 5), (1, 3, 1, 3), (5, 3, 1, 5), (5, 3, 5, 7), (10, 3, 10, 12),
+                                   (1, 3, 10, 12), (1, 1, 10, 1)]:  # with one head, predict_songs is unused
+        t = TrainConfig(**base, target_songs=n, predict_steps=steps, predict_songs=songs)
         assert t.songs_ahead == ahead
 
 
@@ -106,8 +106,9 @@ def test_ranker_step_corrections_start_at_zero():
     torch.testing.assert_close(r(ids, names, cands, base), base)
 
 
-RUNS = (("retriever_5k_mtp", 1, "exact"), ("retriever_5k_next3_mtp", 3, "exact"),
-        ("retriever_5k_next3_mtpnext", 3, "next"))
+# (name, the usual head's target_songs, each extra head's predict_songs, their decay)
+RUNS = (("retriever_5k_mtp", 1, 1, 1.0), ("retriever_5k_next3_mtp", 3, 1, 1.0),
+        ("retriever_5k_next3_mtpnext", 3, 3, 0.8), ("retriever_5k_mtp_window", 1, 4, 0.8))
 
 
 @pytest.fixture(scope="module")
@@ -122,8 +123,9 @@ def trained(tmp_path_factory):
     old = os.getcwd()
     os.chdir(tmp)
     try:
-        for name, n, kind in RUNS:
-            write_config(tmp / f"{name}.toml", tmp / "store", tmp / "genres.jsonl", n, steps=3, kind=kind)
+        for name, n, songs, songs_decay in RUNS:
+            write_config(tmp / f"{name}.toml", tmp / "store", tmp / "genres.jsonl", n, steps=3, songs=songs,
+                         songs_decay=songs_decay)
             train(tmp / f"{name}.toml", 1)
         yield tmp
     finally:
@@ -135,15 +137,15 @@ def test_multi_token_training_end_to_end(trained, monkeypatch):
     from recsys.ranker import evaluate_ranker, train_ranker
 
     monkeypatch.chdir(trained)
-    for name, n, kind in RUNS:
+    for name, n, songs, songs_decay in RUNS:
         run = trained / "runs/retriever_ranker_runs/5k" / name / "seed1"
         summary = json.loads((run / "summary.json").read_text())
-        assert summary["predict_steps"] == 3 and summary["target_songs"] == n and summary["predict_targets"] == kind
+        assert (summary["predict_steps"], summary["target_songs"], summary["predict_songs"]) == (3, n, songs)
         assert any(k.startswith("step_heads.1.") for k in torch.load(run / "best.pt", weights_only=True)["model"])
         evaluate(trained / f"{name}.toml", 1)
         assert "later@10" in json.loads((run / "eval_any_length.json").read_text())["full held-out"]
         ranker = trained / f"ranker_5k_{name.removeprefix('retriever_5k_')}.toml"
-        write_ranker_config(ranker, trained / f"{name}.toml", n, steps=3, kind=kind)
+        write_ranker_config(ranker, trained / f"{name}.toml", n, steps=3, songs=songs, songs_decay=songs_decay)
         train_ranker(ranker, 1)
         evaluate_ranker(ranker, 1)
         rrun = trained / "runs/retriever_ranker_runs/5k" / ranker.stem / "seed1"

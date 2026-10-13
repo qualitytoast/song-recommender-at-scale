@@ -252,17 +252,20 @@ def train(config_path, train_seed):
         width = X_train.shape[1] + t.songs_ahead - 1
         weights = torch.from_numpy(target_weights(t.target_songs, t.target_decay)).float().to(device)
         step_weights = target_weights(t.predict_steps, t.predict_decay).tolist()  # head h: predict_decay^(h-1)
-        step_targets = torch.ones(1, device=device) if t.predict_targets == "exact" else weights
+        step_targets = torch.from_numpy(target_weights(t.predict_songs, t.predict_songs_decay)).float().to(device)
 
     def forward_several(X, N, positions, T, candidates, real, correction):
         """The usual head's loss (its target_songs goal) plus each multi-token head's, weighted predict_decay^(h-1):
-        head h's right answer is the song h steps ahead ("exact"), or the target_songs songs from there ("next",
-        weighted like the usual head's)."""
-        logits = model.step_logits(X, N, candidates)
-        loss = multi_target_loss(logits[0], positions, T, weights, candidates, real, correction)
-        for h in range(1, len(logits)):
-            loss = loss + step_weights[h] * multi_target_loss(logits[h], positions, T, step_targets, candidates, real,
-                                                              correction, offset=h)
+        head h's right answers are the predict_songs songs from h steps ahead (1: exactly the song h steps ahead)."""
+        x = model.hidden_states(X, N)
+        loss = multi_target_loss(model.score_candidates(x, candidates), positions, T, weights, candidates, real,
+                                 correction)
+        for h, head in enumerate(model.step_heads, start=1):
+            # One compiled piece per head: fused into one, the heads' kernel needs more inputs than the Mac's GPU
+            # (Metal) allows a kernel. (A no-op without torch.compile.)
+            torch._dynamo.graph_break()
+            loss = loss + step_weights[h] * multi_target_loss(model.score_candidates(head(x), candidates), positions, T,
+                                                              step_targets, candidates, real, correction, offset=h)
         return loss
     if t.compile:  # same model and weights; only how the GPU runs the step changes
         forward_loss = torch.compile(forward_loss)
@@ -386,7 +389,8 @@ def train(config_path, train_seed):
                "num_params": num_params, "eval_every_targets": t.eval_every_targets,
                "best_check": best_check, "best_epochs": log[best_check]["epochs"],
                "target_songs": t.target_songs, "target_decay": t.target_decay, "predict_steps": t.predict_steps,
-               "predict_decay": t.predict_decay, "predict_targets": t.predict_targets, "best_val_ndcg": stopper.best,
+               "predict_decay": t.predict_decay, "predict_songs": t.predict_songs,
+               "predict_songs_decay": t.predict_songs_decay, "best_val_ndcg": stopper.best,
                "best_val_next_ndcg": log[best_check]["val_next_ndcg@10"], "checks_run": len(log),
                "epochs_run": round(log[-1]["epochs"], 2),
                "train_seconds": round(train_seconds, 1), "val_seconds_total": round(sum(val_seconds), 1),

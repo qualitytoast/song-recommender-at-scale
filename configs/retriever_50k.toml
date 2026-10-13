@@ -54,4 +54,5 @@ target_songs = 1          # the next song only (recsys/config.py)
 target_decay = 1.0
 predict_steps = 1         # the usual head only (multi-token prediction off)
 predict_decay = 1.0
-predict_targets = "exact"         # (unused with predict_steps = 1)
+predict_songs = 1          # each extra head: exactly the song that many steps ahead (unused with predict_steps = 1)
+predict_songs_decay = 1.0
