@@ -28,3 +28,7 @@
 2026-10-12 19:05:32 start ranker_50k_next10w
 2026-10-12 19:09:17 done ranker_50k_next10w in 3 min
 2026-10-12 19:09:17 queue finished
+2026-10-13 12:23:50 queue of 1: configs/ranker_50k_1m_settings_next10w.toml
+2026-10-13 12:23:53 start ranker_50k_1m_settings_next10w
+2026-10-13 12:27:36 done ranker_50k_1m_settings_next10w in 3 min
+2026-10-13 12:27:36 queue finished
