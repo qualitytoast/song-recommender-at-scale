@@ -1,6 +1,6 @@
 # Stage 2 (50k): multi-token prediction heads, on the stage 1 pick (today's retriever + next-10-weighted ranker).
-# Change from retriever_50k_1m_settings: 3 heads; head 1 still the next song (what it serves is unchanged), heads
-# 2 and 3 the next 10 songs (weighted 0.8) starting 2 and 3 steps ahead: stage 1's next-10 idea as extra training only.
+# Change from retriever_50k_1m_settings: 3 heads (the next song, then the song 2 and 3 steps ahead;
+# with target_songs = 1 the two kinds of heads are the same).
 
 data_seed = 42           # playlist split, same as every Phase 1 run
 train_seeds = [1]        # 1 seed per run from now on
@@ -53,5 +53,5 @@ target_songs = 1          # the next song only (recsys/config.py)
 target_decay = 1.0
 predict_steps = 3  # was 1: 3 heads, the usual + 2 multi-token ones
 predict_decay = 0.5  # head h's loss weighs 0.5^(h-1): 1, 0.5, 0.25
-predict_songs = 10  # extra heads: the 10 songs from 2 / 3 steps ahead, the one d further on weighing 0.8^(d-1)
-predict_songs_decay = 0.8
+predict_songs = 1  # extra heads: exactly the song 2 / 3 steps ahead
+predict_songs_decay = 1.0

@@ -43,3 +43,8 @@
 2026-10-13 13:01:31 queue finished
 2026-10-13 13:12:31 queue of 2: configs/retriever_50k_mtp3.toml configs/retriever_50k_mtp3w10.toml
 2026-10-13 13:12:32 start retriever_50k_mtp3
+2026-10-13 13:14:32 queue of 2: configs/retriever_50k_mtp3.toml configs/retriever_50k_mtp3w10.toml
+2026-10-13 13:14:33 start retriever_50k_mtp3
+2026-10-13 13:43:40 done retriever_50k_mtp3 in 29 min
+2026-10-13 13:43:41 start retriever_50k_mtp3w10
+2026-10-13 13:52:39 STOPPED retriever_50k_mtp3w10 by request at check 12 (mid-training, for a speed test); run folder and config deleted
