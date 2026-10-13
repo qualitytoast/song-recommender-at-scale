@@ -1,0 +1,20 @@
+{
+  "config": "configs/retriever_50k_next10w.toml",
+  "train_seed": 1,
+  "device": "mps",
+  "num_params": 35426979,
+  "eval_every_targets": 458138,
+  "best_check": 65,
+  "best_epochs": 16.5005,
+  "target_songs": 10,
+  "target_decay": 0.8,
+  "best_val_ndcg": 0.0595753255868997,
+  "best_val_next_ndcg": 0.05015010981678552,
+  "checks_run": 71,
+  "epochs_run": 17.75,
+  "train_seconds": 1027.6,
+  "val_seconds_total": 510.0,
+  "val_seconds_per_check": 7.18,
+  "git_commit": "2bf1a1d",
+  "git_dirty": true
+}

@@ -1,0 +1,53 @@
+runs/retriever_ranker_runs/50k/ranker_50k_1m_settings/seed1 | 455,994 ranker windows (164,721 trained on), 20,000 val windows | shortlists (ivf nlist=2048 nprobe=128) in 17s | train recall@100 36.1%
+35,431,780 params: the retriever's + 4,801 new (candidate marker, position, correction); 35,431,780 trained
+extra inputs (mean / std): same_artist 0.0828/0.229, same_album 0.023/0.109, genre_match 0.343/0.277, last_same_artist 0.135/0.342, log_after_last 0.723/0.915, log_after_context 1.84/1.36, context_with_pair 0.372/0.308
+check   0 | 0 windows | train loss 0.0000 | val loss 2.8036 | val NDCG@10 0.1122 Hits@10 0.173 Hits@1 0.064 | later 0.123 | train 0s + val 3s  *best
+check   1 | 39,424 windows | train loss 2.7129 | val loss 2.6218 | val NDCG@10 0.1274 Hits@10 0.196 Hits@1 0.072 | later 0.133 | train 4s + val 2s  *best
+check   2 | 78,848 windows | train loss 2.5630 | val loss 2.5839 | val NDCG@10 0.1316 Hits@10 0.202 Hits@1 0.075 | later 0.137 | train 4s + val 2s  *best
+check   3 | 118,272 windows | train loss 2.5476 | val loss 2.5707 | val NDCG@10 0.1325 Hits@10 0.203 Hits@1 0.075 | later 0.139 | train 3s + val 2s  *best
+check   4 | 157,696 windows | train loss 2.5450 | val loss 2.5652 | val NDCG@10 0.1329 Hits@10 0.204 Hits@1 0.075 | later 0.140 | train 4s + val 2s  *best
+check   5 | 197,233 windows | train loss 2.5324 | val loss 2.5615 | val NDCG@10 0.1334 Hits@10 0.206 Hits@1 0.075 | later 0.141 | train 4s + val 2s  *best
+check   6 | 236,401 windows | train loss 2.5156 | val loss 2.5588 | val NDCG@10 0.1336 Hits@10 0.206 Hits@1 0.075 | later 0.141 | train 3s + val 2s  *best
+check   7 | 275,825 windows | train loss 2.5114 | val loss 2.5565 | val NDCG@10 0.1337 Hits@10 0.207 Hits@1 0.075 | later 0.142 | train 3s + val 2s  *best
+check   8 | 315,249 windows | train loss 2.5348 | val loss 2.5536 | val NDCG@10 0.1338 Hits@10 0.207 Hits@1 0.075 | later 0.142 | train 3s + val 2s  *best
+check   9 | 354,786 windows | train loss 2.5273 | val loss 2.5526 | val NDCG@10 0.1339 Hits@10 0.207 Hits@1 0.075 | later 0.142 | train 3s + val 2s  *best
+check  10 | 394,210 windows | train loss 2.5169 | val loss 2.5519 | val NDCG@10 0.1335 Hits@10 0.206 Hits@1 0.075 | later 0.142 | train 3s + val 2s  no improvement 1/5
+check  11 | 433,634 windows | train loss 2.5004 | val loss 2.5507 | val NDCG@10 0.1341 Hits@10 0.208 Hits@1 0.075 | later 0.143 | train 3s + val 2s  *best
+check  12 | 472,802 windows | train loss 2.4963 | val loss 2.5482 | val NDCG@10 0.1344 Hits@10 0.207 Hits@1 0.076 | later 0.142 | train 3s + val 2s  *best
+check  13 | 512,339 windows | train loss 2.5021 | val loss 2.5489 | val NDCG@10 0.1338 Hits@10 0.207 Hits@1 0.075 | later 0.143 | train 3s + val 2s  no improvement 1/5
+check  14 | 551,763 windows | train loss 2.4846 | val loss 2.5486 | val NDCG@10 0.1341 Hits@10 0.207 Hits@1 0.075 | later 0.143 | train 3s + val 2s  no improvement 2/5
+check  15 | 591,187 windows | train loss 2.4890 | val loss 2.5485 | val NDCG@10 0.1342 Hits@10 0.207 Hits@1 0.076 | later 0.143 | train 3s + val 2s  no improvement 3/5
+check  16 | 630,611 windows | train loss 2.4898 | val loss 2.5454 | val NDCG@10 0.1337 Hits@10 0.206 Hits@1 0.075 | later 0.143 | train 3s + val 2s  no improvement 4/5
+check  17 | 669,892 windows | train loss 2.4866 | val loss 2.5463 | val NDCG@10 0.1339 Hits@10 0.207 Hits@1 0.075 | later 0.144 | train 3s + val 2s  no improvement 5/5
+early stop at check 17
+best val NDCG@10 0.1344 at check 12 (retriever alone 0.1122) | 2.0 min
+
+runs/retriever_ranker_runs/50k/ranker_50k_1m_settings/seed1/best.pt (check 12) | held-out 200,000 windows | shortlists (ivf nlist=2048 nprobe=128, cached) 8s | reranking 16s
+                                     NDCG@10   hits@1   hits@5  hits@10   top 100
+retriever + ranker (top 100)          0.1371    0.079    0.163    0.208     0.381
+retriever alone                       0.1139    0.066    0.134    0.173     0.381
+retriever alone, exact search         0.1075    0.061    0.127    0.166     0.378
+retriever + ranker (top 100), 10 songs    0.1463    0.086    0.172    0.220     0.416
+retriever alone, 10 songs             0.1243    0.074    0.145    0.187     0.416
+validation: retriever + ranker        0.1344    0.076    0.160    0.207     0.380
+validation: retriever alone           0.1122    0.064    0.133    0.173     0.380
+most-popular                          0.0030    0.001    0.004    0.006     0.045
+
+NDCG@10 over the next songs; top 10       next 5    next 5 w     next 10   next 10 w    later@10  artists@10 last artist
+retriever + ranker (top 100)              0.1110      0.1171      0.0969      0.1109      0.1447      6.0335      0.4094
+retriever alone                           0.0884      0.0940      0.0775      0.0891      0.1240      7.1243      0.2725
+retriever alone, exact search             0.0804      0.0863      0.0698      0.0814      0.1233      7.1607      0.2713
+validation: retriever + ranker            0.1083      0.1145      0.0948      0.1085      0.1422      6.0139      0.4109
+validation: retriever alone               0.0871      0.0926      0.0763      0.0878      0.1234      7.0842      0.2767
+
+held-out by input length             n     alone  + ranker     gain
+  1 song                        14,393    0.0733    0.0947  +0.0214
+  2 songs                       11,975    0.0914    0.1154  +0.0241
+  3 songs                       10,373    0.0948    0.1198  +0.0250
+  4 songs                        9,196    0.1046    0.1294  +0.0248
+  5 songs                        8,222    0.1004    0.1277  +0.0273
+  6 songs                        7,408    0.1081    0.1367  +0.0285
+  7 songs                        6,758    0.1134    0.1405  +0.0271
+  8 songs                        6,237    0.1177    0.1449  +0.0272
+  9 songs                        5,795    0.1162    0.1406  +0.0244
+  10 songs                     119,643    0.1243    0.1463  +0.0220
