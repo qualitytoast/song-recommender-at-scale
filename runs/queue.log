@@ -41,3 +41,5 @@
 2026-10-13 13:01:21 start retriever_50k_mtp3
 2026-10-13 13:01:31 FAILED retriever_50k_mtp3 after 0 min (see runs/retriever_ranker_runs/50k/retriever_50k_mtp3/run.out)
 2026-10-13 13:01:31 queue finished
+2026-10-13 13:12:31 queue of 2: configs/retriever_50k_mtp3.toml configs/retriever_50k_mtp3w10.toml
+2026-10-13 13:12:32 start retriever_50k_mtp3
