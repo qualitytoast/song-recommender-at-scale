@@ -1486,3 +1486,28 @@ epoch 4.5 (-0.0047): the 1M run kept climbing slowly from epoch 3.75 to 8.75. Id
 rate that decays over a fixed number of epochs (late in the 1M run validation bounces by ~0.002 between
 checks, a sign of steps too big for the end), validating once an epoch at 50k, starting retriever variants
 from the trained retriever, and 2,048 sampled wrong answers (only if the profiler shows at least 5%).
+
+# ListenBrainz: training on real listening
+
+The next stage trains on ListenBrainz listens only (decided 2026-10-15): users active in the last 12 months,
+their listens from that window, cut into sessions (a new one after 30 min without a listen, back-to-back
+repeats dropped, at least 4 songs); one song = its cleaned-up artist + title (`recsys/listenbrainz.py`); a
+catalog of the songs played by at least N different training users; users split 80/10/10, the ranker's share
+10% of the training users.
+
+**First look** (2026-10-15, `scripts/lb_first_look.py`, `runs/listenbrainz/first_look.json`). Three recent
+daily dumps: 9,501,373 listens from 32,263 users, read at ~92,000 listens per second in one process.
+
+- What listens carry: album name 93%, length 30%, a Spotify link 16%, a MusicBrainz recording ID 7%. 57% came
+  from users importing their Last.fm history (55% of the listens are older than 30 days), 15% from Spotify.
+- MPD songs: 35% of the listens, almost all found by artist + title (Spotify links find only 2.3%). Where a
+  listen is found both ways, the two agree on the song 99.6% of the time; misses are mostly renamed artists
+  ("MARINA" was "Marina and the Diamonds") and versions.
+- Users: the median user sent 55 listens, but the top 1% sent 62% of them (one 325,211). 221 user-days hold
+  over 1,000 listens (~58 h of music) and 4.6% of listens repeat the user's previous timestamp: a cap per
+  user and a filter for duplicates and bots are needed.
+- Catalog (3 days; 12 months will be far bigger): 1.8M distinct songs, most heard once. At least 2 users:
+  418k songs, 68% of the listens; 5: 99k, 47%; 10: 36k, 36%. A Spotify ID (a listen's link or an MPD match)
+  exists for 64% / 87% / 95% of those songs.
+- Sessions: 87% of listens survive the rules; median session 11 songs (90th percentile 43); back-to-back
+  repeats are 9% of listens. One "session" of 22,733 songs is a bot or a broken import.

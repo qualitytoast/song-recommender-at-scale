@@ -1,0 +1,136 @@
+MPD lookups: 2,262,292 tracks, 2,155,511 song keys (18s)
+{
+  "dumps": [
+    "listenbrainz-listens-dump-2716-20261013-000002-incremental.tar.zst",
+    "listenbrainz-listens-dump-2718-20261014-000002-incremental.tar.zst",
+    "listenbrainz-listens-dump-2720-20261015-000002-incremental.tar.zst"
+  ],
+  "listens": 9501373,
+  "skipped_without_artist_or_title": 0,
+  "users": 32263,
+  "listened_at": {
+    "first": "2005-02-13T23:15:01+00:00",
+    "last": "2026-10-15T00:00:12+00:00",
+    "share_in_last_30_days": 0.4452,
+    "months": {
+      "2026-10": 9501373
+    }
+  },
+  "fields": {
+    "spotify link": 0.1599,
+    "recording MusicBrainz ID": 0.0712,
+    "album name": 0.9316,
+    "length": 0.2965,
+    "artist list (main artist known)": 0.0223
+  },
+  "sources_sampled": {
+    "ListenBrainz lastfm importer v2": 0.5704,
+    "spotify.com": 0.1549,
+    "?": 0.0686,
+    "navidrome": 0.0592,
+    "Pano Scrobbler": 0.0333,
+    "Web Scrobbler": 0.0198,
+    "ListenBrainz Android": 0.0182,
+    "lastfm-csv-import": 0.0109,
+    "Last.fm CSV import": 0.009,
+    "music.apple.com": 0.0067,
+    "Roon": 0.0053,
+    "ListenBrainz plugin for Jellyfin": 0.0046
+  },
+  "mpd_matches": {
+    "by_spotify_link": 0.0231,
+    "by_artist_and_title": 0.3467,
+    "by_either": 0.3476,
+    "by_either_and_in_2_plus_mpd_playlists": 0.3246,
+    "both_ways_same_song_key": 0.996,
+    "both_ways_same_spotify_track": 0.9788,
+    "spotify_link_but_name_missed": 0.0368,
+    "unmatched_found_by_first_artist_of_credit": 0.0048
+  },
+  "users_detail": {
+    "listens_per_user": {
+      "p50": 55,
+      "p90": 269,
+      "p99": 1942,
+      "max": 325211
+    },
+    "share_of_listens_from_top_1pct_users": 0.622,
+    "listens_per_user_day": {
+      "p50": 19,
+      "p90": 95,
+      "p99": 328,
+      "max": 7977
+    },
+    "user_days_over_300": 2686,
+    "user_days_over_1000": 221,
+    "listens_at_the_same_second_as_the_users_previous": 438511
+  },
+  "distinct_songs": 1808541,
+  "catalog_by_minimum_users": {
+    "N=1": {
+      "songs": 1808541,
+      "share_of_listens": 1.0,
+      "share_with_an_mpd_match": 0.1872,
+      "share_with_a_spotify_id": 0.3351
+    },
+    "N=2": {
+      "songs": 417641,
+      "share_of_listens": 0.6766,
+      "share_with_an_mpd_match": 0.3693,
+      "share_with_a_spotify_id": 0.6435
+    },
+    "N=3": {
+      "songs": 214619,
+      "share_of_listens": 0.5709,
+      "share_with_an_mpd_match": 0.4401,
+      "share_with_a_spotify_id": 0.7632
+    },
+    "N=5": {
+      "songs": 98610,
+      "share_of_listens": 0.4668,
+      "share_with_an_mpd_match": 0.5037,
+      "share_with_a_spotify_id": 0.866
+    },
+    "N=10": {
+      "songs": 35978,
+      "share_of_listens": 0.3582,
+      "share_with_an_mpd_match": 0.559,
+      "share_with_a_spotify_id": 0.9541
+    },
+    "N=20": {
+      "songs": 13325,
+      "share_of_listens": 0.2719,
+      "share_with_an_mpd_match": 0.6043,
+      "share_with_a_spotify_id": 0.9893
+    }
+  },
+  "sessions_all_songs": {
+    "sessions": 374856,
+    "listens_kept": 8249126,
+    "share_of_listens_kept": 0.8682,
+    "repeats_dropped": 830633,
+    "session_length": {
+      "p50": 11,
+      "p90": 43,
+      "p99": 163,
+      "max": 22733
+    }
+  },
+  "sessions_songs_with_5_plus_users": {
+    "sessions": 214236,
+    "listens_kept": 3519631,
+    "share_of_listens_kept": 0.7935,
+    "repeats_dropped": 459167,
+    "session_length": {
+      "p50": 8,
+      "p90": 27,
+      "p99": 128,
+      "max": 21861
+    }
+  },
+  "reading": {
+    "listens_per_second_one_process": 91708,
+    "seconds": 104
+  }
+}
+report: runs/listenbrainz/first_look.json (129s)
