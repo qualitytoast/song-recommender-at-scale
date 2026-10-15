@@ -59,14 +59,19 @@ def test_listen_duration_ms_accepts_ms_or_seconds():
 
 
 def test_parse_listen_fields_and_main_artist():
+    mbid = "7fa7fc04-1011-4876-8095-ecd232edea87"
     info = {"spotify_id": "https://open.spotify.com/track/1rrgWMXGCGHru5bIRxGFV0", "duration_ms": 1000,
-            "artist_names": ["Calvin Harris", "Dua Lipa"], "recording_mbid": "rec"}
+            "artist_names": ["Calvin Harris", "Dua Lipa"], "recording_mbid": "rec", "artist_mbids": [mbid.upper()],
+            "spotify_artist_ids": ["https://open.spotify.com/artist/6UZ0ba50XreR4TM8u322gs"]}
     listen = parse_listen(listen_line(user=7, ts=9, artist="Calvin Harris, Dua Lipa", title="One Kiss", info=info))
     assert listen == (7, 9, "Calvin Harris, Dua Lipa", "Calvin Harris", "One Kiss", "Views",
-                      "1rrgWMXGCGHru5bIRxGFV0", "rec", 1000)
+                      "1rrgWMXGCGHru5bIRxGFV0", "rec", 1000, mbid, "6UZ0ba50XreR4TM8u322gs")
     bare = parse_listen(listen_line(release=None))
-    assert (bare.first_artist, bare.release, bare.spotify_id, bare.recording_mbid, bare.duration_ms) == (
-        "Drake", "", "", "", 0)
+    assert (bare.first_artist, bare.release, bare.spotify_id, bare.recording_mbid, bare.duration_ms,
+            bare.artist_mbid, bare.spotify_artist_id) == ("Drake", "", "", "", 0, "", "")
+    lastfm = parse_listen(listen_line(info={"lastfm_artist_mbid": mbid, "spotify_artist_ids": ["junk"]}))
+    assert (lastfm.artist_mbid, lastfm.spotify_artist_id) == (mbid, "")
+    assert parse_listen(listen_line(info={"lastfm_artist_mbid": "not-an-id"})).artist_mbid == ""
 
 
 def test_clean_text_case_accents_punctuation():

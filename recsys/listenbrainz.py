@@ -27,6 +27,8 @@ import zstandard
 
 MONTH_FILE = re.compile(r"(?:^|/)listens/(\d{4})/(\d{1,2})\.listens$")
 SPOTIFY_TRACK = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?track/|spotify:track:)([A-Za-z0-9]{22})")
+SPOTIFY_ARTIST = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?artist/|spotify:artist:)([A-Za-z0-9]{22})")
+MBID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 # Featured artists: "(feat. X)", "[with X]", or a trailing "feat. X" / "ft. X".
 FEATURING = re.compile(r"\s*[\(\[](?:feat\.?|ft\.?|featuring|with)\s[^\)\]]*[\)\]]|\s+(?:feat\.?|ft\.?|featuring)\s.*$")
 # Version notes that don't change the recording much: after " - " or in brackets.
@@ -48,6 +50,8 @@ class Listen(NamedTuple):
     spotify_id: str       # 22-character Spotify track ID, "" if missing
     recording_mbid: str   # MusicBrainz recording ID, "" if missing
     duration_ms: int      # 0 if missing
+    artist_mbid: str      # the main artist's MusicBrainz ID (artist_mbids[0], else lastfm_artist_mbid), "" if missing
+    spotify_artist_id: str  # the main artist's Spotify ID (spotify_artist_ids[0]), "" if missing
 
 
 def month_of(member_name):
@@ -60,7 +64,7 @@ def listen_files(fileobj):
     """Each month file of a .tar.zst listen dump, in archive order: yields (year, month, binary file of lines).
     Each file must be read before asking for the next (the archive is read once, front to back)."""
     reader = zstandard.ZstdDecompressor(max_window_size=2 ** 31).stream_reader(fileobj, read_size=1 << 20)
-    with tarfile.open(fileobj=reader, mode="r|") as tar:
+    with tarfile.open(fileobj=reader, mode="r|", bufsize=1 << 20) as tar:  # 1 MB reads, also to skip files
         for member in tar:
             month = member.isfile() and month_of(member.name)
             if month:
@@ -76,6 +80,16 @@ def spotify_track_id(info):
             if m:
                 return m.group(1)
     return ""
+
+
+def first_artist_ids(info):
+    """(MusicBrainz ID, Spotify ID) of the listen's main artist from its additional_info, "" where missing."""
+    mbids = info.get("artist_mbids")
+    mbid = mbids[0] if isinstance(mbids, list) and mbids and isinstance(mbids[0], str) else info.get("lastfm_artist_mbid")
+    mbid = mbid.lower() if isinstance(mbid, str) and MBID.match(mbid.lower()) else ""
+    links = info.get("spotify_artist_ids")
+    m = SPOTIFY_ARTIST.search(links[0]) if isinstance(links, list) and links and isinstance(links[0], str) else None
+    return mbid, m.group(1) if m else ""
 
 
 def listen_duration_ms(info):
@@ -100,7 +114,7 @@ def parse_listen(line):
     mbid = info.get("recording_mbid")
     return Listen(int(d["user_id"]), int(d["timestamp"]), artist, first, meta.get("track_name") or "",
                   meta.get("release_name") or "", spotify_track_id(info), mbid if isinstance(mbid, str) else "",
-                  listen_duration_ms(info))
+                  listen_duration_ms(info), *first_artist_ids(info))
 
 
 def strip_accents(text):
