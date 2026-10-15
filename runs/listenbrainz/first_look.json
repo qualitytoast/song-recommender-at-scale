@@ -1,0 +1,494 @@
+{
+  "dumps": [
+    "listenbrainz-listens-dump-2716-20261013-000002-incremental.tar.zst",
+    "listenbrainz-listens-dump-2718-20261014-000002-incremental.tar.zst",
+    "listenbrainz-listens-dump-2720-20261015-000002-incremental.tar.zst"
+  ],
+  "listens": 9501373,
+  "skipped_without_artist_or_title": 0,
+  "users": 32263,
+  "listened_at": {
+    "first": "2005-02-13T23:15:01+00:00",
+    "last": "2026-10-15T00:00:12+00:00",
+    "share_in_last_30_days": 0.4452,
+    "months": {
+      "2026-10": 9501373
+    }
+  },
+  "fields": {
+    "spotify link": 0.1599,
+    "recording MusicBrainz ID": 0.0712,
+    "album name": 0.9316,
+    "length": 0.2965,
+    "artist list (main artist known)": 0.0223
+  },
+  "sources_sampled": {
+    "ListenBrainz lastfm importer v2": 0.5704,
+    "spotify.com": 0.1549,
+    "?": 0.0686,
+    "navidrome": 0.0592,
+    "Pano Scrobbler": 0.0333,
+    "Web Scrobbler": 0.0198,
+    "ListenBrainz Android": 0.0182,
+    "lastfm-csv-import": 0.0109,
+    "Last.fm CSV import": 0.009,
+    "music.apple.com": 0.0067,
+    "Roon": 0.0053,
+    "ListenBrainz plugin for Jellyfin": 0.0046
+  },
+  "mpd_matches": {
+    "by_spotify_link": 0.0231,
+    "by_artist_and_title": 0.3467,
+    "by_either": 0.3476,
+    "by_either_and_in_2_plus_mpd_playlists": 0.3246,
+    "both_ways_same_song_key": 0.996,
+    "both_ways_same_spotify_track": 0.9788,
+    "spotify_link_but_name_missed": 0.0368,
+    "unmatched_found_by_first_artist_of_credit": 0.0048
+  },
+  "users_detail": {
+    "listens_per_user": {
+      "p50": 55,
+      "p90": 269,
+      "p99": 1942,
+      "max": 325211
+    },
+    "share_of_listens_from_top_1pct_users": 0.622,
+    "listens_per_user_day": {
+      "p50": 19,
+      "p90": 95,
+      "p99": 328,
+      "max": 7977
+    },
+    "user_days_over_300": 2686,
+    "user_days_over_1000": 221,
+    "listens_at_the_same_second_as_the_users_previous": 438511
+  },
+  "distinct_songs": 1808541,
+  "catalog_by_minimum_users": {
+    "N=1": {
+      "songs": 1808541,
+      "share_of_listens": 1.0,
+      "share_with_an_mpd_match": 0.1872,
+      "share_with_a_spotify_id": 0.3351
+    },
+    "N=2": {
+      "songs": 417641,
+      "share_of_listens": 0.6766,
+      "share_with_an_mpd_match": 0.3693,
+      "share_with_a_spotify_id": 0.6435
+    },
+    "N=3": {
+      "songs": 214619,
+      "share_of_listens": 0.5709,
+      "share_with_an_mpd_match": 0.4401,
+      "share_with_a_spotify_id": 0.7632
+    },
+    "N=5": {
+      "songs": 98610,
+      "share_of_listens": 0.4668,
+      "share_with_an_mpd_match": 0.5037,
+      "share_with_a_spotify_id": 0.866
+    },
+    "N=10": {
+      "songs": 35978,
+      "share_of_listens": 0.3582,
+      "share_with_an_mpd_match": 0.559,
+      "share_with_a_spotify_id": 0.9541
+    },
+    "N=20": {
+      "songs": 13325,
+      "share_of_listens": 0.2719,
+      "share_with_an_mpd_match": 0.6043,
+      "share_with_a_spotify_id": 0.9893
+    }
+  },
+  "sessions_all_songs": {
+    "sessions": 374856,
+    "listens_kept": 8249126,
+    "share_of_listens_kept": 0.8682,
+    "repeats_dropped": 830633,
+    "session_length": {
+      "p50": 11,
+      "p90": 43,
+      "p99": 163,
+      "max": 22733
+    }
+  },
+  "sessions_songs_with_5_plus_users": {
+    "sessions": 214236,
+    "listens_kept": 3519631,
+    "share_of_listens_kept": 0.7935,
+    "repeats_dropped": 459167,
+    "session_length": {
+      "p50": 8,
+      "p90": 27,
+      "p99": 128,
+      "max": 21861
+    }
+  },
+  "reading": {
+    "listens_per_second_one_process": 91708,
+    "seconds": 104
+  },
+  "samples": {
+    "name_only_matches": [
+      [
+        "of Montreal - Vegan in Furs",
+        "of Montreal - Vegan In Furs"
+      ],
+      [
+        "The Offspring - Lightning Rod",
+        "The Offspring - Lightning Rod"
+      ],
+      [
+        "Tyler, The Creator - Partyisntover/Campfire/Bimmer",
+        "Tyler, The Creator - PartyIsntOver/Campfire/Bimmer"
+      ],
+      [
+        "Leona Lewis - I Will Be",
+        "Leona Lewis - I Will Be"
+      ],
+      [
+        "The Yardbirds - Jeff's Blues",
+        "The Yardbirds - Jeff's Blues"
+      ],
+      [
+        "Arctic Monkeys - I Bet You Look Good on the Dancefloor",
+        "Arctic Monkeys - I Bet You Look Good On The Dancefloor"
+      ],
+      [
+        "Kids of 88 - Tucan",
+        "Kids Of 88 - Tucan"
+      ],
+      [
+        "Caravan Palace - Lone Digger",
+        "Caravan Palace - Lone Digger"
+      ],
+      [
+        "The Shins - The Rifle's Spiral",
+        "The Shins - The Rifle's Spiral"
+      ],
+      [
+        "Jurassic 5 - Concrete Schoolyard",
+        "Jurassic 5 - Concrete Schoolyard"
+      ],
+      [
+        "Leona Lewis - Thick Skin",
+        "Leona Lewis - Thick Skin"
+      ],
+      [
+        "The Presidents of the United States of America - Naked and Famous",
+        "The Presidents Of The United States Of America - Naked and Famous"
+      ],
+      [
+        "Bob Weir - This Time",
+        "Bob Weir - This Time"
+      ],
+      [
+        "Alan Walker - Faded",
+        "Alan Walker - Faded"
+      ],
+      [
+        "All-4-One - I Swear",
+        "All-4-One - I Swear"
+      ],
+      [
+        "Blind Melon - No Rain",
+        "Blind Melon - No Rain"
+      ],
+      [
+        "Billy Talent - Covered in Cowardice",
+        "Billy Talent - Covered In Cowardice"
+      ],
+      [
+        "Michael Jackson - The Girl Is Mine",
+        "Michael Jackson - The Girl Is Mine"
+      ],
+      [
+        "The Dandy Warhols - Bohemian Like You",
+        "The Dandy Warhols - Bohemian Like You"
+      ],
+      [
+        "Jaÿ-Z - On To The Next One",
+        "JAY Z - On To The Next One"
+      ],
+      [
+        "George Michael - Careless Whisper",
+        "George Michael - Careless Whisper"
+      ],
+      [
+        "Supersuckers - Bad Bad Bad",
+        "Supersuckers - Bad Bad Bad"
+      ],
+      [
+        "Rush - Red Barchetta",
+        "Rush - Red Barchetta"
+      ],
+      [
+        "The Yardbirds - I Wish You Would",
+        "The Yardbirds - I Wish You Would"
+      ],
+      [
+        "Hector El Father - Maldades",
+        "Héctor \"El Father\" - Maldades"
+      ]
+    ],
+    "spotify_and_name_disagree": [
+      [
+        "Mark Morrison - Return of the Mack",
+        "Mark Morrison - Return Of The Mack - C & J Street Mix",
+        "Mark Morrison - Return Of The Mack"
+      ],
+      [
+        "Jerry Bock - If I Were a Rich Man",
+        "Alfred Molina - If I Were a Rich Man",
+        "Jerry Bock - If I Were a Rich Man"
+      ],
+      [
+        "My Chemical Romance - Helena",
+        "My Chemical Romance - Helena (So Long & Goodnight)",
+        "My Chemical Romance - Helena"
+      ],
+      [
+        "Nelly Furtado - Say It Right",
+        "Nelly Furtado - Say It Right - Main",
+        "Nelly Furtado - Say It Right"
+      ],
+      [
+        "Pet Shop Boys - West End Girls",
+        "Pet Shop Boys - West End Girls - Mix",
+        "Pet Shop Boys - West End Girls - 2001 Remastered Version"
+      ],
+      [
+        "My Chemical Romance - Helena",
+        "My Chemical Romance - Helena (So Long & Goodnight)",
+        "My Chemical Romance - Helena"
+      ],
+      [
+        "Jerry Bock - If I Were a Rich Man",
+        "Alfred Molina - If I Were a Rich Man",
+        "Jerry Bock - If I Were a Rich Man"
+      ],
+      [
+        "Pet Shop Boys - West End Girls",
+        "Pet Shop Boys - West End Girls - Mix",
+        "Pet Shop Boys - West End Girls - 2001 Remastered Version"
+      ],
+      [
+        "Maze, Frankie Beverly - We Are One - Remastered 2004",
+        "Maze - We Are One - Feat. Frankie Beverly",
+        "Maze - We Are One (feat. Frankie Beverly) [2004 - Remastered]"
+      ],
+      [
+        "Boney M. - Rasputin - Single Version",
+        "Boney M. - Rasputin - 7\" Version",
+        "Boney M. - Rasputin"
+      ],
+      [
+        "Louis Prima - Just A Gigolo - Remastered",
+        "Louis Prima - Just A Gigolo/I Ain't Got Nobody (Medley) - 1991 Digital Remaster",
+        "Louis Prima - Just a Gigolo"
+      ],
+      [
+        "Flo Rida, T-Pain - Low (feat. T-Pain)",
+        "Flo Rida - Low (feat T-Pain) - Feat T-Pain Album Version",
+        "Flo Rida - Low"
+      ],
+      [
+        "My Chemical Romance - Helena",
+        "My Chemical Romance - Helena (So Long & Goodnight)",
+        "My Chemical Romance - Helena"
+      ],
+      [
+        "The Kinks - Lola",
+        "The Kinks - Lola - Coca Cola Version",
+        "The Kinks - Lola"
+      ],
+      [
+        "My Chemical Romance - Helena",
+        "My Chemical Romance - Helena (So Long & Goodnight)",
+        "My Chemical Romance - Helena"
+      ],
+      [
+        "Redbone - Come and Get Your Love - Single Version",
+        "Redbone - Come and Get Your Love - Single Edit",
+        "Redbone - Come And Get Your Love"
+      ],
+      [
+        "Ennio Morricone - The Ecstasy Of Gold - 2004 Remaster",
+        "Ennio Morricone - L'Estasi Dell'oro (The Ecstasy Of Gold) - 2004 Digital Remaster",
+        "Ennio Morricone - The Ecstasy Of Gold"
+      ],
+      [
+        "USHER - Confessions Part II",
+        "Usher - Confessions Part II - Confessions Special Edition Version",
+        "Usher - Confessions Part II"
+      ],
+      [
+        "Redbone - Come and Get Your Love - Single Version",
+        "Redbone - Come and Get Your Love - Single Edit",
+        "Redbone - Come And Get Your Love"
+      ],
+      [
+        "Led Zeppelin - You Shook Me - 23/3/69 Top Gear; Remaster",
+        "Led Zeppelin - You Shook Me - 23/3/69 Top Gear",
+        "Led Zeppelin - You Shook Me"
+      ],
+      [
+        "Redbone - Come and Get Your Love - Single Version",
+        "Redbone - Come and Get Your Love - Single Edit",
+        "Redbone - Come And Get Your Love"
+      ],
+      [
+        "The Kinks - Lola",
+        "The Kinks - Lola - Coca Cola Version",
+        "The Kinks - Lola"
+      ],
+      [
+        "Talking Heads - Burning Down the House",
+        "Talking Heads - Burning Down The House (45 Version)",
+        "Talking Heads - Burning Down The House - 2005 Remastered Version"
+      ],
+      [
+        "Jerry Bock - To Life",
+        "Alfred Molina - To Life",
+        "Jerry Bock - To Life"
+      ],
+      [
+        "The Kinks - Lola",
+        "The Kinks - Lola - Coca Cola Version",
+        "The Kinks - Lola"
+      ]
+    ],
+    "spotify_match_name_missed": [
+      [
+        "Cascada, KYANU - Everytime We Touch - Nightcore & KYANU Edit",
+        "Cascada - Everytime We Touch - Nightcore Edit"
+      ],
+      [
+        "Vitas - 7 Element",
+        "Vitas - 7, the element"
+      ],
+      [
+        "DEAN, ZICO - 풀어",
+        "DEAN - Pour Up"
+      ],
+      [
+        "The Beach Boys - Little Saint Nick - 1991 Remix",
+        "The Beach Boys - Little Saint Nick"
+      ],
+      [
+        "Vitamin String Quartet - Howl's Moving Castle - Merry-Go-Round of Life",
+        "Vitamin String Quartet - Howls Moving Castle - Merry-Go-Round of Life"
+      ],
+      [
+        "Vitas - 7 Element",
+        "Vitas - 7, the element"
+      ],
+      [
+        "Snoop Dogg - Just Dippin'",
+        "Snoop Dogg - Just Dippin' - Feat. Dr. Dre And Jewell"
+      ],
+      [
+        "John Mayer - Something's Missing - Live in Philadelphia, PA & Hartford, CT, August 2004",
+        "John Mayer - Something's Missing - Live in Philadlephia,PA & Hartford, CT"
+      ],
+      [
+        "Carole King - Machine Gun Kelly - Live At The Troubadour / 2007",
+        "Carole King - Machine Gun Kelly"
+      ],
+      [
+        "Alain Chamfort - Paradis - Paradis reprise",
+        "Alain Chamfort - Paradis"
+      ],
+      [
+        "The Rolling Stones - Bitch - 2009 Mix",
+        "The Rolling Stones - Bitch - Remastered"
+      ],
+      [
+        "Alain Chamfort - Paradis - Paradis reprise",
+        "Alain Chamfort - Paradis"
+      ],
+      [
+        "Alain Chamfort - Paradis - Paradis reprise",
+        "Alain Chamfort - Paradis"
+      ],
+      [
+        "P.O.D. - Alive - Chris Lord-Alge Mix",
+        "P.O.D. - Alive - New Album/Chris Lord-Alge Mix Version"
+      ],
+      [
+        "Florence + The Machine - Breaking Down - MTV Unplugged, 2012 / Live",
+        "Florence + The Machine - Breaking Down - MTV Unplugged, 2012"
+      ],
+      [
+        "Nico Segal - Sunday Candy",
+        "Donnie Trumpet & The Social Experiment - Sunday Candy"
+      ],
+      [
+        "Carmen Twillie - Circle of Life",
+        "Carmen Twillie - Circle Of Life - From \"The Lion King\"/Soundtrack"
+      ],
+      [
+        "Hazel Dickens - Coal Miner's Blues",
+        "Alice Gerrand - Coal Miner's Blues"
+      ],
+      [
+        "Vitas - 7 Element",
+        "Vitas - 7, the element"
+      ],
+      [
+        "Tommy - Tommy's Theme",
+        "Tommy - Tommy's Theme - Original Mix"
+      ],
+      [
+        "Dawid Podsiadło - W Dobrą Stronę",
+        "Dawid Podsiadlo - W Dobra Strone"
+      ],
+      [
+        "Glee Cast - Jingle Bell Rock",
+        "Glee Cast - Jingle Bell Rock (Glee Cast Version)"
+      ],
+      [
+        "Carl Orff, David Hill, Janice Watson, Bournemouth Symphony Orchestra - Orff: Carmina Burana, Pt. 3, Cour d'amours: In trutina",
+        "Carl Orff - Orff: Carmina Burana: Part 3, Cour d'amours, No. 21 \"In trutina\" (Soprano)"
+      ],
+      [
+        "VAPERROR - エンタープライズラブ",
+        "t e l e p a t h テレパシー能力者 - エンタープライズラブ"
+      ],
+      [
+        "Dexter Gordon - Introduction to 'End of a Love Affair' - Live at Carnegie Hall, New York, NY - September 1978",
+        "Dexter Gordon - Introduction - Live"
+      ]
+    ],
+    "no_match": [
+      "Marc Seguí - Tiroteo - Remix",
+      "Archer Prewitt - When I'm With You",
+      "[ Nutella ] - NEVER GET USED TO PEOPLE - интонация",
+      "MAJORS - Rain on me",
+      "Dwarves - Voodoo",
+      "Jung Kook, Latto - Seven (feat. Latto)",
+      "Bilmuri - More Than Hate",
+      "Unknown - Fruit Flex 2",
+      "BTS - Merry Go Round",
+      "Lorde - David",
+      "BTS - NORMAL",
+      "BTS - NORMAL",
+      "BTS - Please",
+      "Kevin Kaarl - cuéntame una historia de rencor",
+      "Pogo - Ganbatte",
+      "Carbon Based Lifeforms feat. Karin My - Bloom, Pt. 1",
+      "actek - Techno und Tekk",
+      "RM - tokyo",
+      "玉置成実 - Distance",
+      "Whethan - Wallflower",
+      "BTS - Come Over",
+      "RM, Youjeen - Wild Flower (with youjeen)",
+      "Kato - Sparkle Lofi (Your Name)",
+      "BTS - Respect",
+      "Huga Flame - Ce l'ho piccolo"
+    ]
+  }
+}
