@@ -2,7 +2,7 @@
 
     ~/.oci/venv/bin/python scripts/oracle_launch.py --dry-run     # look everything up, launch nothing
     nohup caffeinate -s ~/.oci/venv/bin/python scripts/oracle_launch.py > ~/.oci/launch.log 2>&1 &
-    python scripts/oracle_launch.py --tries 1 --first 7            # one request (the GitHub workflow's way)
+    python scripts/oracle_launch.py --tries 1 --first 2            # one request (here: 2 cores / 8 GB in AD-2)
 
 Oracle's free Arm machines (VM.Standard.A1.Flex) are often "out of host capacity". Every --every seconds
 this asks for one, going round the availability domains and sizes (2 cores / 8 GB, then 1 / 6), waiting
@@ -11,12 +11,10 @@ at a pace Oracle accepts. It stops at the first success, or
 as soon as a machine with this name exists, so it never makes two. A refused request costs nothing, and
 only the free shape is ever asked for. Needs Oracle's Python library
 (pip install oci, kept out of the project's environment: ~/.oci/venv) and an API key in ~/.oci/config.
-The network is the VCN wizard's: the public subnet of --vcn. Run by a GitHub Actions workflow
-(.github/workflows/oracle-launch.yml), it hands "done" and "ip" to the workflow's next steps once the
-machine exists.
+The network is the VCN wizard's: the public subnet of --vcn. The machine was made on 2026-10-18 (the first
+request after the account's Pay As You Go upgrade, after ~2,900 refused ones); this stays for re-creating it.
 """
 import argparse
-import os
 import random
 import subprocess
 import sys
@@ -65,13 +63,6 @@ def lookups(args, config):
     return domains, subnets[0], images[0], key
 
 
-def report(**values):
-    """Hand results to the GitHub Actions workflow running this (its next steps read them), if one is."""
-    if path := os.environ.get("GITHUB_OUTPUT"):
-        with open(path, "a") as f:
-            f.writelines(f"{k}={v}\n" for k, v in values.items())
-
-
 def existing(compute, tenancy, name):
     return [i for i in compute.list_instances(tenancy, display_name=name).data
             if i.lifecycle_state not in ("TERMINATED", "TERMINATING")]
@@ -105,7 +96,6 @@ def main():
     if found := existing(compute, tenancy, args.name):
         ip = public_ip(config, compute, found[0])
         log(f"STOPPED: a machine named {args.name!r} already exists ({found[0].lifecycle_state}, IP {ip})")
-        report(done="true", ip=ip)
         return
     if args.dry_run:
         log(f"dry run: would ask for {SHAPE} at sizes {SIZES}, one request every {args.every:.0f}s")
@@ -127,7 +117,6 @@ def main():
             check = False
             if found:
                 log(f"STOPPED: a machine named {args.name!r} exists now ({found[0].lifecycle_state})")
-                report(done="true", ip=public_ip(config, compute, found[0]))
                 return
         domain, (ocpus, memory) = choices[(args.first + attempt) % len(choices)]
         attempt += 1
@@ -167,7 +156,6 @@ def main():
         ip = public_ip(config, compute, instance)
         log(f"RUNNING at public IP {ip}")
         notify(f"Your Oracle machine is running at {ip}")
-        report(done="true", ip=ip)
         return
 
 
