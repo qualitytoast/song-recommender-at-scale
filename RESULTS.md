@@ -1529,3 +1529,17 @@ daily dumps: 9,501,373 listens from 32,263 users, read at ~92,000 listens per se
   exists for 64% / 87% / 95% of those songs.
 - Sessions: 87% of listens survive the rules; median session 11 songs (90th percentile 43); back-to-back
   repeats are 9% of listens. One "session" of 22,733 songs is a bot or a broken import.
+
+**Step 1: the 12-month extract** (2026-10-18, `recsys/lb_extract.py`; log `runs/listenbrainz/extract.out`).
+The full listens dump of 2026-10-15 (258 GB, one file in time order). Streaming it straight from the dump
+server ran at ~1.1 MB/s (stopped at 8% after 5 h: ~58 h to go). The server gives each connection about
+1 MB/s and extra connections add up, so the file was downloaded with `scripts/parallel_download.py` (8, then
+16 connections: ~2.3, then ~5 MB/s; resumable, checked against its SHA-256), then read locally in 56 min: the
+276 months before the window skipped unread at ~155 MB/s, the 13 months touching it parsed by 6 worker
+processes (~2-4 min per month).
+
+- Kept: 465,330,204 listens from 73,666 users, 2025-10-15 to 2026-10-15; 22,146,436 distinct songs (cleaned
+  artist + title); 5.1M album names, 5.3M Spotify track IDs, 441k artist MusicBrainz IDs, 605k Spotify artist
+  IDs. Left out: 15.0M listens of the boundary months outside the window, 180k with no artist or title.
+- Of the listens: 95.7% name an album, 43.2% give a length, 19.1% carry a Spotify track ID.
+- 14 GB on disk (28 bytes per listen plus the song table); the file's SHA-256 matched the server's.
