@@ -562,7 +562,7 @@ folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_
 | `recsys/batching.py`, `recsys/cache.py`, `recsys/admission.py`, `recsys/healthcheck.py`, `recsys/launch.py` | Batching, the Redis cache, overload limits, container health checks, the one-command launcher |
 | `docker/`, `docker-compose.yml`, `docker-compose.oracle.yml` | The image, nginx, the blue/green stacks; the public server's additions (Caddy for HTTPS) |
 | `web/` | The webpage |
-| `.github/workflows/`, `deploy/` | Tests on every pull request (CI) and the Oracle Cloud launch workflow; the server's SSH public key |
+| `.github/workflows/` | Tests on every pull request and push to main (CI) |
 | `recsys/metrics.py`, `recsys/baselines.py` | NDCG@k, Hits@k; most-popular baseline |
 | `scripts/` | v1 equivalence check, genre fetching, profiling, search benchmark, short-input test, serving check, chaos test, load tests (locust), probe, blue/green update, playlist evaluation, Oracle launch |
 | `configs/`, `tests/` | One config per run; tests |
