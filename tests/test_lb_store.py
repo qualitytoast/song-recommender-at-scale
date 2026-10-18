@@ -50,12 +50,22 @@ def test_choose_cap_finds_the_smallest_cap_reaching_the_target():
     quiet = lambda message: None
     kept_at = lambda k: len(capped_catalog(users, seconds, songs, training, rank, 10, k, 2)[0])
     for target in (8, 15, 18, kept_at(8)):
-        cap, kept, catalog = choose_cap(users, seconds, songs, training, 10, 2, target, report=quiet)
+        cap, kept, catalog, _ = choose_cap(users, seconds, songs, training, 10, 2, target, report=quiet)
         assert cap == min(k for k in range(1, 9) if kept_at(k) >= target) and len(kept) == kept_at(cap)
-    cap, kept, catalog = choose_cap(users, seconds, songs, training, 10, 2, 8, report=quiet)
+    cap, kept, catalog, _ = choose_cap(users, seconds, songs, training, 10, 2, 8, report=quiet)
     assert not catalog[8] and not catalog[9]            # one user each
-    none, everything, catalog = choose_cap(users, seconds, songs, training, 10, 2, 10**6, report=quiet)
+    none, everything, catalog, _ = choose_cap(users, seconds, songs, training, 10, 2, 10**6, report=quiet)
     assert none is None and len(everything) == kept_at(8) and catalog[:7].all() and not catalog[7:].any()
+
+
+def test_dropping_a_repeat_never_splits_its_session():
+    # one user: X at 0 s, Y at 1,000, Y again at 2,500 (a repeat), Z at 3,000, W at 3,500. Without the repeat,
+    # Y -> Z is a 2,000 s gap (over 30 min), but the user was listening the whole time: one session of 4.
+    users = np.zeros(5, dtype=np.int32)
+    seconds = np.array([0, 1000, 2500, 3000, 3500])
+    songs = np.array([0, 1, 1, 2, 3])
+    _, kept, _, session = choose_cap(users, seconds, songs, np.ones(5, dtype=bool), 4, 1, 4, report=lambda m: None)
+    assert list(songs[kept]) == [0, 1, 2, 3] and len(set(session)) == 1
 
 
 def test_build_store_end_to_end(tmp_path):

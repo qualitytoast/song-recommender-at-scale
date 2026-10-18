@@ -34,8 +34,7 @@ from pathlib import Path
 import numpy as np
 
 from recsys.lb_extract import load_extract
-from recsys.lb_sessions import by_user_and_time, rank_from_end, session_starts, sessions, user_starts_from, \
-    users_per_song
+from recsys.lb_sessions import by_user_and_time, rank_from_end, sessions, user_starts_from, users_per_song
 from recsys.listenbrainz import clean_text
 from recsys.mpd_store import MARKER
 
@@ -83,20 +82,21 @@ def split_users(n_users, seed, validation=0.1, held_out=0.1, ranker=0.2):
 
 def capped_catalog(users, seconds, songs, training, rank, n_songs, k, min_users):
     """With each user capped at their k most recent listens (rank: rank_from_end(users)): (listens kept, as
-    indices, and the catalog). The catalog is the songs at least min_users training users played; other songs'
-    listens are dropped and the session rules applied again (dropping songs can leave repeats and short
-    sessions)."""
+    indices, the catalog, and each kept listen's session number). The catalog is the songs at least min_users
+    training users played; other songs' listens are dropped and the session rules applied again (dropping songs
+    can leave repeats and short sessions). The session numbers are the rules' own: dropping a repeat can open
+    a gap over 30 min between the listens left, which must not split their session."""
     capped = rank < k
     catalog = users_per_song(users, songs, n_songs, capped & training) >= min_users
     idx = np.flatnonzero(capped & catalog[songs])
-    kept, _ = sessions(users[idx], seconds[idx], songs[idx])
-    return idx[kept], catalog
+    kept, session = sessions(users[idx], seconds[idx], songs[idx])
+    return idx[kept], catalog, session[kept]
 
 
 def choose_cap(users, seconds, songs, training, n_songs, min_users, target, report=log):
     """The smallest per-user cap k whose listens (after the catalog filter) reach target: doubling from 4,096
     until it's enough, then a binary search; every listen if even no cap falls short. Returns
-    (k or None, kept indices, catalog)."""
+    (k or None, kept indices, catalog, session numbers)."""
     rank = rank_from_end(users)
     most = int(np.bincount(users).max())
     trial = lambda k: capped_catalog(users, seconds, songs, training, rank, n_songs, k, min_users)
@@ -220,7 +220,7 @@ def build_store(extract_dir, out, target=MPD_SIZE, min_users=5, seed=42, max_day
     split = split_users(len(user_ids), seed)
     training = split[users] <= RANKER
     log(f"choosing the cap: {len(users):,} listens, target {target:,}")
-    cap, final, catalog = choose_cap(users, seconds, songs, training, n_songs, min_users, target)
+    cap, final, catalog, session = choose_cap(users, seconds, songs, training, n_songs, min_users, target)
     users, seconds, songs = users[final], seconds[final], songs[final]
     counts["final"] = len(users)
     del final, training
@@ -229,8 +229,7 @@ def build_store(extract_dir, out, target=MPD_SIZE, min_users=5, seed=42, max_day
     codes = np.flatnonzero(catalog)
     track_of = np.full(n_songs, -1, dtype=np.int64)
     track_of[codes] = np.arange(len(codes))
-    first = session_starts(users, seconds)
-    starts = np.flatnonzero(first)
+    starts = np.flatnonzero(np.append(True, session[1:] != session[:-1]))  # the session rules' own sessions
     offsets = np.append(starts, len(users)).astype(np.int64)
     session_users = users[starts]
     log(f"{len(starts):,} sessions, {len(codes):,} songs; reading the songs' details")
