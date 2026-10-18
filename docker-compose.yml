@@ -93,3 +93,4 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped   # back after a reboot like the rest (without it the front desks run uncached)

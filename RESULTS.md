@@ -1365,6 +1365,24 @@ playlist*: the share of the top 10 that the playlist goes on to contain.
   these settings are the no-retraining version. `"max_per_artist": 0, "mix": 0` give the models' own
   answers, which the checks against the offline evaluation use.
 
+**Public hosting** (2026-10-18, `f4fdea4`). https://songrec.duckdns.org, on one Oracle Cloud Arm machine
+(VM.Standard.A1.Flex, 2 cores, 8 GB, Ubuntu 24.04, Chicago): the same Docker Compose system, plus Caddy for
+HTTPS (`docker-compose.oracle.yml`; Let's Encrypt certificate, renewed automatically) and per-visitor rate
+limits in nginx. Code from `git clone`, model files uploaded separately: only what the front desk reads
+(110 MB) and the 4 shard slices (1.7 GB), 1.9 GB in 3 minutes.
+
+- Same answers: 2,000 of 2,000 requests gave the offline top 10 in order (every length 1-10), NDCG@10
+  0.1524 served vs 0.1524 offline (`runs/serving/cases/check_oracle.json`, sent from the server itself).
+- Speed on 2 cores: total p50 27 ms, p99 66 ms (shards: candidates 7.6 ms, search 5.4 ms, input songs 3.6
+  ms; ranker 3.9 ms); the Mac's Docker setup ~10 ms. From the Mac over the internet: ~110 ms per request.
+- Memory: ~2.5 GB of 7.7 GB (each shard ~480 MB, the front desk ~560 MB).
+- Rate limit: 40 simultaneous requests from one address: 21 answered (1 + a burst of 20), 19 refused with
+  429 and Retry-After: 1; served again 5 s later.
+- Cost: $0. Free Arm capacity was the bottleneck: ~2,900 automatic requests over a week as a free account
+  got nothing; after upgrading to Pay As You Go (still free within the Always Free allowance) the first
+  request got a machine. Quota rules refuse anything past that allowance (other machine types, more than 2
+  Arm cores or 12 GB, more than 200 GB of disk, load balancers, databases); a $1 budget emails on any spend.
+
 # Playlist fit: training for the songs that belong in a playlist
 
 The two serving settings above make the top 10 more varied without retraining. These runs try the fix in
