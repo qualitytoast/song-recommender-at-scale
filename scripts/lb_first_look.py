@@ -30,7 +30,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from recsys.listenbrainz import listen_files, parse_listen, song_key  # noqa: E402
+from recsys.listenbrainz import listen_files, mpd_lookup, parse_listen, song_key  # noqa: E402
 from recsys.mpd_store import load_store  # noqa: E402
 
 SESSION_GAP = 30 * 60   # seconds without a listen that start a new session
@@ -52,21 +52,6 @@ class Reservoir:
             self.items.append(item)
         elif (j := self.rng.randrange(self.seen)) < self.size:
             self.items[j] = item
-
-
-def mpd_lookup(store):
-    """MPD track lookups: by Spotify track ID, and by song key (the version in the most playlists wins);
-    plus each track's playlist count and song key."""
-    counts = np.bincount(store.playlist_tracks, minlength=len(store.track_uris))
-    by_spotify = {uri.rsplit(":", 1)[1]: i for i, uri in enumerate(store.track_uris)}
-    by_name, keys = {}, []
-    for i, (name, artist) in enumerate(zip(store.track_names, store.track_artist)):
-        key = song_key(store.artist_names[artist], name)
-        keys.append(key)
-        j = by_name.get(key)
-        if j is None or counts[i] > counts[j]:
-            by_name[key] = i
-    return counts, by_spotify, by_name, keys
 
 
 def share(a, b):

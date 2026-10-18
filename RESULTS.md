@@ -1565,3 +1565,23 @@ and time).
   Spotify ID (a listen's link or an MPD song of the same artist and title), only 29% are MPD songs, 57% have
   genres from the MPD artists' genre file, 34% more have an artist MusicBrainz ID (genres findable in the
   MusicBrainz dump).
+
+**Step 3: the training store** (2026-10-18, `recsys/lb_store.py`; `data/lb_store`, 555 MB, laid out like the MPD
+store; `runs/listenbrainz/store.json`, `store.out`, `genres.out`). Built in 5.3 min; peak memory ~27 GB on the
+25.8 GB Mac (the sort and the per-song details), to trim before any rebuild.
+
+- From 465.3M listens: 342.0M after the noise filter (impossible days, duplicates, skips), 308.2M after the
+  session rules. Each user then keeps their 2,759 most recent listens, and only songs at least 5 training users
+  played stay: 66,354,514 listens in 4,889,520 sessions (median 9 songs, 90th percentile 26) from 61,752 users.
+  The cap was found by binary search, so that the listens left match the MPD's 66,346,428 song entries.
+- Users split at random: the retriever's users 42.6M listens (the 1M MPD retriever: 40.6M), the ranker's 10.6M,
+  validation 6.6M, held-out 6.6M.
+- Catalog: 1,182,480 songs, 164,228 artists, 481,982 albums (more songs than step 2's 991k: capped users bring
+  more songs past 5 users). A Spotify URI for 83% of the songs (93% of listens), a length for 99.8%, an MPD song
+  for 28%. Genres for 72.8% of the songs (85.9% of listens): MusicBrainz's dump (3.7 min to read) has 496k of
+  the ListenBrainz artists, 119k of them with genres.
+- Concentration: BTS holds 3.5% of the listens (2.3M, from 4,320 users, median 10 each; the top 1% of those
+  users hold 5%), 6x the next artist (Linkin Park, 0.57%); the MPD's top artist, Drake, holds 1.3%. Past BTS,
+  ListenBrainz is less concentrated than the MPD: the top 100 artists hold 18.8% vs 22.8%.
+- Caught by checking the store: deriving sessions again from time gaps split sessions where a dropped repeat had
+  opened a gap over 30 min (sessions of 1-3 songs); sessions now keep the rules' own boundaries (test added).

@@ -1,0 +1,8 @@
+{
+  "source": "/Users/nathanhung/Projects/song-recommender-at-scale/data/musicbrainz/artist.tar.xz",
+  "extract": "data/lb_extract",
+  "finished": "2026-10-18 15:07:23",
+  "seconds": 225,
+  "artists_found": 496429,
+  "with_genres": 119234
+}

@@ -51,12 +51,14 @@ def save_done(progress_path, done, total, piece):
 
 
 def other_writer(out_path):
-    """True if another download (curl, wget) is still running on the same file name."""
+    """True if a curl or wget process is still running on the same file name. Only processes named curl or
+    wget count: a shell whose command line merely mentions curl and the file isn't a download."""
     try:
-        found = subprocess.run(["pgrep", "-f", f"(curl|wget).*{out_path.name}"], capture_output=True, text=True)
+        pids = subprocess.run(["pgrep", "-x", "curl|wget"], capture_output=True, text=True).stdout.split()
+        return any(out_path.name in subprocess.run(["ps", "-o", "args=", "-p", pid], capture_output=True,
+                                                   text=True).stdout for pid in pids)
     except FileNotFoundError:
         return False
-    return bool(found.stdout.strip())
 
 
 def fetch_piece(session, url, fd, start, end, stop, counter, lock, retries=20, timeout=60):

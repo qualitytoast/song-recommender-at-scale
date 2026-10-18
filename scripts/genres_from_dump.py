@@ -9,6 +9,8 @@ plus <out>.meta.json recording which dump was used.
     python scripts/genres_from_dump.py                        # stream the latest dump
     python scripts/genres_from_dump.py --file artist.tar.xz   # use a downloaded copy
     python scripts/genres_from_dump.py --store data/mpd_store # every artist in the MPD store
+    python scripts/genres_from_dump.py --file artist.tar.xz --listenbrainz data/lb_extract \
+        --out data/genres/musicbrainz_lb_artists.jsonl         # ListenBrainz artists, by ID or Spotify link
 
 How it works: artist.tar.xz (~1.7 GB compressed, ~18 GB of JSON) holds one
 artist per line, in the same format the API returns, including the artist's
@@ -95,6 +97,21 @@ def scan(lines, wanted):
     return {sid: {"mbids": e["mbids"], "genres": merge_genres(e["genre_lists"])} for sid, e in found.items()}
 
 
+def scan_by_id(lines, wanted_mbids, wanted_spotify):
+    """{MusicBrainz ID: {"name", "spotify_ids", "genres"}} for every artist record whose own ID is wanted or
+    that links to a wanted Spotify artist page (ListenBrainz artists: listens carry one or the other).
+    Every line is parsed: an artist's ID isn't findable without parsing. Genres with no net votes dropped."""
+    found = {}
+    for line in lines:
+        record = json.loads(line)
+        links = {m.group(1) for rel in record.get("relations", [])
+                 for m in [SPOTIFY_ARTIST.search((rel.get("url") or {}).get("resource", ""))] if m}
+        if record["id"] in wanted_mbids or links & wanted_spotify:
+            found[record["id"]] = {"name": record.get("name", ""), "spotify_ids": sorted(links),
+                                   "genres": merge_genres([[g for g in record.get("genres", []) if g["count"] > 0]])}
+    return found
+
+
 def artist_lines(fileobj):
     """The artist records from a (streamed) artist.tar.xz, one line at a time."""
     with tarfile.open(fileobj=fileobj, mode="r|xz") as tar:  # "|" = read as a stream, in order
@@ -122,8 +139,35 @@ if __name__ == "__main__":
     ap.add_argument("--store", help="look up every artist in this MPD store instead of one config's vocab")
     ap.add_argument("--file", help="a downloaded artist.tar.xz (default: stream the latest dump)")
     ap.add_argument("--dump", help="dump folder to stream, e.g. 20261003-001001 (default: latest)")
+    ap.add_argument("--listenbrainz", help="a ListenBrainz extract (recsys.lb_extract): look up its artists' "
+                                           "MusicBrainz IDs and Spotify links instead")
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
+
+    if args.listenbrainz:  # one line per MusicBrainz artist found: {"mbid", "name", "spotify_ids", "genres"}
+        folder = Path(args.listenbrainz)
+        wanted_mbids = set(json.loads((folder / "artist_mbids.json").read_text()))
+        wanted_spotify = set(json.loads((folder / "spotify_artists.json").read_text()))
+        if not args.file:
+            raise SystemExit("--listenbrainz needs a downloaded --file (reading every record takes a while)")
+        start = time.monotonic()
+        print(f"reading {args.file} for {len(wanted_mbids):,} MusicBrainz IDs and {len(wanted_spotify):,} Spotify artists")
+        with open(args.file, "rb") as raw:
+            found = scan_by_id(artist_lines(Progress(raw, Path(args.file).stat().st_size)), wanted_mbids, wanted_spotify)
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for mbid, entry in found.items():
+                f.write(json.dumps({"mbid": mbid, **entry}, ensure_ascii=False) + "\n")
+        tmp.replace(out)
+        out.with_suffix(".meta.json").write_text(json.dumps({
+            "source": str(Path(args.file).resolve()), "extract": str(folder), "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "seconds": round(time.monotonic() - start), "artists_found": len(found),
+            "with_genres": sum(1 for e in found.values() if e["genres"])}, indent=2))
+        print(f"done in {(time.monotonic() - start) / 60:.1f} min | found {len(found):,} artists | "
+              f"with genres {sum(1 for e in found.values() if e['genres']):,} | wrote {out}")
+        raise SystemExit(0)
 
     if args.store:
         store = load_store(args.store)

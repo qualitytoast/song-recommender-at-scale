@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from recsys.lb_sessions import by_user_and_time, most_recent, session_starts, sessions, users_per_song
+from recsys.lb_sessions import (by_user_and_time, most_recent, rank_from_end, session_starts, sessions,
+                                 users_per_song)
 
 
 def test_by_user_and_time_sorts_and_compacts_users():
@@ -52,3 +53,7 @@ def test_users_per_song_counts_distinct_users():
     assert list(users_per_song(users, songs, 7)) == [1, 1, 0, 0, 0, 2, 0]
     mask = np.array([True, True, False, True, True, True])
     assert list(users_per_song(users, songs, 7, mask)) == [1, 1, 0, 0, 0, 1, 0]
+
+
+def test_rank_from_end_counts_back_from_each_users_last_listen():
+    assert list(rank_from_end(np.array([0, 0, 0, 1, 2, 2]))) == [2, 1, 0, 0, 1, 0]

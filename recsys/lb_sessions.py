@@ -77,6 +77,14 @@ def most_recent(users, k):
     return (end_of - np.arange(len(users))) <= k
 
 
+def rank_from_end(users):
+    """0 for each user's most recent listen, 1 for the one before, ... (listens sorted by user, then time)."""
+    first = np.flatnonzero(user_starts_from(users))
+    ends = np.append(first[1:], len(users))
+    end_of = np.repeat(ends, np.diff(np.append(first, len(users))))
+    return (end_of - np.arange(len(users)) - 1).astype(np.int32)
+
+
 def users_per_song(users, songs, n_songs, mask=None):
     """How many different users listened to each song (only the masked listens, if a mask is given)."""
     if mask is not None:
