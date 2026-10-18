@@ -13,6 +13,8 @@ across four gRPC shard servers, behind load-balanced front desks with a shared
 Redis cache, request batching, overload protection and automatic recovery from
 crashed or frozen shards, all in Docker Compose, with a webpage on top.
 
+**Try it: https://songrec.duckdns.org** (pick a few songs; it suggests what comes next).
+
 ## Where it comes from
 
 This is v2 of
@@ -206,7 +208,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Training for the songs that belong in a playlist, tested at 50k: a ranker trained on the next 10
       songs puts 3.4% more of its top 10 later in the playlist and cuts the last artist's share from 41%
       to 30%, for -7.4% on the very next song; multi-token heads added nothing
-- [ ] Public hosting on Oracle Cloud's free tier (waiting for a free Arm machine)
+- [x] Public hosting on Oracle Cloud's free tier: https://songrec.duckdns.org (HTTPS, per-visitor rate limits)
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
@@ -426,15 +428,24 @@ the playlist kept in the address bar (a link reopens the same recommendations),
 Play buttons with Spotify's embedded player, light and dark mode, and phone
 layouts.
 
-### Hosting (in progress)
+### Hosting
 
-The plan is Oracle Cloud's Always Free tier: one Arm machine (2 cores, 8 GB)
-runs the whole Docker Compose system (~2.9 GB), with Caddy for HTTPS. Free Arm
-machines are often out of capacity, so `scripts/oracle_launch.py` asks for one
-about once a minute from the Mac, going round the 3 data centers and 2 sizes,
-and stops once it has one. A GitHub Actions workflow
-(`.github/workflows/oracle-launch.yml`) can do the same every 5 minutes, but
-GitHub ran its schedule only a few times a day, so it is off.
+Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
+Compose system on it (~2.5 GB in use). `docker-compose.oracle.yml` adds Caddy in front, which gets and renews
+the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
+Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,
+nginx answers 429 at once, so one visitor can't take the 2 cores.
+
+On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order (p50 27 ms, p99
+66 ms; the Mac's 10-core Docker setup: ~10 ms). Free capacity for Oracle's Arm machines is scarce: the
+machine came after ~2,900 automatic requests from a free account (`scripts/oracle_launch.py`), on the
+first request after upgrading to Pay As You Go, which still costs nothing within the Always Free
+allowance. Quota rules make Oracle refuse anything beyond that allowance (other machine types, more
+than 2 Arm cores or 12 GB, more than 200 GB of disk), and a budget emails on any spend.
+
+```bash
+ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build'
+```
 
 ## Future work
 
@@ -549,7 +560,7 @@ folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_
 | `recsys/export.py`, `recsys/recommender.py`, `recsys/serve.py` | Serving: the versioned bundle, answering requests from it, the FastAPI server |
 | `recsys/shard.py`, `recsys/shard_slices.py`, `recsys/frontdesk.py`, `recsys/wire.py`, `recsys/proto/` | Phase B: shard servers and their slices, the front desk, arrays in messages, the gRPC service |
 | `recsys/batching.py`, `recsys/cache.py`, `recsys/admission.py`, `recsys/healthcheck.py`, `recsys/launch.py` | Batching, the Redis cache, overload limits, container health checks, the one-command launcher |
-| `docker/`, `docker-compose.yml` | The image, nginx, the blue/green stacks |
+| `docker/`, `docker-compose.yml`, `docker-compose.oracle.yml` | The image, nginx, the blue/green stacks; the public server's additions (Caddy for HTTPS) |
 | `web/` | The webpage |
 | `.github/workflows/`, `deploy/` | Tests on every pull request (CI) and the Oracle Cloud launch workflow; the server's SSH public key |
 | `recsys/metrics.py`, `recsys/baselines.py` | NDCG@k, Hits@k; most-popular baseline |
