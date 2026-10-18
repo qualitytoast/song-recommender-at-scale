@@ -13,6 +13,7 @@ keep reproducing; configs/v1_fixed.toml switches them off:
 import json
 import os
 import re
+from pathlib import Path
 from collections import Counter
 from dataclasses import dataclass
 
@@ -160,6 +161,18 @@ def buckets_from_durations(durations_ms, n_buckets):
     ms = np.asarray(durations_ms, dtype=np.float64)
     cuts = np.quantile(ms, np.linspace(0, 1, n_buckets + 1)[1:-1])
     return np.searchsorted(cuts, ms, side="right").astype(np.int64), n_buckets
+
+
+def buckets_with_unknown(durations_ms, n_buckets):
+    """buckets_from_durations over the known lengths only, plus one more bucket (n_buckets) for unknown
+    lengths (0): unknowns would otherwise crowd the shortest bucket and move every cut."""
+    ms = np.asarray(durations_ms, dtype=np.float64)
+    known = ms > 0
+    out = np.full(len(ms), n_buckets, dtype=np.int64)
+    if known.any():
+        cuts = np.quantile(ms[known], np.linspace(0, 1, n_buckets + 1)[1:-1])
+        out[known] = np.searchsorted(cuts, ms[known], side="right")
+    return out, n_buckets + 1
 
 
 def name_words(name):
@@ -631,13 +644,26 @@ def case_playlists(histories, offsets):
 
 def build_dataset_from_store(cfg):
     """build_dataset for a store with track-URI song keys, without per-track Python objects.
-    Gives the same Dataset as reading the same playlists from the JSON slices."""
+    Gives the same Dataset as reading the same playlists from the JSON slices.
+
+    A ListenBrainz store (recsys.lb_store: it has playlist_split.npy) brings its own split: its sessions are
+    split by user (retriever / ranker / validation / held-out), since the store's catalog was chosen from its
+    training users, so test_split, val_split and ranker_split don't apply. Its unknown song lengths (0) get a
+    duration bucket of their own (MPD stores keep the plain buckets, so MPD models are unchanged)."""
     d = cfg.data
     store = load_store(d.folder)
     lengths = np.diff(store.playlist_offsets)
     kept = np.flatnonzero(lengths >= d.min_playlist_len)[:d.max_playlists]
-    train_idx, val_idx, held_out_idx = (np.array(i, dtype=np.int64) for i in split_playlists(
-        list(range(len(kept))), d.test_split, d.val_split, cfg.data_seed))
+    split_file = Path(d.folder) / "playlist_split.npy"
+    by_user = split_file.exists()
+    if by_user:  # 0 retriever, 1 ranker, 2 validation, 3 held-out (recsys.lb_store)
+        side = np.load(split_file)[kept]
+        fit_idx, rank_idx, val_idx, held_out_idx = (np.flatnonzero(side == s).astype(np.int64) for s in range(4))
+        train_idx = np.sort(np.concatenate([fit_idx, rank_idx]))
+    else:
+        train_idx, val_idx, held_out_idx = (np.array(i, dtype=np.int64) for i in split_playlists(
+            list(range(len(kept))), d.test_split, d.val_split, cfg.data_seed))
+        fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
 
     counted, _ = concat_playlists(store, kept if d.vocab_from == "all" else kept[train_idx])
     counts = np.bincount(counted, minlength=len(store.track_uris))
@@ -653,7 +679,6 @@ def build_dataset_from_store(cfg):
     def split_arrays(idx):
         tracks, offsets = concat_playlists(store, kept[idx])
         return to_vocab[tracks], offsets
-    fit_idx, rank_idx = split_off_ranker(train_idx, d.ranker_split)
     train_songs, train_offsets = split_arrays(fit_idx)
     test_songs, test_offsets = split_arrays(held_out_idx)
     rank_songs, rank_offsets = split_arrays(rank_idx)
@@ -697,7 +722,8 @@ def build_dataset_from_store(cfg):
     artists, song_artist = first_appearance_ids(store.track_artist[vocab_tracks])
     albums, song_album = first_appearance_ids(store.track_album[vocab_tracks])
     song_features = {"artist": (song_artist, len(artists)), "album": (song_album, len(albums)),
-                     "duration": buckets_from_durations(store.track_duration_ms[vocab_tracks], DURATION_BUCKETS)}
+                     "duration": (buckets_with_unknown if by_user else buckets_from_durations)(
+                         store.track_duration_ms[vocab_tracks], DURATION_BUCKETS)}
     artist_uris = [store.artist_uris[a] for a in artists]
     genre_names = song_genres = None
     if "genre" in cfg.model.features:

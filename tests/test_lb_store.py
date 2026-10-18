@@ -68,7 +68,8 @@ def test_dropping_a_repeat_never_splits_its_session():
     assert list(songs[kept]) == [0, 1, 2, 3] and len(set(session)) == 1
 
 
-def test_build_store_end_to_end(tmp_path):
+def tiny_store_inputs(tmp_path):
+    """A small extract (20 users, 6 popular songs and 2 rare ones each) and a MusicBrainz genre file."""
     lines = []
     for user in range(20):
         t = JAN + user * 10_000
@@ -91,7 +92,16 @@ def test_build_store_end_to_end(tmp_path):
     mb.write_text(json.dumps({"mbid": "7fa7fc04-1011-4876-8095-ecd232edea87", "name": "Band", "spotify_ids": [],
                               "genres": [{"name": "rock", "count": 3}]}) + "\n")
 
-    meta = build_store(tmp_path / "extract", tmp_path / "store", target=150, min_users=3, seed=0, mb_genres=mb)
+    return tmp_path / "extract", mb
+
+
+def tiny_store(tmp_path, target=150):
+    extract_dir, mb = tiny_store_inputs(tmp_path)
+    return build_store(extract_dir, tmp_path / "store", target=target, min_users=3, seed=0, mb_genres=mb)
+
+
+def test_build_store_end_to_end(tmp_path):
+    meta = tiny_store(tmp_path)
     store = load_store(tmp_path / "store")
     split = np.load(tmp_path / "store" / "playlist_split.npy")
     users = np.load(tmp_path / "store" / "playlist_users.npy")
