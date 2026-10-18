@@ -28,9 +28,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recsys.lb_extract import load_extract  # noqa: E402
-from recsys.lb_sessions import by_user_and_time, sessions, user_starts_from, users_per_song  # noqa: E402
+from recsys.listenbrainz import mpd_lookup  # noqa: E402
+from recsys.lb_sessions import (by_user_and_time, rank_from_end, sessions, user_starts_from,  # noqa: E402
+                                 users_per_song)
 from recsys.mpd_store import load_store  # noqa: E402
-from scripts.lb_first_look import mpd_lookup  # noqa: E402
 
 MPD_SIZE = 66_346_428   # song entries in the MPD's 1M playlists: the sample's target
 CAPS = (500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000)
@@ -72,13 +73,6 @@ def user_activity(users, seconds, n_users):
     busiest = np.zeros(n_users, dtype=np.int64)
     np.maximum.at(busiest, users[starts], np.diff(np.append(starts, len(users))))
     return listens, n_gaps, rapid, repeat_second, busiest
-
-
-def rank_from_end(users):
-    """0 for each user's most recent listen, 1 for the one before, ... (listens sorted by user, then time)."""
-    first = np.flatnonzero(user_starts_from(users))
-    ends = np.append(first[1:], len(users))
-    return (np.repeat(ends, np.diff(np.append(first, len(users)))) - np.arange(len(users)) - 1).astype(np.int64)
 
 
 def song_flags(extract, n_songs):

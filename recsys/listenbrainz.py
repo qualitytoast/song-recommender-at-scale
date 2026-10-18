@@ -23,6 +23,7 @@ import tarfile
 import unicodedata
 from typing import NamedTuple
 
+import numpy as np
 import zstandard
 
 MONTH_FILE = re.compile(r"(?:^|/)listens/(\d{4})/(\d{1,2})\.listens$")
@@ -155,3 +156,18 @@ def song_key(artist, title):
     """What makes two listens (or a listen and an MPD track) the same song: "artist|title", both cleaned.
     Remembers recent answers: the same songs come up again and again."""
     return f"{clean_artist(artist)}|{clean_title(title)}"
+
+
+def mpd_lookup(store):
+    """MPD track lookups: by Spotify track ID, and by song key (the version in the most playlists wins);
+    plus each track's playlist count and song key."""
+    counts = np.bincount(store.playlist_tracks, minlength=len(store.track_uris))
+    by_spotify = {uri.rsplit(":", 1)[1]: i for i, uri in enumerate(store.track_uris)}
+    by_name, keys = {}, []
+    for i, (name, artist) in enumerate(zip(store.track_names, store.track_artist)):
+        key = song_key(store.artist_names[artist], name)
+        keys.append(key)
+        j = by_name.get(key)
+        if j is None or counts[i] > counts[j]:
+            by_name[key] = i
+    return counts, by_spotify, by_name, keys

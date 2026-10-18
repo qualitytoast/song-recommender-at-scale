@@ -2,7 +2,7 @@ import io
 import json
 import tarfile
 
-from scripts.genres_from_dump import artist_lines, scan, write_output
+from scripts.genres_from_dump import artist_lines, scan, scan_by_id, write_output
 
 
 def record(mbid, spotify_ids, genres):
@@ -49,3 +49,11 @@ def test_output_has_every_artist_and_appears_only_when_finished(tmp_path):
                     {"artist_uri": "spotify:artist:ccc", "artist_name": "C", "mbids": [], "genres": []}]
     assert not out.with_suffix(".tmp").exists()
     assert json.loads(out.with_suffix(".meta.json").read_text()) == {"source": "test"}
+
+
+def test_scan_by_id_finds_artists_by_their_id_or_a_spotify_link():
+    found = scan_by_id(LINES, wanted_mbids={"m1", "m5"}, wanted_spotify={"zzz"})
+    assert set(found) == {"m1", "m2", "m5"}                       # m2 only through its Spotify page
+    assert found["m1"]["genres"] == [{"name": "rock", "count": 3}]   # "pop" has no net votes
+    assert found["m2"]["spotify_ids"] == ["zzz"]
+    assert found["m5"] == {"name": "", "spotify_ids": [], "genres": [{"name": "folk", "count": 9}]}
