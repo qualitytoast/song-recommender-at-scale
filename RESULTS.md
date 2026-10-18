@@ -1543,3 +1543,25 @@ processes (~2-4 min per month).
   IDs. Left out: 15.0M listens of the boundary months outside the window, 180k with no artist or title.
 - Of the listens: 95.7% name an album, 43.2% give a length, 19.1% carry a Spotify track ID.
 - 14 GB on disk (28 bytes per listen plus the song table); the file's SHA-256 matched the server's.
+
+**Step 2: the report behind the remaining decisions** (2026-10-18, `scripts/lb_report.py`, sessions in
+`recsys/lb_sessions.py`; `runs/listenbrainz/report.json`, 6 min, 11 GB of memory for 465M listens sorted by user
+and time).
+
+- Users: median 1,064 listens in the year; the top 1% of users sent 32%, the top 10% 68%. Busiest day: median
+  82 listens, 99th percentile 1,102, max 72,578; 4.7% of listens repeat the previous one's second.
+- Noise, per listen: 17.7% of listens fall on impossible days (over 1,000 listens that day, ~58 h of music),
+  19.3% are followed by the next within 30 s (skipped), 4.7% repeat the previous second (duplicates). Dropping
+  whole users for any flag would remove 963 users and 28.4% of listens (293M left after the session rules);
+  dropping only impossible days and duplicates leaves 328M from 64,618 users, also dropping skips 296M from
+  64,370 users (a scratch follow-up).
+- Sessions (rules as decided): 88% of the remaining listens kept; 13.6M sessions, median 11 songs, 90th
+  percentile 43.
+- A sample the MPD's size (66.3M listens after the session rules): 57,890 random users capped at their 2,000
+  most recent listens, 31,080 at 5,000, 21,746 at 10,000, 14,271 uncapped, or every user (63,695) capped at
+  1,761.
+- Catalog in such a sample (random users, cap 5,000; the others within ~10%): at least 2 users per song 2.84M
+  songs (84.8% of listens), 5: 991k (71.7%), 10: 468k (61.9%), 20: 216k (51.8%). At 5, 88% of the songs have a
+  Spotify ID (a listen's link or an MPD song of the same artist and title), only 29% are MPD songs, 57% have
+  genres from the MPD artists' genre file, 34% more have an artist MusicBrainz ID (genres findable in the
+  MusicBrainz dump).
