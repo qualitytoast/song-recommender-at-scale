@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/qualitytoast/song-recommender-at-scale/actions/workflows/tests.yml/badge.svg)](https://github.com/qualitytoast/song-recommender-at-scale/actions/workflows/tests.yml)
 
+**Live: [songrec.duckdns.org](https://songrec.duckdns.org)**: pick a few songs and it suggests what comes next.
+
 A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
 predicts the next one. It is trained on the Spotify Million Playlist Dataset
 (MPD), uses song and playlist features, and works in two stages: a fast
@@ -12,8 +14,6 @@ It is served as a small distributed system: the million-song catalog is split
 across four gRPC shard servers, behind load-balanced front desks with a shared
 Redis cache, request batching, overload protection and automatic recovery from
 crashed or frozen shards, all in Docker Compose, with a webpage on top.
-
-**Try it: https://songrec.duckdns.org** (pick a few songs; it suggests what comes next).
 
 ## Where it comes from
 
@@ -442,6 +442,37 @@ machine came after ~2,900 automatic requests from a free account (`scripts/oracl
 first request after upgrading to Pay As You Go, which still costs nothing within the Always Free
 allowance. Quota rules make Oracle refuse anything beyond that allowance (other machine types, more
 than 2 Arm cores or 12 GB, more than 200 GB of disk), and a budget emails on any spend.
+
+A visit, step by step:
+
+```
+browser ── songrec.duckdns.org ──► DuckDNS: the server's address
+   │
+   ▼
+Caddy        HTTPS (certificate, encryption); passes the visitor's address on
+   │
+   ▼
+nginx        per-visitor rate limit ("slow down": 429, try again in a second); spreads requests over front desks
+   │
+   ▼
+front desk   the webpage; song search from its own name index (cached in Redis too); recommendations:
+   │           Redis has this exact request (same songs, same model version)? answer from the cache. Otherwise:
+   │           1. shards: the input songs' details
+   │           2. front desk: the retriever's "what comes next" vector (its guesses after each song, blended)
+   │           3. shards: each searches its quarter of the catalog, returns its best 100 + (number of input songs)
+   │           4. front desk: merges the four lists, drops the playlist's own songs, keeps the best 100
+   │           5. shards: those 100 candidates' details and how often each came after the input songs
+   │           6. front desk: the ranker, then at most 2 songs per artist -> the top 10, saved in Redis
+   ▼
+browser      the 10 songs, played with Spotify's embedded player (the music comes from Spotify)
+```
+
+Each part runs in its own Docker container; Docker restarts any that crash (and starts them all at boot),
+and autoheal restarts any that stop answering their health checks. The models are loaded once at start:
+the front desk holds both models' shared layers, each shard its quarter of the per-song tables. Redis is
+only a cache: if it's down, every answer is computed.
+
+Updating the site after a change on main:
 
 ```bash
 ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build'
