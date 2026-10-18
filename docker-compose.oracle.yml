@@ -1,0 +1,25 @@
+# The public server (Oracle Cloud): the same system as docker-compose.yml, with Caddy in front for HTTPS.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build
+#
+# Caddy answers on ports 80 and 443 for songrec.duckdns.org, gets and renews its HTTPS certificate from
+# Let's Encrypt by itself (kept in the caddy_data volume), and passes requests to nginx. nginx is then
+# reachable from the server itself only (127.0.0.1:8000, for checks over SSH), not from the internet.
+# BUNDLE (the model files) comes from .env next to this file on the server.
+services:
+  nginx:
+    ports: !override ["127.0.0.1:8000:80"]
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # the certificate: kept across restarts (Let's Encrypt limits how often
+      - caddy_config:/config    # a new one can be issued)
+    depends_on: [nginx]
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

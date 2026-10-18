@@ -1,0 +1,8 @@
+# HTTPS for the public site (docker-compose.oracle.yml). Caddy gets a certificate for the name below from
+# Let's Encrypt and renews it before it expires; plain-HTTP visits are redirected to HTTPS. It tells nginx
+# each visitor's address in X-Forwarded-For (set by Caddy itself, not copied from the visitor), which
+# nginx's per-visitor rate limit uses.
+songrec.duckdns.org {
+	encode zstd gzip
+	reverse_proxy nginx:80
+}
