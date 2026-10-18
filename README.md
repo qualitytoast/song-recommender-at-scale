@@ -207,7 +207,6 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       songs puts 3.4% more of its top 10 later in the playlist and cuts the last artist's share from 41%
       to 30%, for -7.4% on the very next song; multi-token heads added nothing
 - [ ] Public hosting on Oracle Cloud's free tier (waiting for a free Arm machine)
-- [ ] That ranker at 1M, served (see Future work)
 - [ ] Train on ListenBrainz user streaming history
 - [ ] Personalization to one listener's history (add distillation?)
 
