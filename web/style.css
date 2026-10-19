@@ -84,8 +84,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .quiet { background: none; border: none; padding: 8px 4px; color: var(--muted); }
 .quiet:hover { color: var(--fg); }
 
-.field { display: block; margin: 20px 0 6px; font-size: 13px; }
-.muted { color: var(--muted); }
 .actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
 
 /* search menu */
@@ -123,6 +121,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .row-actions button:disabled { cursor: default; color: var(--muted); background: none; opacity: 0.6; }
 .player { grid-column: 2 / -1; margin-top: 8px; }
 .player iframe { display: block; width: 100%; height: 80px; border: 0; border-radius: 6px; }
+.no-link { color: var(--muted); font-size: 13px; }
 
 .playlist { margin-top: 16px; }
 

@@ -1,0 +1,19 @@
+2,000 cases (200 of each length 1-10) -> runs/serving/lb_cases/cases.json
+       89.93 real       190.64 user         6.64 sys
+          7231488000  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2546917  page reclaims
+               21666  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               20059  voluntary context switches
+              207868  involuntary context switches
+        400884622368  instructions retired
+        185349133486  cycles elapsed
+         17023346840  peak memory footprint

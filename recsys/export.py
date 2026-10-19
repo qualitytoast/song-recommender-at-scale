@@ -3,9 +3,11 @@
 checkpoints.
 
     python -m recsys.export --ranker configs/ranker_1m_any_length.toml
+    python -m recsys.export --ranker configs/ranker_1m_lb_next10w.toml --max-per-artist 3 --mix 0
 
 Writes bundles/<ranker config name>-<version>/:
-  settings.json                  shapes and settings (input length, shortlist, IVF, extra inputs, ...)
+  settings.json                  shapes and settings (input length, shortlist, IVF, extra inputs, ...), and
+                                 the serving defaults max_per_artist and mix (tuned per model)
   retriever_shared.pt            the retriever's shared layers: transformer, positions, name words
   ranker_shared.pt               the ranker's: the same for its fine-tuned copy, plus its new weights
   retriever_song_inputs.npy      one input vector per song: song + artist + album + length + genres,
@@ -36,7 +38,7 @@ from recsys.data import concat_playlists
 from recsys.mpd_store import load_store
 from recsys.rank_features import GROUPS, pair_counts
 from recsys.ranker import CandidateRanker, check_vocab, file_fingerprint, load_ranker_config, load_retriever
-from recsys.recommender import SERVED_GROUPS, name_key, shared_state
+from recsys.recommender import MAX_PER_ARTIST, MIX, SERVED_GROUPS, name_key, shared_state
 from recsys.search import SearchWorker, song_vectors
 from recsys.train import pick_device, run_dir_for
 
@@ -138,8 +140,9 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     return final
 
 
-def export(ranker_config, seed=1, out_root="bundles"):
-    """Bundle the ranker config's best checkpoint and its retriever's (see write_bundle)."""
+def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ARTIST, mix=MIX):
+    """Bundle the ranker config's best checkpoint and its retriever's (see write_bundle), with max_per_artist
+    and mix as the serving defaults for requests that don't set them."""
     rc = load_ranker_config(ranker_config)
     if rc.search != "ivf":
         raise ValueError("serving searches with the IVF index; this ranker config uses exact search")
@@ -155,7 +158,8 @@ def export(ranker_config, seed=1, out_root="bundles"):
     ranker.load_state_dict(checkpoint["model"])
     settings = {"shortlist": rc.shortlist, "exclude_input": rc.exclude_input, "ivf_nlist": rc.ivf_nlist,
                 "ivf_nprobe": rc.ivf_nprobe, "features": rc.features, "correction_hidden": rc.correction_hidden,
-                "windows": rc.windows, "sources": {"ranker_config": str(ranker_config), "retriever_config": rc.retriever,
+                "windows": rc.windows, "max_per_artist": max_per_artist, "mix": mix,
+                "sources": {"ranker_config": str(ranker_config), "retriever_config": rc.retriever,
                                                    "ranker_checkpoint_sha256": file_fingerprint(ranker_path),
                                                    "retriever_checkpoint_sha256": file_fingerprint(retriever_path)}}
     pairs = pair_counts(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
@@ -169,5 +173,8 @@ if __name__ == "__main__":
     ap.add_argument("--ranker", required=True, help="ranker config")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default="bundles")
+    ap.add_argument("--max-per-artist", type=int, default=MAX_PER_ARTIST,
+                    help="serving default: at most this many of the 10 by one artist (0: no limit)")
+    ap.add_argument("--mix", type=float, default=MIX, help="serving default: recommender.MIX")
     args = ap.parse_args()
-    print(export(args.ranker, args.seed, args.out))
+    print(export(args.ranker, args.seed, args.out, args.max_per_artist, args.mix))

@@ -1667,3 +1667,39 @@ settings 0.2058, later 0.074.
 - Run times: export 95 s (peak memory 21.8 GB; bundle 2.4 GB, no shards yet; the MPD pair's is 2.1 GB without
   its 4 shards: 12% fewer songs and fewer song pairs), scoring 42 s on the CPU
   (both pairs, both settings, plus the BTS check).
+
+**Step 8: the site serves the ListenBrainz pair** (2026-10-19; `scripts/lb_compare.py tune`,
+`runs/listenbrainz/compare/tune.json`; checks in `runs/serving/lb_cases/`).
+
+- Serving settings tuned again on the comparison's 5,000 held-out cases (77 s), and separately on their 1,388
+  "mixed" cases (3+ input songs, each by a different artist: closer to a list typed into the webpage):
+
+| Per artist, mix | Next song | Later | Artists | Last artist | No Spotify link | Next song, mixed | Artists, mixed |
+|---|---|---|---|---|---|---|---|
+| No limit, 0 | 0.2407 | 0.135 | 4.6 | 48% | 3.7% | 0.0246 | 6.8 |
+| No limit, 0.5 | 0.2201 | 0.135 | 4.6 | 39% | 3.0% | 0.0185 | 6.9 |
+| 1, 0 | 0.2137 | 0.055 | 9.9 | 9% | 5.7% | 0.0224 | 10.0 |
+| 2, 0 | 0.2268 | 0.074 | 7.8 | 15% | 5.1% | 0.0230 | 8.2 |
+| 2, 0.5 (the MPD pair's) | 0.2058 | 0.074 | 7.7 | 13% | 4.1% | 0.0176 | 8.1 |
+| **3, 0 (chosen)** | **0.2321** | **0.089** | **7.0** | **21%** | **4.8%** | **0.0244** | **7.6** |
+| 3, 0.25 | 0.2248 | 0.090 | 6.9 | 19% | 4.2% | 0.0196 | 7.6 |
+
+- Unlike on MPD playlists, mixing never raised "later" here and always cost the next song (all and mixed
+  cases); the artist limit costs "later" because listeners stay on one artist (albums played through). Mixed
+  cases are close to unpredictable for every setting (~0.02): in listening, a run of different artists is
+  often shuffle.
+- The defaults now come with each bundle (`recsys.export --max-per-artist 3 --mix 0`, in settings.json, shown
+  at `/health`); a bundle without them (the MPD pair's) keeps 2 and 0.5. Re-export: 95 s. 4 shards: 6 s.
+- Webpage: songs without a Spotify link (17% of the catalog) say "No Spotify link found for this song" where
+  the player would open; the playlist-name box is gone (the model has no name input); the menu counts sessions;
+  ListenBrainz in the text. Old share links keep only songs whose Spotify ID the new catalog uses too (~128k
+  of the MPD's IDs; decided: left as is).
+- Local Docker: 2,000 of 2,000 held-out requests gave the offline top 10 in order (p50 8.3 ms end to end); the
+  stack used ~3.2 GB (MPD: ~2.5 GB). Building the check's cases (held-out shortlists rebuilt) took 90 s.
+- Server: upload of the front desk's files and the shards (2.0 GB) 206 s, every file checked by SHA-256; image
+  rebuild 5 s; switch = `.env` to the new bundle and `docker compose up -d`: healthy after 18 s, and a probe of
+  the public site every second saw "busy" (503) for ~12 s. 2,000 of 2,000 requests gave the offline top 10
+  (p50 30 ms, p99 64 ms end to end; MPD pair: 27 / 66 ms); containers ~2.8 GB, 4.4 GB of the 7.7 GB free.
+- With 3 per artist, 2 of 300 answers still had more than 3 songs by one artist: when the shortlist is almost
+  all one artist (an Undertale soundtrack session: Toby Fox), the best skipped songs fill the 10 places, as
+  `pick_top` always did.

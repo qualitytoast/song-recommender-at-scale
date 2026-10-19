@@ -5,15 +5,16 @@
 
   POST /recommend   {"songs": ["spotify:track:...", "Nightcall - Kavinsky", ...], "name": "road trip"}
                     (songs: Spotify URIs or "Track - Artist" text; name optional; "max_per_artist": at most
-                    this many of the 10 by one artist, default 2, 0 for no limit; "mix": how much the
-                    model's guesses after earlier songs count, 0 to 1, default 0.5, 0 for the last song's alone)
+                    this many of the 10 by one artist, 0 for no limit; "mix": how much the model's guesses
+                    after earlier songs count, 0 to 1, 0 for the last song's alone; both default to the
+                    bundle's own, see /health)
                     -> {"recommendations": [{"uri", "track", "artist", "score"} x 10],
                         "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
   GET  /songs?q=nightc&limit=10
                     -> {"songs": [{"uri", "track", "artist", "playlists"}]}: songs whose track or artist name
                        starts with q (or "track - artist"), in the most playlists first, for a type-ahead menu
-  GET  /health      -> {"status": "ok" or "degraded", "version", "songs", "device", "shards", "cache", ...}
+  GET  /health      -> {"status": "ok" or "degraded", "version", "songs", "defaults", "device", "shards", ...}
   GET  /live        -> {"ok": true}: the container health check; answered on the event loop, so it never
                        waits behind busy requests (a busy front desk mustn't look frozen and be restarted)
   GET  /            the webpage (web/)
@@ -39,7 +40,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from recsys.admission import Admission, Overloaded
-from recsys.recommender import MAX_PER_ARTIST, MIX, TOP, NoKnownSongs, Recommender
+from recsys.recommender import TOP, NoKnownSongs, Recommender
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 
@@ -47,8 +48,9 @@ WEB = Path(__file__).resolve().parents[1] / "web"
 class RecommendRequest(BaseModel):
     songs: list[str]          # Spotify track URIs or "Track - Artist" text, oldest first; the last 10 known are read
     name: str | None = None   # the playlist's name, if it has one
-    max_per_artist: int = Field(MAX_PER_ARTIST, ge=0, le=TOP)  # at most this many of the 10 by one artist (0: any)
-    mix: float = Field(MIX, ge=0.0, le=1.0)  # how much the guesses after earlier songs count (recommender.MIX)
+    # None: the bundle's default (settings.json; recommender.MAX_PER_ARTIST and MIX if it has none)
+    max_per_artist: int | None = Field(None, ge=0, le=TOP)  # at most this many of the 10 by one artist (0: any)
+    mix: float | None = Field(None, ge=0.0, le=1.0)  # how much the guesses after earlier songs count
 
 
 def busy(message="busy: too many requests in progress; try again"):
@@ -126,7 +128,8 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         rec = app.state.recommender
         shards = rec.shard_states() if hasattr(rec, "shard_states") else None
         status = "ok" if shards is None or all(s["up"] for s in shards) else "degraded"
-        return {"status": status, "version": rec.version, "songs": len(rec.uris), "device": str(rec.device),
+        return {"status": status, "version": rec.version, "songs": len(rec.uris),
+                "defaults": {"max_per_artist": rec.max_per_artist, "mix": rec.mix}, "device": str(rec.device),
                 "shards": shards, "cache": rec.cache.report() if rec.cache else None,
                 "batching": rec.batcher.report() if rec.batcher else None, "answers": rec.answers,
                 "admission": {"recommend": admission.report(), "songs": menu_admission.report()}}

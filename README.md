@@ -5,10 +5,11 @@
 **Live: [songrec.duckdns.org](https://songrec.duckdns.org)**: pick a few songs and it suggests what comes next.
 
 A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
-predicts the next one. It is trained on the Spotify Million Playlist Dataset
-(MPD), uses song and playlist features, and works in two stages: a fast
+predicts the next one. It was built and scaled on the Spotify Million Playlist
+Dataset (MPD), uses song and playlist features, and works in two stages: a fast
 retriever narrows a million songs down to 100, then a slower, more careful
-ranker orders those 100.
+ranker orders those 100. The live site serves the same design trained on 66
+million real listens from ListenBrainz.
 
 It is served as a small distributed system: the million-song catalog is split
 across four gRPC shard servers, behind load-balanced front desks with a shared
@@ -237,6 +238,8 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Public hosting on Oracle Cloud's free tier: https://songrec.duckdns.org (HTTPS, per-visitor rate limits)
 - [x] Train on ListenBrainz listening history: 66M listens from 61,752 users, 1.18M songs; the pair
       predicts held-out listeners' next song 22% better than today's MPD pair (0.2433 vs 0.1996)
+- [x] The live site serves the ListenBrainz pair (its own tuned settings: 3 per artist, no mixing),
+      swapped in with ~12 s of downtime
 - [ ] Personalization to one listener's history (add distillation?)
 
 ## Serving
@@ -277,11 +280,12 @@ Trained to predict the very next song, the models mostly follow a playlist's
 *last* song, and since people often add several songs by one artist in a row,
 the 10 individually most likely next songs are often all by that artist (after
 a varied 10-song playlist ending in Daft Punk: 9 Daft Punk songs). Two serving
-settings fix that without retraining, each a request field:
+settings fix that without retraining, each a request field whose default
+comes with the model (set at export, shown at `/health`):
 
-- `max_per_artist` (default 2): going down the ranker's order of all 100
+- `max_per_artist` (the MPD pair's default 2): going down the ranker's order of all 100
   candidates, a song is skipped once its artist has 2 songs in the top 10.
-- `mix` (default 0.5): the retriever makes a "what comes next" guess after
+- `mix` (the MPD pair's default 0.5): the retriever makes a "what comes next" guess after
   every song of the playlist, not just the last (that's how it was trained).
   The playlist vector becomes a weighted average of those guesses: the last
   song's weighs 1, the one before it 0.5, then 0.25, and so on. Scores are
@@ -306,6 +310,19 @@ variety: many real playlists do repeat artists. `"max_per_artist": 0, "mix": 0`
 gives the models' own answers, which the checks against the offline evaluation use.
 The same goal in training (a ranker trained on the next 10 songs) was tested at
 50k; see Results and Future work.
+
+**The ListenBrainz pair's settings: 3 per artist, no mixing.** Tuned again on
+5,000 held-out listening cases (`scripts/lb_compare.py tune`). Here mixing never
+raised "later" and always cost the next song, and the artist limit costs more
+"later", because listeners really do stay on one artist (they play albums
+through). 3 per artist keeps ~7 artists in a top 10 for -0.009 next-song NDCG@10
+against no limit; on varied lists it costs nothing.
+
+| ListenBrainz pair | Next song NDCG@10 | Later in the session | Different artists | By the last song's artist |
+|---|---|---|---|---|
+| No limit, no mixing (the models as trained) | 0.2407 | 13.5% | 4.6 | 48% |
+| 2 per artist, mix 0.5 (the MPD pair's settings) | 0.2058 | 7.4% | 7.7 | 13% |
+| **3 per artist, no mixing (its default)** | **0.2321** | **8.9%** | **7.0** | **21%** |
 
 ### The catalog split across processes (phase B)
 
@@ -453,18 +470,22 @@ and the first new-version answer each came within 0.1 s of the switch.
 `web/` (plain HTML, CSS and JavaScript, served at `/`): type-ahead song search,
 the playlist kept in the address bar (a link reopens the same recommendations),
 Play buttons with Spotify's embedded player, light and dark mode, and phone
-layouts.
+layouts. 17% of the ListenBrainz catalog's songs have no Spotify link (4.8% of
+the songs it recommends with its default settings); their Play button says so instead of playing.
 
 ### Hosting
 
 Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
-Compose system on it (~2.5 GB in use). `docker-compose.oracle.yml` adds Caddy in front, which gets and renews
+Compose system on it (~2.8 GB for the containers, serving the ListenBrainz pair). `docker-compose.oracle.yml`
+adds Caddy in front, which gets and renews
 the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
 Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,
 nginx answers 429 at once, so one visitor can't take the 2 cores.
 
-On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order (p50 27 ms, p99
-66 ms; the Mac's 10-core Docker setup: ~10 ms). Free capacity for Oracle's Arm machines is scarce: the
+On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order, for both the MPD
+pair (p50 27 ms, p99 66 ms) and the ListenBrainz pair that replaced it (p50 30 ms, p99 64 ms; the Mac's
+10-core Docker setup: ~8-10 ms). The swap was a plain restart on the new bundle: the site answered "busy"
+for ~12 s. Free capacity for Oracle's Arm machines is scarce: the
 machine came after ~2,900 automatic requests from a free account (`scripts/oracle_launch.py`), on the
 first request after upgrading to Pay As You Go, which still costs nothing within the Always Free
 allowance. Quota rules make Oracle refuse anything beyond that allowance (other machine types, more

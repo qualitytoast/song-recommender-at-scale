@@ -142,6 +142,7 @@ def test_the_http_api(served, tmp_path):
     with TestClient(create_app(rec.path, "cpu")) as client:
         health = client.get("/health").json()
         assert health["status"] == "ok" and health["version"] == rec.version and health["songs"] == V
+        assert health["defaults"] == {"max_per_artist": 2, "mix": 0.5}  # a bundle without its own
         out = client.post("/recommend", json={"songs": ["spotify:track:6", "nope", "spotify:track:7"],
                                               "name": "road trip"})
         assert out.status_code == 200
@@ -194,6 +195,17 @@ def test_songs_can_be_given_as_track_and_artist_text(served):
     out = rec.recommend(["Nightcall - Kavinsky", "nope", "spotify:track:3"])
     assert [u["uri"] for u in out["used"]] == ["spotify:track:0", "spotify:track:3"] and out["ignored"] == ["nope"]
     assert out["recommendations"] == rec.recommend(["spotify:track:0", "spotify:track:3"])["recommendations"]
+
+
+def test_a_bundle_sets_its_own_artist_limit_and_mix(tmp_path):
+    path = write_tiny_bundle(tmp_path, settings={"max_per_artist": 1, "mix": 0.0})[0]
+    rec = Recommender(path, "cpu")
+    try:
+        uris = ["spotify:track:3", "spotify:track:17", "spotify:track:9"]
+        assert (rec.max_per_artist, rec.mix) == (1, 0.0)
+        assert rec.recommend(uris)["recommendations"] == rec.recommend(uris, max_per_artist=1, mix=0.0)["recommendations"]
+    finally:
+        rec.close()
 
 
 def test_a_bundle_without_playlist_names_loads_and_answers(tmp_path):

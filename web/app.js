@@ -1,11 +1,11 @@
 // The recommender's webpage: build a playlist with a type-ahead search (/songs), ask for the next songs
-// (/recommend), play them with Spotify's embedded player. The playlist lives in the address bar
-// (?songs=uri,uri&name=...), so a link reopens the same recommendations. Text from the server is
+// (/recommend), play them with Spotify's embedded player (songs with a Spotify link). The playlist lives in
+// the address bar (?songs=uri,uri), so a link reopens the same recommendations. Text from the server is
 // always set as text (textContent), never as HTML.
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const search = $("search"), menu = $("menu"), playlistEl = $("playlist"), nameInput = $("name");
+const search = $("search"), menu = $("menu"), playlistEl = $("playlist");
 const goButton = $("go"), clearButton = $("clear"), statusEl = $("status"), notesEl = $("notes"), resultsEl = $("results");
 
 let playlist = [];        // [{uri, track, artist}]
@@ -30,7 +30,6 @@ function setStatus(text, isError = false) {
 function saveToUrl() {
   const params = new URLSearchParams();
   if (playlist.length) params.set("songs", playlist.map((s) => s.uri).join(","));
-  if (nameInput.value.trim()) params.set("name", nameInput.value.trim());
   const query = params.toString();
   history.replaceState(null, "", query ? `?${query}` : location.pathname);
 }
@@ -95,7 +94,7 @@ function renderMenu(songs) {
       const li = el("li");
       li.id = `option-${i}`;
       li.setAttribute("role", "option");
-      const count = el("span", "count", `${song.playlists.toLocaleString()} playlists`);
+      const count = el("span", "count", `${song.playlists.toLocaleString()} sessions`);
       li.append(el("span", "title", song.track), el("span", "artist", song.artist), count);
       li.addEventListener("mousedown", (e) => e.preventDefault());  // keep focus in the search box
       li.addEventListener("click", () => choose(i));
@@ -159,6 +158,11 @@ function togglePlayer(li, uri, button) {
   resultsEl.querySelectorAll(".player").forEach((p) => p.remove());  // one player at a time
   resultsEl.querySelectorAll("button[data-play]").forEach((b) => { b.textContent = "Play"; });
   if (open) return;
+  if (!uri.startsWith("spotify:track:")) {  // a ListenBrainz song with no Spotify link: nothing to play
+    li.append(el("p", "player no-link", "No Spotify link found for this song."));
+    button.textContent = "Close";
+    return;
+  }
   const player = el("div", "player");
   const frame = document.createElement("iframe");
   frame.src = `https://open.spotify.com/embed/track/${spotifyId(uri)}?utm_source=generator`;
@@ -201,7 +205,7 @@ async function recommend(retried = false) {
     const response = await fetch("/recommend", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ songs: playlist.map((s) => s.uri), name: nameInput.value.trim() || null }),
+      body: JSON.stringify({ songs: playlist.map((s) => s.uri) }),
     });
     if (response.status === 503 && !retried) {
       const wait = Number(response.headers.get("Retry-After") || 1);
@@ -238,8 +242,6 @@ clearButton.addEventListener("click", () => {
   notesEl.textContent = "";
   setStatus("");
 });
-nameInput.addEventListener("change", saveToUrl);
-nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") recommend(); });
 
 // ---- start ----
 
@@ -248,7 +250,6 @@ async function start() {
     $("model").textContent = `${h.songs.toLocaleString()} songs · model ${h.version}`;
   }).catch(() => {});
   const params = new URLSearchParams(location.search);
-  nameInput.value = params.get("name") || "";
   const uris = (params.get("songs") || "").split(",").filter(Boolean);
   renderPlaylist();
   if (uris.length) {  // a shared link: the songs' names come back with the recommendations

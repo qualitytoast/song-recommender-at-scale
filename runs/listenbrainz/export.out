@@ -19,3 +19,23 @@ bundles/ranker_1m_lb_next10w-8977f1488287
          21814622824  peak memory footprint
 --- re-export after the name_word_count fix
 bundles/ranker_1m_lb_next10w-21b6f174c4d0
+--- 2026-10-19 re-export with the serving defaults chosen with lb_compare tune (3 per artist, mix 0)
+bundles/ranker_1m_lb_next10w-d2289f448228
+       95.20 real        84.82 user         7.70 sys
+          8920252416  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             3152443  page reclaims
+               41579  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                9695  voluntary context switches
+              142138  involuntary context switches
+        524264605819  instructions retired
+        281273473276  cycles elapsed
+         16938592144  peak memory footprint
