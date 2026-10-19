@@ -175,6 +175,7 @@ class Catalog:
         # Finding songs by name: song IDs sorted by track name key and by artist name key (each
         # most-played first among equal names), with the keys in that order for binary search.
         self.playlists = self.load("song_playlists")
+        self.popularity = self.settings.get("popularity", "playlists")  # what self.playlists counts
         keys = json.loads((self.path / "name_keys.json").read_text())
         self.by_track, self.by_artist = self.load("songs_by_track"), self.load("songs_by_artist")
         self.track_keys = [keys["tracks"][i] for i in self.by_track]
@@ -209,7 +210,8 @@ class Catalog:
     def find_songs(self, query, limit=10):
         """Songs for a menu as the user types: those whose track or artist name starts with query (or,
         for "track - artist" text, whose track starts with the part before " - " and artist with the
-        part after), in the most playlists first: [{uri, track, artist, playlists}]. Cached, if a cache
+        part after), in the most playlists first: [{uri, track, artist, and the count: "playlists" or
+        "listens", as self.popularity says}]. Cached, if a cache
         is set."""
         q = name_key(query)
         if not q:
@@ -234,7 +236,7 @@ class Catalog:
 
     def describe(self, j):
         return {"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j],
-                "playlists": int(self.playlists[j])}
+                self.popularity: int(self.playlists[j])}
 
     def resolve(self, song):
         """The song ID for a request's song: a Spotify URI in the catalog, or "Track - Artist" text (or
@@ -282,7 +284,7 @@ class Catalog:
         used = known[-self.settings["input_length"]:]
         name_ids = self.encode_name(name)
         lookup_ms = (time.perf_counter() - start) * 1000
-        answer = {"used": [{k: v for k, v in self.describe(j).items() if k != "playlists"} for _, j in used],
+        answer = {"used": [{k: v for k, v in self.describe(j).items() if k != self.popularity} for _, j in used],
                   "ignored": ignored, "version": self.version}
         key = (f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
                f":a{max_per_artist}:m{mix}")

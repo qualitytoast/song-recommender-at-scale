@@ -17,7 +17,9 @@ Writes bundles/<ranker config name>-<version>/:
   song_artist.npy, song_album.npy, song_genres.npy   per-song IDs for the ranker's overlap inputs
   pair_keys.npy, pair_counts.npy the appeared-together table (sorted keys a * songs + b; 2-byte counts)
   songs.json                     Spotify URIs, track names and artist names
-  song_playlists.npy             how many of the MPD playlists contain each song (the find-songs menu's order)
+  song_playlists.npy             how many of the MPD playlists contain each song, or for a ListenBrainz store
+                                 how many listens it has (settings.json popularity: "playlists" or "listens";
+                                 the find-songs menu's order and count)
   songs_by_track.npy, songs_by_artist.npy, name_keys.json   song IDs sorted by track / artist name and the
                                  names as compared (recommender.name_key), for finding songs as the user types
   name_words.json                the playlist-name words (word i has ID i + 1)
@@ -72,17 +74,20 @@ def name_index(tracks, artist_names, song_artist, song_playlists):
             {"tracks": track_keys, "artists": artist_keys})
 
 
-def playlist_counts(cfg, vocab):
-    """How many of the config's playlists (all of them, held-out ones too) contain each vocab song:
-    the find-songs menu's popularity order. Display only: no model sees it."""
+def playlist_counts(cfg, vocab, listens=False):
+    """How many of the config's playlists (all of them, held-out ones too) contain each vocab song, or with
+    listens, how many times it appears in them (every listen of a ListenBrainz store's sessions): the
+    find-songs menu's popularity order and count. Display only: no model sees it."""
     d = cfg.data
     store = load_store(d.folder)
     kept = np.flatnonzero(np.diff(store.playlist_offsets) >= d.min_playlist_len)[:d.max_playlists]
     tracks, offsets = concat_playlists(store, kept)
     vocab_id = {uri: i for i, uri in enumerate(vocab)}
     songs = np.array([vocab_id.get(u, -1) for u in store.track_uris], dtype=np.int64)[tracks]
-    playlist = np.repeat(np.arange(len(kept)), np.diff(offsets))
     known = songs >= 0
+    if listens:
+        return np.bincount(songs[known], minlength=len(vocab))
+    playlist = np.repeat(np.arange(len(kept)), np.diff(offsets))
     once = np.unique(playlist[known] * len(vocab) + songs[known])  # each (playlist, song) once
     return np.bincount(once % len(vocab), minlength=len(vocab))
 
@@ -156,15 +161,17 @@ def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ART
     ranker = CandidateRanker(retriever, sum(len(GROUPS[g]) for g in rc.features), rc.correction_hidden,
                              rc.predict_steps).to(device)
     ranker.load_state_dict(checkpoint["model"])
+    listens = (Path(cfg.data.folder) / "playlist_split.npy").exists()  # a ListenBrainz store (recsys.lb_store)
     settings = {"shortlist": rc.shortlist, "exclude_input": rc.exclude_input, "ivf_nlist": rc.ivf_nlist,
                 "ivf_nprobe": rc.ivf_nprobe, "features": rc.features, "correction_hidden": rc.correction_hidden,
                 "windows": rc.windows, "max_per_artist": max_per_artist, "mix": mix,
+                "popularity": "listens" if listens else "playlists",
                 "sources": {"ranker_config": str(ranker_config), "retriever_config": rc.retriever,
                                                    "ranker_checkpoint_sha256": file_fingerprint(ranker_path),
                                                    "retriever_checkpoint_sha256": file_fingerprint(retriever_path)}}
     pairs = pair_counts(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
     return write_bundle(out_root, Path(ranker_config).stem, retriever, ranker, settings, ds.vocab, ds.names,
-                        ds.artist_names, ds.name_words, pairs, playlist_counts(cfg, ds.vocab), device)
+                        ds.artist_names, ds.name_words, pairs, playlist_counts(cfg, ds.vocab, listens), device)
 
 
 

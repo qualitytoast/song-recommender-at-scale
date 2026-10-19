@@ -13,7 +13,7 @@ x-recommender: &recommender
   build: {context: ., dockerfile: docker/Dockerfile}
   image: song-recommender:latest
   volumes:
-    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-d2289f448228}:/bundle:ro
+    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-7a78b62c1533}:/bundle:ro
   restart: unless-stopped   # a crashed container is started again
   init: true                # a small init process runs the program, so the program's crash ends the container
   labels:

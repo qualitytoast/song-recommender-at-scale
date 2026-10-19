@@ -197,6 +197,16 @@ def test_songs_can_be_given_as_track_and_artist_text(served):
     assert out["recommendations"] == rec.recommend(["spotify:track:0", "spotify:track:3"])["recommendations"]
 
 
+def test_the_menu_names_the_bundles_count(tmp_path):
+    path = write_tiny_bundle(tmp_path, settings={"popularity": "listens"})[0]
+    rec = Recommender(path, "cpu")
+    try:
+        assert set(rec.find_songs("nightcall")[0]) == {"uri", "track", "artist", "listens"}
+        assert set(rec.recommend(["spotify:track:0"])["used"][0]) == {"uri", "track", "artist"}
+    finally:
+        rec.close()
+
+
 def test_a_bundle_sets_its_own_artist_limit_and_mix(tmp_path):
     path = write_tiny_bundle(tmp_path, settings={"max_per_artist": 1, "mix": 0.0})[0]
     rec = Recommender(path, "cpu")

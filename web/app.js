@@ -94,7 +94,8 @@ function renderMenu(songs) {
       const li = el("li");
       li.id = `option-${i}`;
       li.setAttribute("role", "option");
-      const count = el("span", "count", `${song.playlists.toLocaleString()} sessions`);
+      const unit = "listens" in song ? "listens" : "playlists";  // the model's count (recommender.describe)
+      const count = el("span", "count", `${song[unit].toLocaleString()} ${unit}`);
       li.append(el("span", "title", song.track), el("span", "artist", song.artist), count);
       li.addEventListener("mousedown", (e) => e.preventDefault());  // keep focus in the search box
       li.addEventListener("click", () => choose(i));

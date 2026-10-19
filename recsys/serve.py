@@ -12,8 +12,9 @@
                         "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
   GET  /songs?q=nightc&limit=10
-                    -> {"songs": [{"uri", "track", "artist", "playlists"}]}: songs whose track or artist name
-                       starts with q (or "track - artist"), in the most playlists first, for a type-ahead menu
+                    -> {"songs": [{"uri", "track", "artist", "listens" or "playlists"}]}: songs whose track or
+                       artist name starts with q (or "track - artist"), most played first (the bundle's count:
+                       listens for a ListenBrainz model, playlists for an MPD one), for a type-ahead menu
   GET  /health      -> {"status": "ok" or "degraded", "version", "songs", "defaults", "device", "shards", ...}
   GET  /live        -> {"ok": true}: the container health check; answered on the event loop, so it never
                        waits behind busy requests (a busy front desk mustn't look frozen and be restarted)
