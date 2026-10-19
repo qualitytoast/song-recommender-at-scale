@@ -1,0 +1,248 @@
+{
+  "bundle": "ranker_1m_lb_next10w-21b6f174c4d0",
+  "cases": 5000,
+  "mixed_cases": 1388,
+  "settings": [
+    {
+      "max_per_artist": 0,
+      "mix": 0.0,
+      "all": {
+        "next_ndcg@10": 0.2407,
+        "next_hit@10": 0.282,
+        "later_p@10": 0.1353,
+        "artists": 4.6286,
+        "last_artist": 0.4793,
+        "no_spotify_link": 0.037
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0246,
+        "next_hit@10": 0.0403,
+        "later_p@10": 0.0321,
+        "artists": 6.7522,
+        "last_artist": 0.2082,
+        "no_spotify_link": 0.0239
+      }
+    },
+    {
+      "max_per_artist": 0,
+      "mix": 0.25,
+      "all": {
+        "next_ndcg@10": 0.2335,
+        "next_hit@10": 0.2754,
+        "later_p@10": 0.1366,
+        "artists": 4.6208,
+        "last_artist": 0.433,
+        "no_spotify_link": 0.0326
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0196,
+        "next_hit@10": 0.0346,
+        "later_p@10": 0.032,
+        "artists": 6.884,
+        "last_artist": 0.121,
+        "no_spotify_link": 0.0181
+      }
+    },
+    {
+      "max_per_artist": 0,
+      "mix": 0.5,
+      "all": {
+        "next_ndcg@10": 0.2201,
+        "next_hit@10": 0.2644,
+        "later_p@10": 0.1348,
+        "artists": 4.611,
+        "last_artist": 0.3926,
+        "no_spotify_link": 0.0304
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0185,
+        "next_hit@10": 0.0346,
+        "later_p@10": 0.0317,
+        "artists": 6.8509,
+        "last_artist": 0.0652,
+        "no_spotify_link": 0.0154
+      }
+    },
+    {
+      "max_per_artist": 1,
+      "mix": 0.0,
+      "all": {
+        "next_ndcg@10": 0.2137,
+        "next_hit@10": 0.2244,
+        "later_p@10": 0.0548,
+        "artists": 9.875,
+        "last_artist": 0.0922,
+        "no_spotify_link": 0.0574
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0224,
+        "next_hit@10": 0.0339,
+        "later_p@10": 0.0288,
+        "artists": 9.9993,
+        "last_artist": 0.0628,
+        "no_spotify_link": 0.0271
+      }
+    },
+    {
+      "max_per_artist": 1,
+      "mix": 0.25,
+      "all": {
+        "next_ndcg@10": 0.2068,
+        "next_hit@10": 0.2188,
+        "later_p@10": 0.0566,
+        "artists": 9.8398,
+        "last_artist": 0.0883,
+        "no_spotify_link": 0.0511
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0181,
+        "next_hit@10": 0.0303,
+        "later_p@10": 0.0303,
+        "artists": 9.9993,
+        "last_artist": 0.0477,
+        "no_spotify_link": 0.0203
+      }
+    },
+    {
+      "max_per_artist": 1,
+      "mix": 0.5,
+      "all": {
+        "next_ndcg@10": 0.191,
+        "next_hit@10": 0.203,
+        "later_p@10": 0.0564,
+        "artists": 9.8206,
+        "last_artist": 0.082,
+        "no_spotify_link": 0.0467
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0176,
+        "next_hit@10": 0.0303,
+        "later_p@10": 0.0306,
+        "artists": 9.9986,
+        "last_artist": 0.033,
+        "no_spotify_link": 0.0163
+      }
+    },
+    {
+      "max_per_artist": 2,
+      "mix": 0.0,
+      "all": {
+        "next_ndcg@10": 0.2268,
+        "next_hit@10": 0.2466,
+        "later_p@10": 0.0742,
+        "artists": 7.7968,
+        "last_artist": 0.1541,
+        "no_spotify_link": 0.0505
+      },
+      "mixed": {
+        "next_ndcg@10": 0.023,
+        "next_hit@10": 0.036,
+        "later_p@10": 0.0312,
+        "artists": 8.1967,
+        "last_artist": 0.1046,
+        "no_spotify_link": 0.0248
+      }
+    },
+    {
+      "max_per_artist": 2,
+      "mix": 0.25,
+      "all": {
+        "next_ndcg@10": 0.2187,
+        "next_hit@10": 0.239,
+        "later_p@10": 0.0751,
+        "artists": 7.7198,
+        "last_artist": 0.1419,
+        "no_spotify_link": 0.045
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0192,
+        "next_hit@10": 0.0339,
+        "later_p@10": 0.0313,
+        "artists": 8.1499,
+        "last_artist": 0.0741,
+        "no_spotify_link": 0.0187
+      }
+    },
+    {
+      "max_per_artist": 2,
+      "mix": 0.5,
+      "all": {
+        "next_ndcg@10": 0.2058,
+        "next_hit@10": 0.2284,
+        "later_p@10": 0.0739,
+        "artists": 7.672,
+        "last_artist": 0.128,
+        "no_spotify_link": 0.041
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0176,
+        "next_hit@10": 0.0317,
+        "later_p@10": 0.0316,
+        "artists": 8.1095,
+        "last_artist": 0.048,
+        "no_spotify_link": 0.0153
+      }
+    },
+    {
+      "max_per_artist": 3,
+      "mix": 0.0,
+      "all": {
+        "next_ndcg@10": 0.2321,
+        "next_hit@10": 0.258,
+        "later_p@10": 0.0895,
+        "artists": 6.9752,
+        "last_artist": 0.2105,
+        "no_spotify_link": 0.048
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0244,
+        "next_hit@10": 0.0396,
+        "later_p@10": 0.0317,
+        "artists": 7.5994,
+        "last_artist": 0.1344,
+        "no_spotify_link": 0.0242
+      }
+    },
+    {
+      "max_per_artist": 3,
+      "mix": 0.25,
+      "all": {
+        "next_ndcg@10": 0.2248,
+        "next_hit@10": 0.2516,
+        "later_p@10": 0.0904,
+        "artists": 6.8746,
+        "last_artist": 0.1908,
+        "no_spotify_link": 0.0423
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0196,
+        "next_hit@10": 0.0346,
+        "later_p@10": 0.0321,
+        "artists": 7.5598,
+        "last_artist": 0.0908,
+        "no_spotify_link": 0.0179
+      }
+    },
+    {
+      "max_per_artist": 3,
+      "mix": 0.5,
+      "all": {
+        "next_ndcg@10": 0.2107,
+        "next_hit@10": 0.2386,
+        "later_p@10": 0.089,
+        "artists": 6.8338,
+        "last_artist": 0.171,
+        "no_spotify_link": 0.0399
+      },
+      "mixed": {
+        "next_ndcg@10": 0.0182,
+        "next_hit@10": 0.0339,
+        "later_p@10": 0.0321,
+        "artists": 7.5166,
+        "last_artist": 0.0563,
+        "no_spotify_link": 0.0153
+      }
+    }
+  ],
+  "seconds": 77
+}

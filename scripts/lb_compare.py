@@ -5,6 +5,8 @@
         --mpd-store data/mpd_store --mpd-bundle bundles/<mpd> --out runs/listenbrainz/compare
     # 2. both bundles answer them in this process (the serving code: recsys.recommender)
     python scripts/lb_compare.py score --cases runs/listenbrainz/compare --lb-bundle ... --mpd-bundle ...
+    # 3. the ListenBrainz bundle on the "all" cases with each serving setting in GRID (choosing its defaults)
+    python scripts/lb_compare.py tune --cases runs/listenbrainz/compare --lb-bundle ...
 
 cases: two samples of the held-out users' any-length cases (a song with a known song right before it in the same
 session; the input: the up to 10 known songs before it), each with the rest of its session:
@@ -14,8 +16,12 @@ session; the input: the up to 10 known songs before it), each with the rest of i
   all     any held-out case (the ListenBrainz model only), for the BTS check.
 score: per bundle and setting (the models' own answers: max_per_artist 0, mix 0; the site's: 2, 0.5):
   next NDCG@10 and hit@10, later p@10 (share of the top 10 that the session goes on to contain), artists (different
-  ones in the top 10), last artist (share by the last input song's artist); and on "all" for the ListenBrainz model:
-  among cases with no BTS song in their input, the share of top-10 songs by BTS, and of next songs by BTS.
+  ones in the top 10), last artist (share by the last input song's artist), no Spotify link (share of the top 10
+  without a Spotify URI: the webpage can't play those); and on "all" for the ListenBrainz model: among cases with
+  no BTS song in their input, the share of top-10 songs by BTS, and of next songs by BTS.
+tune: the same scores for the ListenBrainz model on "all", per setting in GRID, and on its "mixed" cases (3+ input
+  songs, every one by a different artist: closer to a list typed into the webpage than a session that plays an
+  album through); saved to <cases>/tune.json.
 """
 import argparse
 import json
@@ -31,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 HELD_OUT = 3
 SETTINGS = [{"max_per_artist": 0, "mix": 0.0}, {"max_per_artist": 2, "mix": 0.5}]
+GRID = [{"max_per_artist": a, "mix": m} for a in (0, 1, 2, 3) for m in (0.0, 0.25, 0.5)]
 WATCHED_ARTIST = "BTS"
 
 
@@ -113,8 +120,9 @@ def score(rec, cases, side, setting, artist_of):
         top, artists = answer(rec, c[side], setting)
         later = set(c[side]["later"])
         rows.append([ndcg_at_10(top, c[side]["target"]), c[side]["target"] in top, np.mean([u in later for u in top]),
-                     len(set(artists)), np.mean([a == artist_of(c[side]["songs"][-1]) for a in artists])])
-    return dict(zip(["next_ndcg@10", "next_hit@10", "later_p@10", "artists", "last_artist"],
+                     len(set(artists)), np.mean([a == artist_of(c[side]["songs"][-1]) for a in artists]),
+                     np.mean([not u.startswith("spotify:track:") for u in top])])
+    return dict(zip(["next_ndcg@10", "next_hit@10", "later_p@10", "artists", "last_artist", "no_spotify_link"],
                     np.mean(rows, axis=0).round(4).tolist()))
 
 
@@ -149,6 +157,25 @@ def score_cases(args):
     print(json.dumps(results, indent=2))
 
 
+def tune(args):
+    from recsys.recommender import Recommender
+
+    data = json.loads((Path(args.cases) / "cases.json").read_text())
+    rec, began = Recommender(args.lb_bundle, args.device), time.perf_counter()
+    artist_of = lambda uri: rec.artists[rec.song_id[uri]] if uri in rec.song_id else None
+    songs = lambda c: c["lb"]["songs"]
+    mixed = [c for c in data["all"] if len(songs(c)) >= 3 and len({artist_of(u) for u in songs(c)}) == len(songs(c))]
+    results = {"bundle": Path(args.lb_bundle).name, "cases": len(data["all"]), "mixed_cases": len(mixed),
+               "settings": []}
+    for s in GRID:
+        results["settings"].append({**s, "all": score(rec, data["all"], "lb", s, artist_of),
+                                    "mixed": score(rec, mixed, "lb", s, artist_of)})
+        print(json.dumps(results["settings"][-1]), flush=True)
+    rec.close()
+    results["seconds"] = round(time.perf_counter() - began)
+    (Path(args.cases) / "tune.json").write_text(json.dumps(results, indent=2))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -165,8 +192,12 @@ def main():
     s.add_argument("--lb-bundle", required=True)
     s.add_argument("--mpd-bundle", required=True)
     s.add_argument("--device", default="cpu")
+    t = sub.add_parser("tune")
+    t.add_argument("--cases", required=True)
+    t.add_argument("--lb-bundle", required=True)
+    t.add_argument("--device", default="cpu")
     args = ap.parse_args()
-    (make_cases if args.mode == "cases" else score_cases)(args)
+    {"cases": make_cases, "score": score_cases, "tune": tune}[args.mode](args)
 
 
 if __name__ == "__main__":
