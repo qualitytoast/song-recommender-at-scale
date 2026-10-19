@@ -1,11 +1,10 @@
 """Typo-tolerant search for the find-songs menu, by Meilisearch: a search engine in its own container
 (docker-compose.yml), reached only by the front desks.
 
-    # once per bundle, with Meilisearch running: send the bundle's songs to it (index songs-<version>)
-    docker compose run --rm --no-deps frontdesk python -m recsys.song_search --bundle /bundle \\
-        --url http://meilisearch:7700
+    # once per bundle (BUNDLE): send the bundle's songs to Meilisearch (index songs-<version>)
+    docker compose run --rm search-index
     # after switching to a new bundle: also delete the other bundles' indexes
-    docker compose run --rm --no-deps frontdesk python -m recsys.song_search --bundle /bundle \\
+    docker compose run --rm search-index python -m recsys.song_search --bundle /bundle \\
         --url http://meilisearch:7700 --drop-others
 
 Each song is one document: its ID (the bundle's song ID), its name (track and artist names), its album name,

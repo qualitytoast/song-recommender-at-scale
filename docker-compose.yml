@@ -7,8 +7,7 @@
 #                                                                        #   restart nginx, to see them all)
 #   REDIS_URL= BATCH=0 docker compose up -d                              # no cache, no batching
 #   SEARCH_URL= docker compose up -d                                     # the menu without Meilisearch
-#   docker compose run --rm --no-deps frontdesk python -m recsys.song_search --bundle /bundle \
-#     --url http://meilisearch:7700                                      # once per bundle: its search index
+#   docker compose run --rm search-index                                 # once per bundle: its search index
 #
 # BUNDLE is the bundle folder (default below), mounted read-only at /bundle in every container. Each
 # shard listens on port 50051 inside its own container and is reached by its service name (shard-0, ...).
@@ -113,6 +112,20 @@ services:
     volumes:
       - meili_data:/meili_data            # the indexes, kept across restarts (one per bundle version)
     restart: unless-stopped
+
+  # One-off: sends the bundle's songs to Meilisearch (recsys/song_search.py; minutes on the server). Its own
+  # service, not `run frontdesk`: a copy of the front desk inherits its health check and autoheal label, and
+  # gets restarted (from scratch) a minute in. Only started by `docker compose run --rm search-index`.
+  search-index:
+    image: song-recommender:latest
+    profiles: ["tools"]
+    volumes:
+      - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-ba9b20873aac}:/bundle:ro
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+    command: python -m recsys.song_search --bundle /bundle --url http://meilisearch:7700
+    depends_on:
+      meilisearch: {condition: service_started}
 
 volumes:
   meili_data:
