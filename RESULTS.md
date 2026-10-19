@@ -1511,7 +1511,7 @@ The next stage trains on ListenBrainz listens only (decided 2026-10-15): users a
 their listens from that window, cut into sessions (a new one after 30 min without a listen, back-to-back
 repeats dropped, at least 4 songs); one song = its cleaned-up artist + title (`recsys/listenbrainz.py`); a
 catalog of the songs played by at least N different training users; users split 80/10/10, the ranker's share
-10% of the training users.
+20% of the training users (10% was planned for a sample twice the MPD's size; the sample became 1x).
 
 **First look** (2026-10-15, `scripts/lb_first_look.py`, `runs/listenbrainz/first_look.json`). Three recent
 daily dumps: 9,501,373 listens from 32,263 users, read at ~92,000 listens per second in one process.
@@ -1585,3 +1585,85 @@ store; `runs/listenbrainz/store.json`, `store.out`, `genres.out`). Built in 5.3 
   ListenBrainz is less concentrated than the MPD: the top 100 artists hold 18.8% vs 22.8%.
 - Caught by checking the store: deriving sessions again from time gaps split sessions where a dropped repeat had
   opened a gap over 30 min (sessions of 1-3 songs); sessions now keep the rules' own boundaries (test added).
+
+**Step 4: the loader** (2026-10-18, PR #25). `recsys/data.py` reads a ListenBrainz store with the store's own
+split by user (`playlist_split.npy`: retriever, ranker, validation and held-out sessions); songs with no known
+length get a duration bucket of their own. Configs: `retriever_1m_lb` (`retriever_1m`'s settings, no
+playlist-name input, cases of any length) and `ranker_1m_lb_next10w` (the next-10w ranker, any length, check
+intervals scaled to the data). The full store loads in 27 s: 1,182,261 songs, 39.5M retriever targets (the MPD
+1M: 40.6M), 9.8M ranker cases.
+
+**Step 5: a short test run** (2026-10-18; scratch configs on a 5% slice, 1 epoch, deleted after). Both models
+trained, were evaluated and saved: retriever training 76 s, its evaluation 94 s, ranker 93 s, peak memory 9.8 GB.
+
+**Step 6: the full runs** (2026-10-18, one seed; `runs/retriever_ranker_runs/1m/retriever_1m_lb`,
+`ranker_1m_lb_next10w`, `runs/queue.log`). Scored on the held-out users' cases of any length (a fixed sample of
+200,000; 20,000 validation cases).
+
+| Run | Checks (best) | Training | Validation | Shortlists | Evaluation | Run |
+|---|---|---|---|---|---|---|
+| `retriever_1m_lb` | 32 (26: 6.75 epochs) | 93.0 min | 17.9 min | | ~17 min | 128 min |
+| `ranker_1m_lb_next10w` | 26 (20) | ~79 min (validation included, ~3 s a check) | | 34 min | ~2 min | 116 min |
+
+| Held-out (200,000 cases) | Next song | Hits@1 | Hits@10 | Next 10w | Later | Artists | Last artist | Top-100 recall |
+|---|---|---|---|---|---|---|---|---|
+| Retriever, exact search | 0.2398 | 0.202 | 0.283 | 0.1672 | 0.1022 | 5.70 | 37.3% | 39.9% |
+| Retriever, IVF shortlist (as served) | 0.2246 | 0.193 | 0.261 | 0.1657 | 0.1021 | 5.64 | 37.4% | 36.6% |
+| **Retriever + ranker** | **0.2477** | **0.213** | **0.288** | **0.2188** | **0.1420** | 4.51 | 49.1% | 36.6% |
+| Most popular | 0.0140 | 0.007 | 0.023 | | | | | 4.6% |
+
+- 17.7x most-popular. Not comparable with the MPD pair's 0.1692 (59x): other people, songs and sequences.
+  Listening is easier to predict than playlists (the retriever's first guess is the next song 20% of the time),
+  and most-popular is 5x stronger here (0.0140 vs ~0.003): listening is concentrated on fewer songs (BTS's
+  "SWIM" alone is the next song 230,879 times in training).
+- The ranker adds +0.023 (+10.3%) over its own IVF shortlists (the MPD 1M pair: +17%), at every input length
+  (+0.018 with 1 song, +0.022 to +0.027 with 2-10). It puts more of its top 10 later in the session (0.142 vs
+  0.102) and gains +32% on the next 10w, the goal it trained for.
+- It also leans on the last song's artist: 49% of its top 10 vs the retriever's 37%, 4.5 artists vs 5.6. In
+  this data the next song is by the last song's artist 37.6% of the time and on its album 26.9% (the MPD's
+  playlists: 25.7% and 15.4%): listeners play albums through. The retriever matches that rate; the ranker
+  overshoots it.
+- IVF search loses more than on the MPD: the shortlist holds the next song 36.6% of the time vs 39.9% for an
+  exact search (on the MPD, IVF found 99.5% of the exact top 100), which costs the retriever alone 0.015. The
+  ranker can only reorder the shortlist, so a search setting with more recall (more clusters searched) could
+  lift the pair without training.
+- The retriever's validation loss was lowest at check 11 (3 epochs) while validation NDCG@10 kept rising to check
+  26: the loss also punishes confident wrong guesses, and the model grows more confident as it trains.
+- Checks 9-28 of the retriever trained in ~207 s instead of ~112 s (the Mac in use), about 30 min of its 93.
+
+**Step 7: today's MPD pair vs the ListenBrainz pair on ListenBrainz's held-out users** (2026-10-18,
+`scripts/lb_compare.py`; `runs/listenbrainz/compare/scores.json`, `score.out`; export log
+`runs/listenbrainz/export.out`). Both pairs answer as serving bundles through the serving code
+(`recsys.recommender`, IVF search as on the site), with their own answers (no artist limit, no mix) and with the
+site's settings (at most 2 songs per artist, mix 0.5).
+
+- Cases: the held-out users' 488,659 sessions hold 6,075,919 cases (a song with a known song right before it;
+  the input is up to 10 songs before it). 2,291,134 (38%) have a next song both catalogs know (an MPD song of
+  the same artist and title). Of a sample of 5,000, the MPD model knows at least one input song in 4,614 (its
+  input leaves out songs it doesn't know, as the site does); those are compared.
+
+| Shared cases (4,614) | Next song | Hit@10 | Later | Artists | Last artist |
+|---|---|---|---|---|---|
+| MPD pair, own answers | 0.1996 | 0.241 | 0.093 | 4.09 | 63.4% |
+| **ListenBrainz pair, own answers** | **0.2433** | **0.283** | **0.118** | 4.36 | 51.0% |
+| MPD pair, site settings | 0.1697 | 0.193 | 0.050 | 8.13 | 15.1% |
+| **ListenBrainz pair, site settings** | **0.2152** | **0.238** | **0.068** | 7.56 | 13.1% |
+
+On 5,000 cases from all held-out cases (the ListenBrainz pair only): own answers 0.2407, later 0.135; site
+settings 0.2058, later 0.074.
+
+- The ListenBrainz pair beats the MPD pair on the next song by +22% (own answers) and +27% (site settings), and
+  on "later" by +27% and +35%, on cases the MPD model can answer. Part of the MPD pair's loss is input it doesn't
+  know: it sees only the input songs in its catalog.
+- The site's settings cost both pairs ~0.03 on the next song and ~40% of "later", for nearly twice the artists.
+  They were chosen on MPD playlists; ListenBrainz sessions stay on one artist more often.
+- BTS check (no artist cap in training; decided: measure first): of the 5,000 cases, 4,758 have no BTS song in
+  the input. BTS is the next song in 0.08% of them and holds 0.08% of the ListenBrainz pair's top-10 slots
+  (0.07% with the site settings); 0.36% (0.40%) of those cases have any BTS song in the top 10. BTS holds 3.5%
+  of the training listens, but the model doesn't push it on listeners who don't play it: no cap needed.
+- Caught by loading the bundle: export wrote `name_word_count: 0` for a model with no playlist-name input, so
+  serving built a 1-row name table the bundle has no weights for, and loading failed. Export now writes `None`
+  (the model's own convention for "no name input"); serving test added.
+- Run times: export 95 s (peak memory 21.8 GB; bundle 2.4 GB, no shards yet; the MPD pair's is 2.1 GB without
+  its 4 shards: 12% fewer songs and fewer song pairs), scoring 42 s on the CPU
+  (both pairs, both settings, plus the BTS check).

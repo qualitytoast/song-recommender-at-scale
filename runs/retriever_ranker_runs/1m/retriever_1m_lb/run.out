@@ -1,0 +1,62 @@
+runs/retriever_ranker_runs/1m/retriever_1m_lb/seed1 | device mps | 1,182,261 songs | 5,427,383 train chunks (39,463,824 targets) | 20,000 val | 235,423,669 params
+W1018 16:32:34.757000 78354 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1806] [0/0] Not enough SMs to use max_autotune_gemm mode
+check   0 | epoch  0.25 | train loss 6.2579 | val loss 8.8521 | val NDCG@10 0.1438 | later 0.075 (first 2,000) | train 129.7s + val 22.1s  *best
+check   1 | epoch  0.50 | train loss 5.2470 | val loss 8.4018 | val NDCG@10 0.1826 | later 0.086 (first 2,000) | train 125.6s + val 22.0s  *best
+check   2 | epoch  0.75 | train loss 4.9822 | val loss 8.1978 | val NDCG@10 0.1994 | later 0.089 (first 2,000) | train 125.5s + val 21.6s  *best
+check   3 | epoch  1.00 | train loss 4.8415 | val loss 8.0950 | val NDCG@10 0.2084 | later 0.089 (first 2,000) | train 128.5s + val 21.5s  *best
+check   4 | epoch  1.25 | train loss 4.4516 | val loss 8.0833 | val NDCG@10 0.2168 | later 0.084 (first 2,000) | train 111.2s + val 21.5s  *best
+check   5 | epoch  1.50 | train loss 4.4392 | val loss 8.0439 | val NDCG@10 0.2200 | later 0.086 (first 2,000) | train 111.3s + val 21.6s  *best
+check   6 | epoch  1.75 | train loss 4.4343 | val loss 8.0061 | val NDCG@10 0.2242 | later 0.087 (first 2,000) | train 111.4s + val 21.5s  *best
+check   7 | epoch  2.00 | train loss 4.4244 | val loss 7.9790 | val NDCG@10 0.2263 | later 0.087 (first 2,000) | train 111.3s + val 21.6s  *best
+check   8 | epoch  2.25 | train loss 4.1349 | val loss 8.0396 | val NDCG@10 0.2299 | later 0.085 (first 2,000) | train 112.5s + val 21.7s  *best
+check   9 | epoch  2.50 | train loss 4.1705 | val loss 8.0228 | val NDCG@10 0.2290 | later 0.082 (first 2,000) | train 197.9s + val 39.2s
+check  10 | epoch  2.75 | train loss 4.1928 | val loss 8.0231 | val NDCG@10 0.2307 | later 0.081 (first 2,000) | train 203.9s + val 43.6s  *best
+check  11 | epoch  3.00 | train loss 4.2009 | val loss 7.9698 | val NDCG@10 0.2338 | later 0.085 (first 2,000) | train 217.9s + val 40.2s  *best
+check  12 | epoch  3.25 | train loss 3.9618 | val loss 8.0691 | val NDCG@10 0.2334 | later 0.082 (first 2,000) | train 206.1s + val 42.4s  no improvement 1/5
+check  13 | epoch  3.50 | train loss 4.0019 | val loss 8.0563 | val NDCG@10 0.2330 | later 0.084 (first 2,000) | train 232.2s + val 41.3s  no improvement 2/5
+check  14 | epoch  3.75 | train loss 4.0347 | val loss 8.0547 | val NDCG@10 0.2320 | later 0.083 (first 2,000) | train 200.2s + val 43.6s  no improvement 3/5
+check  15 | epoch  4.00 | train loss 4.0577 | val loss 8.0253 | val NDCG@10 0.2352 | later 0.084 (first 2,000) | train 210.1s + val 42.1s  *best
+check  16 | epoch  4.25 | train loss 3.8387 | val loss 8.1200 | val NDCG@10 0.2345 | later 0.081 (first 2,000) | train 200.1s + val 42.3s  no improvement 1/5
+check  17 | epoch  4.50 | train loss 3.8860 | val loss 8.1214 | val NDCG@10 0.2349 | later 0.080 (first 2,000) | train 210.4s + val 41.5s  no improvement 2/5
+check  18 | epoch  4.75 | train loss 3.9215 | val loss 8.1052 | val NDCG@10 0.2348 | later 0.082 (first 2,000) | train 208.7s + val 41.3s  no improvement 3/5
+check  19 | epoch  5.00 | train loss 3.9470 | val loss 8.0713 | val NDCG@10 0.2364 | later 0.083 (first 2,000) | train 213.8s + val 41.9s  *best
+check  20 | epoch  5.25 | train loss 3.7408 | val loss 8.1929 | val NDCG@10 0.2356 | later 0.081 (first 2,000) | train 210.4s + val 39.3s  no improvement 1/5
+check  21 | epoch  5.50 | train loss 3.7977 | val loss 8.1580 | val NDCG@10 0.2371 | later 0.082 (first 2,000) | train 200.8s + val 40.2s  *best
+check  22 | epoch  5.75 | train loss 3.8331 | val loss 8.1471 | val NDCG@10 0.2355 | later 0.083 (first 2,000) | train 197.3s + val 39.2s  no improvement 1/5
+check  23 | epoch  6.00 | train loss 3.8611 | val loss 8.1281 | val NDCG@10 0.2353 | later 0.084 (first 2,000) | train 212.6s + val 44.7s  no improvement 2/5
+check  24 | epoch  6.25 | train loss 3.6698 | val loss 8.2242 | val NDCG@10 0.2356 | later 0.081 (first 2,000) | train 213.2s + val 42.1s  no improvement 3/5
+check  25 | epoch  6.50 | train loss 3.7198 | val loss 8.2123 | val NDCG@10 0.2356 | later 0.081 (first 2,000) | train 203.5s + val 42.4s  no improvement 4/5
+check  26 | epoch  6.75 | train loss 3.7605 | val loss 8.1906 | val NDCG@10 0.2374 | later 0.083 (first 2,000) | train 205.7s + val 41.9s  *best
+check  27 | epoch  7.00 | train loss 3.7907 | val loss 8.1687 | val NDCG@10 0.2370 | later 0.080 (first 2,000) | train 208.4s + val 40.5s  no improvement 1/5
+check  28 | epoch  7.25 | train loss 3.6089 | val loss 8.2769 | val NDCG@10 0.2368 | later 0.080 (first 2,000) | train 201.2s + val 21.7s  no improvement 2/5
+check  29 | epoch  7.50 | train loss 3.6585 | val loss 8.2506 | val NDCG@10 0.2355 | later 0.081 (first 2,000) | train 111.8s + val 21.6s  no improvement 3/5
+check  30 | epoch  7.75 | train loss 3.6981 | val loss 8.2424 | val NDCG@10 0.2359 | later 0.081 (first 2,000) | train 111.4s + val 21.7s  no improvement 4/5
+check  31 | epoch  8.00 | train loss 3.7317 | val loss 8.2247 | val NDCG@10 0.2353 | later 0.079 (first 2,000) | train 111.5s + val 21.5s  no improvement 5/5
+early stop at check 31
+best val NDCG@10 0.2374 at check 26 (6.75 epochs) | 110.9 min, of which validation 17.9 min | saved runs/retriever_ranker_runs/1m/retriever_1m_lb/seed1/best.pt
+
+runs/retriever_ranker_runs/1m/retriever_1m_lb/seed1/best.pt (check 26)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.2374    0.200    0.256    0.280    0.395    0.506    0.562    0.616    0.691
+full held-out                  200,000    0.2398    0.202    0.257    0.283    0.399    0.511    0.565    0.622    0.697
+held-out, 10 songs              91,708    0.2287    0.186    0.248    0.279    0.410    0.534    0.593    0.652    0.728
+most-popular (full held-out)   200,000    0.0140    0.007    0.016    0.023    0.046    0.079    0.107    0.146    0.217
+
+NDCG@10 over the next songs; top 10       next 5    next 5 w     next 10   next 10 w    later@10  artists@10 last artist
+validation                                0.1559      0.1708      0.1435      0.1644      0.1005      5.6879      0.3728
+full held-out                             0.1586      0.1734      0.1465      0.1672      0.1022      5.7022      0.3725
+
+held-out by input length             n   NDCG@10  hits@10
+  1 song                        15,955    0.2249    0.261
+  2 songs                       15,950    0.2406    0.277
+  3 songs                       16,194    0.2438    0.281
+  4 songs                       13,500    0.2504    0.287
+  5 songs                       11,846    0.2603    0.299
+  6 songs                       10,461    0.2565    0.291
+  7 songs                        9,024    0.2657    0.302
+  8 songs                        8,062    0.2668    0.307
+  9 songs                        7,300    0.2628    0.302
+  10 songs                      91,708    0.2287    0.279
+
+most common next songs in training: SWIM (230879x), NORMAL (103325x), Come Over (94784x)
+model / most-popular NDCG@10: 17.2x

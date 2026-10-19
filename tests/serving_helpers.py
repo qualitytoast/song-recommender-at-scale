@@ -19,9 +19,10 @@ PLAYLISTS = np.array([50, 5, 3, 20, 30, 10] + [1 + i % 4 for i in range(V - 6)])
 TRACKS = [NAMED.get(i, f"Song {i}") for i in range(V)]
 
 
-def tiny_pair():
-    """A retriever with artist, album, length and genre features and name words, and a ranker on it,
-    every weight random (so each table matters), the ranker's song tables fine-tuned apart."""
+def tiny_pair(names=True):
+    """A retriever with artist, album, length and genre features and name words (unless names=False, as for
+    listening sessions), and a ranker on it, every weight random (so each table matters), the ranker's song
+    tables fine-tuned apart."""
     torch.manual_seed(0)
     rng = np.random.RandomState(0)
     genres = rng.randint(0, 5, (V, 2))
@@ -29,11 +30,11 @@ def tiny_pair():
     artist = rng.randint(0, 6, V)
     artist[:6] = ARTIST_OF
     features = {"artist": artist, "album": rng.randint(0, 12, V), "duration": rng.randint(0, 4, V)}
-    retriever = SongRecommender(V, 8, 3, 2, 0.0, True, "pytorch", features, name_word_count=len(WORDS),
-                                song_genres=genres, causal=True).eval()
+    retriever = SongRecommender(V, 8, 3, 2, 0.0, True, "pytorch", features,
+                                name_word_count=len(WORDS) if names else None, song_genres=genres, causal=True).eval()
     with torch.no_grad():
         for table in [*retriever.input_features.values(), *retriever.output_features.values(), retriever.input_genres,
-                      retriever.output_genres, retriever.name_words]:
+                      retriever.output_genres, *([retriever.name_words] if names else [])]:
             table.weight[table.padding_idx is not None:].normal_()
     ranker = CandidateRanker(retriever, n_features=7, hidden=4).eval()
     with torch.no_grad():
@@ -46,9 +47,9 @@ def tiny_pair():
     return retriever, ranker, pairs
 
 
-def write_tiny_bundle(root):
+def write_tiny_bundle(root, names=True):
     """(bundle path, retriever, ranker, pairs) for the tiny pair, written under root."""
-    retriever, ranker, pairs = tiny_pair()
+    retriever, ranker, pairs = tiny_pair(names)
     path = write_bundle(root, "tiny", retriever, ranker, SETTINGS, [f"spotify:track:{i}" for i in range(V)], TRACKS,
-                        ARTISTS, WORDS, pairs, PLAYLISTS, CPU)
+                        ARTISTS, WORDS if names else [], pairs, PLAYLISTS, CPU)
     return path, retriever, ranker, pairs
