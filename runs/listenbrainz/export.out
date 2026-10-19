@@ -39,3 +39,23 @@ bundles/ranker_1m_lb_next10w-d2289f448228
         524264605819  instructions retired
         281273473276  cycles elapsed
          16938592144  peak memory footprint
+--- 2026-10-19 re-export: the menu's count is every listen (settings.json popularity = listens), not sessions
+bundles/ranker_1m_lb_next10w-7a78b62c1533
+       74.09 real        67.13 user         5.63 sys
+         12083052544  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2527075  page reclaims
+               40007  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                9781  voluntary context switches
+               53640  involuntary context switches
+        455103607210  instructions retired
+        199023316266  cycles elapsed
+         17840369544  peak memory footprint

@@ -45,3 +45,14 @@ def test_a_listenbrainz_store_loads_with_its_own_user_split(tmp_path):
     # GENRE_MIN_ARTISTS artists have it, which one artist can't reach
     assert load_artist_genres(tmp_path / "store" / "genres.jsonl")[ds.artist_uris[0]] == ["rock"]
     assert not ds.name_words                                   # sessions have no names
+
+
+def test_the_menu_counts_every_listen_of_a_listenbrainz_store(tmp_path):
+    from recsys.export import playlist_counts
+    tiny_store(tmp_path)
+    cfg = lb_config(tmp_path)
+    vocab = build_dataset(cfg).vocab
+    listens, sessions = playlist_counts(cfg, vocab, listens=True), playlist_counts(cfg, vocab)
+    store = load_store(tmp_path / "store")
+    assert listens.sum() == len(store.playlist_tracks)       # every listen once (all 6 songs are in the vocab)
+    assert (listens >= sessions).all() and listens.sum() > sessions.sum()   # songs repeat within sessions
