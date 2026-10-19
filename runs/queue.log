@@ -48,3 +48,9 @@
 2026-10-13 13:43:40 done retriever_50k_mtp3 in 29 min
 2026-10-13 13:43:41 start retriever_50k_mtp3w10
 2026-10-13 13:52:39 STOPPED retriever_50k_mtp3w10 by request at check 12 (mid-training, for a speed test); run folder and config deleted
+2026-10-18 16:32:04 queue of 2: configs/retriever_1m_lb.toml configs/ranker_1m_lb_next10w.toml
+2026-10-18 16:32:04 start retriever_1m_lb
+2026-10-18 18:40:48 done retriever_1m_lb in 128 min
+2026-10-18 18:40:51 start ranker_1m_lb_next10w
+2026-10-18 20:37:12 done ranker_1m_lb_next10w in 116 min
+2026-10-18 20:37:12 queue finished

@@ -1,0 +1,72 @@
+{
+  "counts": {
+    "held_out_sessions": 488659,
+    "cases": 6075919,
+    "cases_whose_next_song_both_know": 2291134,
+    "shared_sampled": 5000,
+    "shared_with_an_input_song_the_mpd_model_knows": 4614
+  },
+  "mpd": {
+    "bundle": "ranker_1m_any_length-f73f0d4e1e71",
+    "shared": {
+      "max_per_artist=0, mix=0.0": {
+        "next_ndcg@10": 0.1996,
+        "next_hit@10": 0.2412,
+        "later_p@10": 0.093,
+        "artists": 4.0932,
+        "last_artist": 0.634
+      },
+      "max_per_artist=2, mix=0.5": {
+        "next_ndcg@10": 0.1697,
+        "next_hit@10": 0.1933,
+        "later_p@10": 0.0503,
+        "artists": 8.1313,
+        "last_artist": 0.1513
+      }
+    }
+  },
+  "lb": {
+    "bundle": "ranker_1m_lb_next10w-21b6f174c4d0",
+    "shared": {
+      "max_per_artist=0, mix=0.0": {
+        "next_ndcg@10": 0.2433,
+        "next_hit@10": 0.2831,
+        "later_p@10": 0.1184,
+        "artists": 4.3615,
+        "last_artist": 0.51
+      },
+      "max_per_artist=2, mix=0.5": {
+        "next_ndcg@10": 0.2152,
+        "next_hit@10": 0.238,
+        "later_p@10": 0.0679,
+        "artists": 7.5592,
+        "last_artist": 0.1306
+      }
+    },
+    "all": {
+      "max_per_artist=0, mix=0.0": {
+        "next_ndcg@10": 0.2407,
+        "next_hit@10": 0.282,
+        "later_p@10": 0.1353,
+        "artists": 4.6286,
+        "last_artist": 0.4793
+      },
+      "max_per_artist=2, mix=0.5": {
+        "next_ndcg@10": 0.2058,
+        "next_hit@10": 0.2284,
+        "later_p@10": 0.0739,
+        "artists": 7.672,
+        "last_artist": 0.128
+      }
+    },
+    "BTS": {
+      "cases_without_it_in_the_input": 4758,
+      "share_of_next_songs_by_it": 0.0008,
+      "share_of_top_10_by_it, max_per_artist=0, mix=0.0": 0.0008,
+      "cases_with_it_in_the_top_10, max_per_artist=0, mix=0.0": 0.0036,
+      "share_of_top_10_by_it, max_per_artist=2, mix=0.5": 0.0007,
+      "cases_with_it_in_the_top_10, max_per_artist=2, mix=0.5": 0.004
+    }
+  },
+  "seconds": 42
+}

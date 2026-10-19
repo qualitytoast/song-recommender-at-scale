@@ -1,0 +1,21 @@
+bundles/ranker_1m_lb_next10w-8977f1488287
+       95.35 real        87.82 user         5.77 sys
+         15373008896  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2447787  page reclaims
+               41226  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               11502  voluntary context switches
+               56635  involuntary context switches
+        516020894628  instructions retired
+        277448225506  cycles elapsed
+         21814622824  peak memory footprint
+--- re-export after the name_word_count fix
+bundles/ranker_1m_lb_next10w-21b6f174c4d0

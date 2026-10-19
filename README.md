@@ -133,6 +133,7 @@ compare each with its own most-popular baseline. Full tables and notes are in
 | Retriever at 1M (80% of training playlists; faster training settings) | 1,000,000 | 1,053,328 | 0.1397 | 49x |
 | Two-stage at 1M: retriever alone (input songs left out) → + ranker | 1,000,000 | 1,053,328 | 0.1479 → 0.1725 | 59x |
 | **Two-stage at 1M, ranker trained on inputs of any length** | **1,000,000** | **1,053,328** | **0.1479 → 0.1731** | **59x** |
+| ListenBrainz listening (inputs of any length): retriever alone → + next-10 ranker | 4.9M sessions | 1,182,261 | 0.2246 → 0.2477 | 17.7x |
 
 The 1M numbers score all 4,938,520 held-out windows. Day to day, runs at 200k
 and up score a fixed sample of 200,000 of them, which read within 0.001 of the
@@ -174,6 +175,31 @@ change (bold) is kept: +3.4% "later" for -7.4% on the next song, with no new
 retriever. Multi-token heads added nothing to the ranker and cost the retriever
 17% on the next song at 2.5x the training time per check; they were dropped.
 
+**Training on real listening (ListenBrainz).** The same pair of models, trained
+from scratch on ListenBrainz listening history instead of playlists: 66.4M
+listens (the MPD's size) from 61,752 users active in the past year, cut into
+listening sessions, with a catalog of the 1.18M songs at least 5 training users
+played. Users are split 80/10/10, so held-out listeners are people the models
+never saw. The pair scores 0.2477 held-out NDCG@10 (17.7x most-popular; the
+retriever alone 0.2246 on its shortlists); the retriever's run took 128 min,
+the ranker's 116.
+Listening is easier to predict than playlists (people play albums through),
+so this number isn't comparable with the MPD's 0.1692. Both pairs were asked
+the same questions instead: held-out listeners' sessions whose next song both
+catalogs know, through the serving code.
+
+| On held-out ListenBrainz listeners (4,614 cases) | Next song | Later | By the last song's artist |
+|---|---|---|---|
+| Today's MPD pair (served on the site) | 0.1996 | 9.3% | 63% |
+| **ListenBrainz pair** | **0.2433** | **11.8%** | **51%** |
+| Today's MPD pair, site settings (2 per artist, mix 0.5) | 0.1697 | 5.0% | 15% |
+| **ListenBrainz pair, site settings** | **0.2152** | **6.8%** | **13%** |
+
+The ListenBrainz pair predicts real listeners' next song 22-27% better. BTS
+holds 3.5% of the training listens, but for sessions without BTS it fills
+0.08% of the top 10, the same as its share of their real next songs, so no cap
+per artist was needed.
+
 Some things that didn't work are recorded too: window augmentation (masking,
 cropping, shuffling songs) slowed overfitting but never raised the best score;
 uniform random negatives were clearly worse than popularity-weighted ones.
@@ -209,7 +235,8 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       songs puts 3.4% more of its top 10 later in the playlist and cuts the last artist's share from 41%
       to 30%, for -7.4% on the very next song; multi-token heads added nothing
 - [x] Public hosting on Oracle Cloud's free tier: https://songrec.duckdns.org (HTTPS, per-visitor rate limits)
-- [ ] Train on ListenBrainz user streaming history
+- [x] Train on ListenBrainz listening history: 66M listens from 61,752 users, 1.18M songs; the pair
+      predicts held-out listeners' next song 22% better than today's MPD pair (0.2433 vs 0.1996)
 - [ ] Personalization to one listener's history (add distillation?)
 
 ## Serving
@@ -480,8 +507,7 @@ ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose 
 
 ## Future work
 
-Ideas to test before the ListenBrainz data comes in. Each would be a separate
-run, measured like every other change.
+Ideas to test. Each would be a separate run, measured like every other change.
 
 - **The playlist-fit ranker at 1M** (next): train the ranker on the next 10
   songs, weighted (`ranker_50k_1m_settings_next10w` at 50k), on the existing 1M

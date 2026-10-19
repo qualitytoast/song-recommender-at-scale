@@ -16,3 +16,4 @@ runs/**/*.faiss
 runs/shortlist_cache/
 runs/serving/**/cases.json
 runs/serving/*_outcomes.json
+runs/listenbrainz/**/cases.json

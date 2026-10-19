@@ -194,3 +194,18 @@ def test_songs_can_be_given_as_track_and_artist_text(served):
     out = rec.recommend(["Nightcall - Kavinsky", "nope", "spotify:track:3"])
     assert [u["uri"] for u in out["used"]] == ["spotify:track:0", "spotify:track:3"] and out["ignored"] == ["nope"]
     assert out["recommendations"] == rec.recommend(["spotify:track:0", "spotify:track:3"])["recommendations"]
+
+
+def test_a_bundle_without_playlist_names_loads_and_answers(tmp_path):
+    """A model trained without the playlist-name input (ListenBrainz sessions have no names) exports "no name
+    words", and serving builds its model without a name table; a request's name is then ignored."""
+    path = write_tiny_bundle(tmp_path, names=False)[0]
+    assert json.loads((path / "settings.json").read_text())["name_word_count"] is None
+    rec = Recommender(path, "cpu")
+    try:
+        with_name = rec.recommend(["spotify:track:0", "spotify:track:3"], "chill mix", max_per_artist=0, mix=0.0)
+        without = rec.recommend(["spotify:track:0", "spotify:track:3"], None, max_per_artist=0, mix=0.0)
+    finally:
+        rec.close()
+    assert [r["uri"] for r in with_name["recommendations"]] == [r["uri"] for r in without["recommendations"]]
+    assert len(without["recommendations"]) == 10

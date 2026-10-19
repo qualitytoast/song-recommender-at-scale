@@ -101,7 +101,10 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
                 "embed_dim": retriever.song_embedding.embedding_dim, "num_layers": len(retriever.blocks),
                 "scale_attention": retriever.blocks[0].attention.scale, "causal": retriever.blocks[0].attention.causal,
                 "input_length": retriever.position_embedding.num_embeddings,
-                "name_word_count": len(name_words), "n_features": sum(len(GROUPS[g]) for g in settings["features"])}
+                # None: the retriever has no playlist-name input (the model's own convention; 0 would make
+                # serving build a 1-row name table the bundle has no weights for)
+                "name_word_count": None if retriever.name_words is None else len(name_words),
+                "n_features": sum(len(GROUPS[g]) for g in settings["features"])}
     (partial / "settings.json").write_text(json.dumps(settings, indent=2))
     torch.save(shared_state(retriever), partial / "retriever_shared.pt")
     torch.save(shared_state(ranker), partial / "ranker_shared.pt")
