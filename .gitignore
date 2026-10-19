@@ -3,7 +3,6 @@ data/
 __pycache__/
 .DS_Store
 .claude/
-CLAUDE.md
 bundles/
 docker/bluegreen/edge.conf
 # runs/: the training history (configs, logs, eval results) is kept; checkpoints, cached shortlists and
