@@ -1691,7 +1691,7 @@ settings 0.2058, later 0.074.
 - The defaults now come with each bundle (`recsys.export --max-per-artist 3 --mix 0`, in settings.json, shown
   at `/health`); a bundle without them (the MPD pair's) keeps 2 and 0.5. Re-export: 95 s. 4 shards: 6 s.
 - Webpage: songs without a Spotify link (17% of the catalog) say "No Spotify link found for this song" where
-  the player would open; the playlist-name box is gone (the model has no name input); the menu counts sessions;
+  the player would open; the playlist-name box is gone (the model has no name input); the menu counts listens (first sessions, see below);
   ListenBrainz in the text. Old share links keep only songs whose Spotify ID the new catalog uses too (~128k
   of the MPD's IDs; decided: left as is).
 - Local Docker: 2,000 of 2,000 held-out requests gave the offline top 10 in order (p50 8.3 ms end to end); the
@@ -1703,3 +1703,10 @@ settings 0.2058, later 0.074.
 - With 3 per artist, 2 of 300 answers still had more than 3 songs by one artist: when the shortlist is almost
   all one artist (an Undertale soundtrack session: Toby Fox), the best skipped songs fill the 10 places, as
   `pick_top` always did.
+- The menu's count is now every listen in the sample (66.35M; settings.json `popularity` = "listens"; MPD bundles
+  keep "playlists"), not sessions that played the song (61.2M; a song twice in one session counted once): One
+  More Time (Daft Punk) 7,418 listens vs 7,172 sessions. Only the count, the two name-sorted lists and
+  settings.json changed (re-export 74 s, model files identical), so the server got 14 MB instead of 2 GB:
+  the running bundle hard-linked under the new name (`cp -al`), then `rsync -c` sent only the files that
+  differ (7 s, all 51 files checked by SHA-256). Switch: ~10 s of 503s; 2,000 of 2,000 again (p50 29 ms,
+  p99 65 ms).
