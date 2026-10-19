@@ -5,10 +5,11 @@
 **Live: [songrec.duckdns.org](https://songrec.duckdns.org)**: pick a few songs and it suggests what comes next.
 
 A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
-predicts the next one. It is trained on the Spotify Million Playlist Dataset
-(MPD), uses song and playlist features, and works in two stages: a fast
+predicts the next one. It was built and scaled on the Spotify Million Playlist
+Dataset (MPD), uses song and playlist features, and works in two stages: a fast
 retriever narrows a million songs down to 100, then a slower, more careful
-ranker orders those 100.
+ranker orders those 100. The live site serves the same design trained on 66
+million real listens from ListenBrainz.
 
 It is served as a small distributed system: the million-song catalog is split
 across four gRPC shard servers, behind load-balanced front desks with a shared
@@ -277,11 +278,12 @@ Trained to predict the very next song, the models mostly follow a playlist's
 *last* song, and since people often add several songs by one artist in a row,
 the 10 individually most likely next songs are often all by that artist (after
 a varied 10-song playlist ending in Daft Punk: 9 Daft Punk songs). Two serving
-settings fix that without retraining, each a request field:
+settings fix that without retraining, each a request field whose default
+comes with the model (set at export, shown at `/health`):
 
-- `max_per_artist` (default 2): going down the ranker's order of all 100
+- `max_per_artist` (the MPD pair's default 2): going down the ranker's order of all 100
   candidates, a song is skipped once its artist has 2 songs in the top 10.
-- `mix` (default 0.5): the retriever makes a "what comes next" guess after
+- `mix` (the MPD pair's default 0.5): the retriever makes a "what comes next" guess after
   every song of the playlist, not just the last (that's how it was trained).
   The playlist vector becomes a weighted average of those guesses: the last
   song's weighs 1, the one before it 0.5, then 0.25, and so on. Scores are
@@ -306,6 +308,19 @@ variety: many real playlists do repeat artists. `"max_per_artist": 0, "mix": 0`
 gives the models' own answers, which the checks against the offline evaluation use.
 The same goal in training (a ranker trained on the next 10 songs) was tested at
 50k; see Results and Future work.
+
+**The ListenBrainz pair's settings: 3 per artist, no mixing.** Tuned again on
+5,000 held-out listening cases (`scripts/lb_compare.py tune`). Here mixing never
+raised "later" and always cost the next song, and the artist limit costs more
+"later", because listeners really do stay on one artist (they play albums
+through). 3 per artist keeps ~7 artists in a top 10 for -0.009 next-song NDCG@10
+against no limit; on varied lists it costs nothing.
+
+| ListenBrainz pair | Next song NDCG@10 | Later in the session | Different artists | By the last song's artist |
+|---|---|---|---|---|
+| No limit, no mixing (the models as trained) | 0.2407 | 13.5% | 4.6 | 48% |
+| 2 per artist, mix 0.5 (the MPD pair's settings) | 0.2058 | 7.4% | 7.7 | 13% |
+| **3 per artist, no mixing (its default)** | **0.2321** | **8.9%** | **7.0** | **21%** |
 
 ### The catalog split across processes (phase B)
 
@@ -453,7 +468,8 @@ and the first new-version answer each came within 0.1 s of the switch.
 `web/` (plain HTML, CSS and JavaScript, served at `/`): type-ahead song search,
 the playlist kept in the address bar (a link reopens the same recommendations),
 Play buttons with Spotify's embedded player, light and dark mode, and phone
-layouts.
+layouts. 17% of the ListenBrainz catalog's songs have no Spotify link (4.8% of
+the songs it recommends with its default settings); their Play button says so instead of playing.
 
 ### Hosting
 
