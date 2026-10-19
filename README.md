@@ -238,6 +238,8 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] Public hosting on Oracle Cloud's free tier: https://songrec.duckdns.org (HTTPS, per-visitor rate limits)
 - [x] Train on ListenBrainz listening history: 66M listens from 61,752 users, 1.18M songs; the pair
       predicts held-out listeners' next song 22% better than today's MPD pair (0.2433 vs 0.1996)
+- [x] The live site serves the ListenBrainz pair (its own tuned settings: 3 per artist, no mixing),
+      swapped in with ~12 s of downtime
 - [ ] Personalization to one listener's history (add distillation?)
 
 ## Serving
@@ -474,13 +476,16 @@ the songs it recommends with its default settings); their Play button says so in
 ### Hosting
 
 Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
-Compose system on it (~2.5 GB in use). `docker-compose.oracle.yml` adds Caddy in front, which gets and renews
+Compose system on it (~2.8 GB for the containers, serving the ListenBrainz pair). `docker-compose.oracle.yml`
+adds Caddy in front, which gets and renews
 the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
 Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,
 nginx answers 429 at once, so one visitor can't take the 2 cores.
 
-On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order (p50 27 ms, p99
-66 ms; the Mac's 10-core Docker setup: ~10 ms). Free capacity for Oracle's Arm machines is scarce: the
+On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order, for both the MPD
+pair (p50 27 ms, p99 66 ms) and the ListenBrainz pair that replaced it (p50 30 ms, p99 64 ms; the Mac's
+10-core Docker setup: ~8-10 ms). The swap was a plain restart on the new bundle: the site answered "busy"
+for ~12 s. Free capacity for Oracle's Arm machines is scarce: the
 machine came after ~2,900 automatic requests from a free account (`scripts/oracle_launch.py`), on the
 first request after upgrading to Pay As You Go, which still costs nothing within the Always Free
 allowance. Quota rules make Oracle refuse anything beyond that allowance (other machine types, more
