@@ -11,7 +11,7 @@
     <div class="top-inner">
       <div>
         <h1>Song recommender</h1>
-        <p class="lede">Next-song recommendations learned from a million Spotify playlists.</p>
+        <p class="lede">Next-song recommendations learned from 66 million real listens on ListenBrainz.</p>
       </div>
       <p class="model" id="model"></p>
     </div>
@@ -31,9 +31,6 @@
       <ol id="playlist" class="rows playlist"></ol>
       <p id="playlist-empty" class="empty">Add a few songs. Any number works; the last ten are used.</p>
 
-      <label class="field" for="name">Playlist name <span class="muted">(optional)</span></label>
-      <input id="name" type="text" placeholder="night drive" autocomplete="off">
-
       <div class="actions">
         <button id="go" class="primary" type="button" disabled>Recommend</button>
         <button id="clear" class="quiet" type="button" hidden>Clear</button>
@@ -50,7 +47,7 @@
   </main>
 
   <footer class="foot">
-    <p>Data: Spotify Million Playlist Dataset (2010–2017); genres from MusicBrainz. <a href="/docs">API</a></p>
+    <p>Data: ListenBrainz listens (October 2025 – October 2026); genres from MusicBrainz. <a href="/docs">API</a></p>
   </footer>
 
   <script src="app.js"></script>

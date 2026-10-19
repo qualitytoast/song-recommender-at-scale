@@ -34,6 +34,8 @@ from recsys.ranker import CandidateRanker, drop_input_songs
 from recsys.search import SearchWorker, mixed_query_vectors
 
 TOP = 10  # recommendations per request
+# MAX_PER_ARTIST and MIX: the defaults for a bundle without its own (settings.json's max_per_artist and mix,
+# set at export and tuned per model; a request can still set either). Both were tuned on the MPD pair.
 # At most this many of the 10 by one artist, unless a request says otherwise (0: no limit). The models
 # learned to predict the very next song, which is often by the last song's artist (people add albums), so
 # the 10 most likely next songs alone are mostly that artist's.
@@ -162,6 +164,9 @@ class Catalog:
         self.device = torch.device(device)
         self.settings = json.loads((self.path / "settings.json").read_text())
         self.version = json.loads((self.path / "manifest.json").read_text())["version"]
+        # a request's artist limit and mix unless it sets them: the bundle's own, if it has them
+        self.max_per_artist = self.settings.get("max_per_artist", MAX_PER_ARTIST)
+        self.mix = self.settings.get("mix", MIX)
         songs = json.loads((self.path / "songs.json").read_text())
         self.uris, self.tracks = songs["uris"], songs["tracks"]
         self.song_artist = self.load("song_artist")
@@ -258,13 +263,15 @@ class Catalog:
         partial, "missing_shards")."""
         raise NotImplementedError
 
-    def recommend(self, songs, name=None, arrived=None, max_per_artist=MAX_PER_ARTIST, mix=MIX):
+    def recommend(self, songs, name=None, arrived=None, max_per_artist=None, mix=None):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
         top 10 songs {uri, track, artist, score} with at most max_per_artist by one artist (0: no limit),
         the songs read {uri, track, artist} and the ones left out (no match in the catalog), the bundle
         version, and the time per stage. mix: how much the retriever's guesses after earlier songs count
-        (MIX). arrived: when the request came in (time.monotonic()), for dropping it if it waits too long
-        (Overloaded)."""
+        (MIX). None for either: the bundle's default. arrived: when the request came in (time.monotonic()),
+        for dropping it if it waits too long (Overloaded)."""
+        max_per_artist = self.max_per_artist if max_per_artist is None else max_per_artist
+        mix = self.mix if mix is None else mix
         start = time.perf_counter()
         arrived = time.monotonic() if arrived is None else arrived
         ids = [self.resolve(s) for s in songs]
