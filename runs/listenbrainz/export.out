@@ -59,3 +59,23 @@ bundles/ranker_1m_lb_next10w-7a78b62c1533
         455103607210  instructions retired
         199023316266  cycles elapsed
          17840369544  peak memory footprint
+--- 2026-10-19 re-export: album names for the search index (song_albums.json)
+bundles/ranker_1m_lb_next10w-ba9b20873aac
+       79.21 real        70.03 user         6.94 sys
+         11153620992  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2908243  page reclaims
+               34654  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                9794  voluntary context switches
+              120075  involuntary context switches
+        471532164252  instructions retired
+        212535651944  cycles elapsed
+         16517360704  peak memory footprint

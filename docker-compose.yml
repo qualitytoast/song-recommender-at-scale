@@ -6,14 +6,18 @@
 #   docker compose up -d --scale frontdesk=3 --scale shard-0=2           # copies (then: docker compose
 #                                                                        #   restart nginx, to see them all)
 #   REDIS_URL= BATCH=0 docker compose up -d                              # no cache, no batching
+#   SEARCH_URL= docker compose up -d                                     # the menu without Meilisearch
+#   docker compose run --rm --no-deps frontdesk python -m recsys.song_search --bundle /bundle \
+#     --url http://meilisearch:7700                                      # once per bundle: its search index
 #
 # BUNDLE is the bundle folder (default below), mounted read-only at /bundle in every container. Each
 # shard listens on port 50051 inside its own container and is reached by its service name (shard-0, ...).
+# MEILI_MASTER_KEY (in .env, never committed) is Meilisearch's key: any random text of 16+ characters.
 x-recommender: &recommender
   build: {context: ., dockerfile: docker/Dockerfile}
   image: song-recommender:latest
   volumes:
-    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-7a78b62c1533}:/bundle:ro
+    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-ba9b20873aac}:/bundle:ro
   restart: unless-stopped   # a crashed container is started again
   init: true                # a small init process runs the program, so the program's crash ends the container
   labels:
@@ -50,10 +54,13 @@ services:
       python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
       --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
       --redis "${REDIS_URL-redis://redis:6379/0}" --batch ${BATCH:-16} --batch-wait-ms ${BATCH_WAIT_MS:-2}
+      --search "${SEARCH_URL-http://meilisearch:7700}"
     environment:
       OMP_NUM_THREADS: "1"  # one request's computations are tiny: splitting them over threads costs more
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
     depends_on:
       redis: {condition: service_started}
+      meilisearch: {condition: service_started}  # not required: without it the menu uses the name search
       shard-0: {condition: service_healthy}
       shard-1: {condition: service_healthy}
       shard-2: {condition: service_healthy}
@@ -94,3 +101,18 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped   # back after a reboot like the rest (without it the front desks run uncached)
+
+  meilisearch:  # the menu's search engine (recsys/song_search.py); no published port: only the front desks
+    image: getmeili/meilisearch:v1.54.3
+    environment:
+      MEILI_ENV: production               # every request needs the key; no web dashboard
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+      MEILI_NO_ANALYTICS: "true"          # send no usage data to Meilisearch's makers
+      MEILI_MAX_INDEXING_THREADS: ${MEILI_INDEXING_THREADS:-1}  # indexing leaves the other cores to serving
+      MEILI_MAX_INDEXING_MEMORY: ${MEILI_INDEXING_MEMORY:-1073741824}  # bytes (1 GiB)
+    volumes:
+      - meili_data:/meili_data            # the indexes, kept across restarts (one per bundle version)
+    restart: unless-stopped
+
+volumes:
+  meili_data:

@@ -16,3 +16,5 @@ runs/shortlist_cache/
 runs/serving/**/cases.json
 runs/serving/*_outcomes.json
 runs/listenbrainz/**/cases.json
+# .env: the deployment's own settings (BUNDLE path, MEILI_MASTER_KEY): the key is a secret
+.env
