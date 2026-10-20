@@ -47,11 +47,11 @@ def tiny_pair(names=True):
     return retriever, ranker, pairs
 
 
-def write_tiny_bundle(root, names=True, settings=None):
+def write_tiny_bundle(root, names=True, settings=None, albums=None):
     """(bundle path, retriever, ranker, pairs) for the tiny pair, written under root (settings: added to
-    SETTINGS)."""
+    SETTINGS; albums: per song)."""
     retriever, ranker, pairs = tiny_pair(names)
     path = write_bundle(root, "tiny", retriever, ranker, {**SETTINGS, **(settings or {})},
                         [f"spotify:track:{i}" for i in range(V)], TRACKS,
-                        ARTISTS, WORDS if names else [], pairs, PLAYLISTS, CPU)
+                        ARTISTS, WORDS if names else [], pairs, PLAYLISTS, CPU, albums)
     return path, retriever, ranker, pairs

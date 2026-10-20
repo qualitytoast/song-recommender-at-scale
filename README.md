@@ -240,6 +240,7 @@ uniform random negatives were clearly worse than popularity-weighted ones.
       predicts held-out listeners' next song 22% better than today's MPD pair (0.2433 vs 0.1996)
 - [x] The live site serves the ListenBrainz pair (its own tuned settings: 3 per artist, no mixing),
       swapped in with ~12 s of downtime
+- [x] Song search that fixes typos and matches title, artist and album words in any order (Meilisearch)
 - [ ] Personalization to one listener's history (add distillation?)
 
 ## Serving
@@ -379,7 +380,7 @@ the price of three network rounds.
 One Docker image (`docker/Dockerfile`: CPU PyTorch, model files mounted rather
 than baked in) runs every service in `docker-compose.yml`: 4 shards, the front
 desk (scaled with `--scale frontdesk=N`), nginx, Redis, and an autoheal
-container. Each shard and front desk has a health check every 2 s; a container
+container; Meilisearch (the song search) runs from its own image. Each shard and front desk has a health check every 2 s; a container
 whose program dies is restarted by Docker, and one that stops answering its
 health check (frozen, not dead) is restarted by autoheal. One PyTorch thread
 per front desk (`OMP_NUM_THREADS=1`) halved a single request's work in a
@@ -467,16 +468,41 @@ and the first new-version answer each came within 0.1 s of the switch.
 
 ### Webpage
 
-`web/` (plain HTML, CSS and JavaScript, served at `/`): type-ahead song search,
+`web/` (plain HTML, CSS and JavaScript, served at `/`): type-ahead song search
+(typos fixed, words in any order across title, artist and album: below),
 the playlist kept in the address bar (a link reopens the same recommendations),
 Play buttons with Spotify's embedded player, light and dark mode, and phone
 layouts. 17% of the ListenBrainz catalog's songs have no Spotify link (4.8% of
 the songs it recommends with its default settings); their Play button says so instead of playing.
 
+### Song search
+
+The menu searches with Meilisearch, an open-source search engine in its own container
+(`recsys/song_search.py`). Each song is a document (its title and artist as one field, its album as
+another, and its listen count), indexed once per model version. The typed words match in any order, the
+last one as the start of a word, with one typo in words of 4+ letters and two in 8+. Matches are ordered by
+how many words matched, then fewer typos, then a title or artist match before an album-only one, then the
+most listens (popularity before the field put album-only matches above titles; Meilisearch's own order,
+popularity last, put obscure exact titles and YouTube-style copies first).
+
+| Typed | Before (names starting with it) | Now |
+|---|---|---|
+| one more tpme | (nothing) | One More Time - Daft Punk |
+| radiohed creep | (nothing) | Creep - Radiohead |
+| daft punk one more | (nothing) | One More Time - Daft Punk |
+| discovery daft punk | (nothing) | One More Time, Harder Better Faster Stronger, ... (the album) |
+| kendrik lamar humble | (nothing) | HUMBLE. - Kendrick Lamar |
+| mr brightside | 2 remixes, not The Killers ("Mr." has a period) | Mr. Brightside - The Killers |
+
+Typing 200 songs letter by letter (~4,300 requests, each prefix once) took p50 2.7 ms, p99 7.1 ms end to end locally and p50 8.9 ms, p99 26 ms on the server. The
+front desk gives Meilisearch 250 ms per search; if it errors or is too slow, the menu answers from the
+front desk's own name index (names starting with the text, no typos) and skips Meilisearch for a second,
+and those answers aren't cached.
+
 ### Hosting
 
 Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
-Compose system on it (~2.8 GB for the containers, serving the ListenBrainz pair). `docker-compose.oracle.yml`
+Compose system on it (~4.3 GB for the containers, serving the ListenBrainz pair; Meilisearch is 1.4 GB of it). `docker-compose.oracle.yml`
 adds Caddy in front, which gets and renews
 the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
 Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,
@@ -503,7 +529,8 @@ Caddy        HTTPS (certificate, encryption); passes the visitor's address on
 nginx        per-visitor rate limit ("slow down": 429, try again in a second); spreads requests over front desks
    │
    ▼
-front desk   the webpage; song search from its own name index (cached in Redis too); recommendations:
+front desk   the webpage; song search: Meilisearch (its own name index if Meilisearch can't answer), cached
+   │           in Redis; recommendations:
    │           Redis has this exact request (same songs, same model version)? answer from the cache. Otherwise:
    │           1. shards: the input songs' details
    │           2. front desk: the retriever's "what comes next" vector (its guesses after each song, blended)
@@ -524,6 +551,7 @@ Updating the site after a change on main:
 
 ```bash
 ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build'
+# a new model: index its songs first (BUNDLE=<its folder> ... run --rm search-index), then point .env's BUNDLE at it
 ```
 
 ## Future work

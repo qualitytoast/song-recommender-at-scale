@@ -12,9 +12,11 @@
                         "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
   GET  /songs?q=nightc&limit=10
-                    -> {"songs": [{"uri", "track", "artist", "listens" or "playlists"}]}: songs whose track or
-                       artist name starts with q (or "track - artist"), most played first (the bundle's count:
-                       listens for a ListenBrainz model, playlists for an MPD one), for a type-ahead menu
+                    -> {"songs": [{"uri", "track", "artist", "listens" or "playlists"}]}: for a type-ahead
+                       menu, with --search the typo-tolerant matches of q's words in any order across track,
+                       artist and album (recsys.song_search); without it, or when the search can't answer,
+                       songs whose track or artist name starts with q (or "track - artist"); most played
+                       first (the bundle's count: listens for a ListenBrainz model, playlists for an MPD one)
   GET  /health      -> {"status": "ok" or "degraded", "version", "songs", "defaults", "device", "shards", ...}
   GET  /live        -> {"ok": true}: the container health check; answered on the event loop, so it never
                        waits behind busy requests (a busy front desk mustn't look frozen and be restarted)
@@ -31,6 +33,7 @@ recsys.frontdesk.ShardedRecommender (per-song data in the shard servers), loaded
 which FastAPI runs in worker threads; the Recommender answers one request at a time.
 """
 import argparse
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -59,12 +62,14 @@ def busy(message="busy: too many requests in progress; try again"):
 
 
 def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, batch=0, batch_wait_ms=2.0,
-               max_pending=64, max_wait_ms=1000.0, max_pending_menu=512):
+               max_pending=64, max_wait_ms=1000.0, max_pending_menu=512, search_url=None):
     """The FastAPI app serving bundle (a recsys.export folder) with the models on device; with shards
     (their addresses, shard i at position i), the songs' data comes from the shard servers; with
     redis_url, answers are shared through a Redis cache (recsys.cache); with batch > 1 (sharded only),
-    requests arriving within batch_wait_ms are answered together, up to batch at a time (recsys.batching).
-    max_pending, max_wait_ms: overload limits for recommendations; max_pending_menu: for /songs."""
+    requests arriving within batch_wait_ms are answered together, up to batch at a time (recsys.batching);
+    with search_url, the menu searches with Meilisearch there (recsys.song_search; its key from the
+    MEILI_MASTER_KEY environment variable). max_pending, max_wait_ms: overload limits for recommendations;
+    max_pending_menu: for /songs."""
     admission, menu_admission = Admission(max_pending, max_wait_ms), Admission(max_pending_menu)
 
     @asynccontextmanager
@@ -81,6 +86,10 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         if redis_url:
             from recsys.cache import Cache
             app.state.recommender.cache = Cache(redis_url)
+        if search_url:
+            from recsys.song_search import SongSearch
+            rec = app.state.recommender
+            rec.song_search = SongSearch(search_url, rec.version, len(rec.uris), os.environ.get("MEILI_MASTER_KEY"))
         app.state.recommender.admission = admission
         # Plain (def) endpoints run in worker threads: enough for every admitted request, so a request
         # never waits for a thread instead of for its answer.
@@ -132,6 +141,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         return {"status": status, "version": rec.version, "songs": len(rec.uris),
                 "defaults": {"max_per_artist": rec.max_per_artist, "mix": rec.mix}, "device": str(rec.device),
                 "shards": shards, "cache": rec.cache.report() if rec.cache else None,
+                "search": rec.song_search.report() if rec.song_search else None,
                 "batching": rec.batcher.report() if rec.batcher else None, "answers": rec.answers,
                 "admission": {"recommend": admission.report(), "songs": menu_admission.report()}}
 
@@ -159,6 +169,7 @@ if __name__ == "__main__":
     ap.add_argument("--shards", help="comma-separated shard addresses (host:port), shard 0 first")
     ap.add_argument("--deadline", type=float, default=2.0, help="seconds each call to a shard may take")
     ap.add_argument("--redis", help="a shared answer cache, e.g. redis://redis:6379/0")
+    ap.add_argument("--search", help="Meilisearch for the menu (recsys.song_search), e.g. http://meilisearch:7700")
     ap.add_argument("--batch", type=int, default=0, help="answer up to this many requests together (sharded)")
     ap.add_argument("--batch-wait-ms", type=float, default=2.0, help="how long a request waits for company")
     ap.add_argument("--max-pending", type=int, default=64, help="recommendation requests admitted at once")
@@ -166,4 +177,5 @@ if __name__ == "__main__":
     args = ap.parse_args()
     shards = args.shards.split(",") if args.shards else None
     uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis, args.batch,
-                           args.batch_wait_ms, args.max_pending, args.max_wait_ms), host=args.host, port=args.port)
+                           args.batch_wait_ms, args.max_pending, args.max_wait_ms, search_url=args.search),
+                host=args.host, port=args.port)

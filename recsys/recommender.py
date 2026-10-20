@@ -3,7 +3,8 @@ data or the full checkpoints.
 
     rec = Recommender("bundles/ranker_1m_any_length-<version>", device="cpu")
     rec.recommend(["spotify:track:...", "Nightcall - Kavinsky"], name="road trip")   # top 10, as a dict
-    rec.find_songs("nightc")   # songs whose name or artist starts with it, in the most playlists first
+    rec.find_songs("nightc")   # songs whose name or artist starts with it (or, with rec.song_search set, typo-
+                               # tolerant matches), most played first
     rec.close()
 
 A request's songs (Spotify URIs, or "Track - Artist" text) become song IDs (unknown ones are left out
@@ -184,6 +185,7 @@ class Catalog:
         self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
         self.lock = threading.Lock()
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
+        self.song_search = None  # a recsys.song_search.SongSearch (typo-tolerant), if set: the menu asks it first
         self.batcher = None  # a recsys.batching.Batcher, if requests are answered in batches
         self.answers = {"total": 0, "partial": 0, "cached": 0}  # counts for /health
         self.admission = None  # a recsys.admission.Admission: requests that waited too long are dropped
@@ -208,19 +210,21 @@ class Catalog:
         return ids[np.lexsort((ids, -self.playlists[ids]))]
 
     def find_songs(self, query, limit=10):
-        """Songs for a menu as the user types: those whose track or artist name starts with query (or,
-        for "track - artist" text, whose track starts with the part before " - " and artist with the
-        part after), in the most playlists first: [{uri, track, artist, and the count: "playlists" or
-        "listens", as self.popularity says}]. Cached, if a cache
-        is set."""
+        """Songs for a menu as the user types: [{uri, track, artist, and the count: "playlists" or "listens",
+        as self.popularity says}]. With a search set, its answer (typed words in any order across track,
+        artist and album names, typos allowed: recsys.song_search); without one, or when it can't answer,
+        the songs whose track or artist name starts with query (or, for "track - artist" text, whose track
+        starts with the part before " - " and artist with the part after), most played first. Cached, if a
+        cache is set (a fallback answer isn't: it mustn't outlive the search's outage)."""
         q = name_key(query)
         if not q:
             return []
         key = f"songs:{self.version}:{limit}:{q}"
         if self.cache and (found := self.cache.get(key)) is not None:
             return found
-        found = self._find_songs(q, limit)
-        if self.cache:
+        ids = self.song_search.search(query, limit) if self.song_search else None
+        found = [self.describe(j) for j in ids] if ids is not None else self._find_songs(q, limit)
+        if self.cache and (ids is not None or not self.song_search):
             self.cache.set(key, found)
         return found
 

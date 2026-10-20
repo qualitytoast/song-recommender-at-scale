@@ -22,6 +22,7 @@ Writes bundles/<ranker config name>-<version>/:
                                  the find-songs menu's order and count)
   songs_by_track.npy, songs_by_artist.npy, name_keys.json   song IDs sorted by track / artist name and the
                                  names as compared (recommender.name_key), for finding songs as the user types
+  song_albums.json               each song's album name, for the search index (recsys/song_search.py)
   name_words.json                the playlist-name words (word i has ID i + 1)
   manifest.json                  every file's SHA-256 and size, and the version
 The version is the first 12 hex digits of a SHA-256 over the files' own SHA-256s, so a change to any
@@ -92,12 +93,21 @@ def playlist_counts(cfg, vocab, listens=False):
     return np.bincount(once % len(vocab), minlength=len(vocab))
 
 
+def song_albums(cfg, vocab):
+    """Each vocab song's album name ("" if unknown): the search index's album field. Display only."""
+    store = load_store(cfg.data.folder)
+    row = {uri: i for i, uri in enumerate(store.track_uris)}
+    album = np.asarray(store.track_album)
+    return [store.album_names[album[row[uri]]] for uri in vocab]
+
+
 def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, artist_names, name_words, pairs,
-                 song_playlists, device):
+                 song_playlists, device, albums=None):
     """Write the bundle for a trained retriever and ranker (see the module docstring) to
     out_root/<name>-<version> and return that path. settings: settings.json's contents (see
     export); uris, tracks: per song; artist_names: per artist ID; name_words: the name-word list;
-    pairs: (keys, counts) from rank_features.pair_counts; song_playlists: per song (playlist_counts)."""
+    pairs: (keys, counts) from rank_features.pair_counts; song_playlists: per song (playlist_counts);
+    albums: per song (song_albums; [""] * songs if None)."""
     out_root = Path(out_root)
     partial = out_root / f".{name}-partial"
     shutil.rmtree(partial, ignore_errors=True)
@@ -138,6 +148,7 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     save("songs_by_artist", by_artist)
     (partial / "name_keys.json").write_text(json.dumps(keys))
     (partial / "name_words.json").write_text(json.dumps(list(name_words)))
+    (partial / "song_albums.json").write_text(json.dumps([""] * len(uris) if albums is None else list(albums)))
     version = write_manifest(partial)
     final = out_root / f"{name}-{version}"
     shutil.rmtree(final, ignore_errors=True)
@@ -171,7 +182,8 @@ def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ART
                                                    "retriever_checkpoint_sha256": file_fingerprint(retriever_path)}}
     pairs = pair_counts(ds.fit_songs, ds.fit_offsets, len(ds.vocab))
     return write_bundle(out_root, Path(ranker_config).stem, retriever, ranker, settings, ds.vocab, ds.names,
-                        ds.artist_names, ds.name_words, pairs, playlist_counts(cfg, ds.vocab, listens), device)
+                        ds.artist_names, ds.name_words, pairs, playlist_counts(cfg, ds.vocab, listens), device,
+                        song_albums(cfg, ds.vocab))
 
 
 
