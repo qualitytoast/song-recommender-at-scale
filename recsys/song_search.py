@@ -16,8 +16,9 @@ exact rather than typo or prefix matches). Each bundle version has its own index
 gets IDs of its own bundle's songs.
 
 SongSearch is the front desk's side. It must never make the menu fail: every search has a short timeout
-(100 ms; Meilisearch answers in a few ms), any error or unusable answer returns None, and the caller then
-uses the bundle's own name search (recommender.Catalog._find_songs: names starting with the text, no typos);
+(250 ms; warm, Meilisearch answers the server's searches in 9 ms, 70 ms at worst; 157 ms once right after a
+restart), any error or unusable answer returns None, and the caller then uses the bundle's own name search
+(recommender.Catalog._find_songs: names starting with the text, no typos);
 after an error Meilisearch is skipped for `cooldown` seconds, so a down or slow Meilisearch costs one timeout,
 not one per keystroke.
 """
@@ -112,7 +113,7 @@ class SongSearch:
     """The menu's search for one bundle version (see the module docstring): search() returns song IDs, best
     first, or None when Meilisearch can't answer (the caller falls back)."""
 
-    def __init__(self, url, version, songs, key=None, timeout=0.1, cooldown=1.0):
+    def __init__(self, url, version, songs, key=None, timeout=0.25, cooldown=1.0):
         self.url, self.index, self.songs, self.key = url.rstrip("/"), index_name(version), songs, key
         self.timeout, self.cooldown = timeout, cooldown
         self.skip_until = 0.0
