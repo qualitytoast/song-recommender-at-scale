@@ -494,7 +494,7 @@ popularity last, put obscure exact titles and YouTube-style copies first).
 | kendrik lamar humble | (nothing) | HUMBLE. - Kendrick Lamar |
 | mr brightside | 2 remixes, not The Killers ("Mr." has a period) | Mr. Brightside - The Killers |
 
-Locally, 4,338 requests from typing 200 songs letter by letter took p50 2.7 ms, p99 7.1 ms end to end. The
+Typing 200 songs letter by letter (~4,300 requests, each prefix once) took p50 2.7 ms, p99 7.1 ms end to end locally and p50 8.9 ms, p99 26 ms on the server. The
 front desk gives Meilisearch 250 ms per search; if it errors or is too slow, the menu answers from the
 front desk's own name index (names starting with the text, no typos) and skips Meilisearch for a second,
 and those answers aren't cached.
@@ -502,7 +502,7 @@ and those answers aren't cached.
 ### Hosting
 
 Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
-Compose system on it (~2.8 GB for the containers, serving the ListenBrainz pair). `docker-compose.oracle.yml`
+Compose system on it (~4.3 GB for the containers, serving the ListenBrainz pair; Meilisearch is 1.4 GB of it). `docker-compose.oracle.yml`
 adds Caddy in front, which gets and renews
 the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
 Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,

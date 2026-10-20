@@ -1710,3 +1710,34 @@ settings 0.2058, later 0.074.
   the running bundle hard-linked under the new name (`cp -al`), then `rsync -c` sent only the files that
   differ (7 s, all 51 files checked by SHA-256). Switch: ~10 s of 503s; 2,000 of 2,000 again (p50 29 ms,
   p99 65 ms).
+
+**Step 9: typo-tolerant song search** (2026-10-19; `recsys/song_search.py`, `scripts/search_check.py`,
+`runs/serving/search/`). The menu's old search matched only the start of a title or artist name: "one more
+tpme", "daft punk one more", "discovery daft punk" (an album) and "radiohed creep" found nothing. Now Meilisearch
+(an open-source search engine, its own container, v1.54.3) answers it: one document per song (name = title +
+artist, album, listens), one index per bundle version, typed words in any order, the last as a prefix, one typo
+in words of 4+ letters, two in 8+.
+
+- Ranking, tuned on 20 test searches (`show_old.json` / `show_new.json`): Meilisearch's default order (popularity
+  only as the last tie-break) put obscure exact titles ("a" -> songs titled "A") and YouTube-style copies
+  ("Taylor Swift - ... (Official Music Video)") first; popularity right after typos let album-only matches
+  crowd out titles ("love" -> Olivia Rodrigo songs from an album with "love" in it). Kept: all the words, fewest
+  typos, a name match before an album-only one (`attributeRank`, title and artist as one field so artist
+  searches rank by listens), then most listens. The album names come from the store (`song_albums.json` in
+  the bundle; re-export 79 s).
+- The front desk gives Meilisearch 250 ms; on an error or timeout the menu answers from its own name index
+  (the old search) and skips Meilisearch for 1 s, and those answers aren't cached. Checked by stopping
+  Meilisearch locally: the menu kept answering (130 ms for the first search, then 1.5 ms).
+- Indexing 1,182,261 songs (one indexing thread): 36-44 s on the Mac, 178 s on the server's 2 cores while the
+  site kept serving; index 1.4 GB on disk, Meilisearch ~1.4-1.6 GB of memory (3.3 GB of the server's 7.7 GB
+  still available at the lowest point).
+- Speed, 200 songs typed letter by letter (~4,300 requests, each prefix once): p50 2.7 ms, p99 7.1 ms locally;
+  p50 8.9 ms, p99 26 ms, max 77 ms on the server (0 fallbacks). Right after a restart one search took 157 ms,
+  over the first 100 ms limit (raised to 250 ms). Recommendations unchanged: 2,000 of 2,000 match offline (server
+  p50 29 ms, p99 74 ms).
+- Two deploy bugs, both fixed: (1) indexing in a copy of the front-desk container inherited its health check
+  and autoheal label, so it was restarted from scratch every ~minute on the server (9 times) until it got its
+  own one-off service (`docker compose run --rm search-index`). (2) With Meilisearch's memory in use, the
+  shards' first load of the new bundle from the slow disk (~50 MB/s) took 38 s, past their 30 s start period:
+  autoheal restarted 3 shards mid-load, `docker compose up` gave up waiting, and the front desk wasn't started
+  until by hand: the site was down 5 min 20 s. Shards now get 120 s; the redeploy with that fix: 33 s down.
