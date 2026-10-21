@@ -15,6 +15,10 @@ the listener's history) and prints only totals.
   key that made ListenBrainz songs): song ID -1 if neither finds it.
 - Sessions follow the ListenBrainz rules on the listens (catalog songs or not, so a missing song doesn't
   join two sessions): a new one after 30 min without a listen, back-to-back repeats dropped, 4+ songs.
+
+Then, split by time (split_times): the taste profile (build_profile, recsys.taste) comes from plays before a
+cutoff 12 weeks before the export's end; sessions of the 6 weeks after it choose the profile's settings, the
+last 6 weeks report the result (scripts/personal_eval.py).
 """
 import argparse
 import json
@@ -28,6 +32,9 @@ from recsys.lb_sessions import sessions
 from recsys.listenbrainz import song_key
 
 LISTENED_MS = 30_000
+DAY = 86_400
+HELD_OUT_DAYS = 42     # the last 6 weeks report the result; the 6 before them choose the settings
+HALF_LIFE_DAYS = 180   # a play counts half as much in the profile per 180 days before the cutoff
 
 
 def read_export(path):
@@ -110,6 +117,98 @@ def build_plays(export, bundle, out):
 
 def day(seconds):
     return datetime.fromtimestamp(int(seconds), timezone.utc).date().isoformat()
+
+
+def load_plays(folder, bundle):
+    """build_plays' arrays for this bundle (a dict)."""
+    version = json.loads((Path(bundle) / "manifest.json").read_text())["version"]
+    with np.load(Path(folder) / version / "plays.npz") as f:
+        return {k: f[k] for k in f.files}
+
+
+def split_times(seconds, days=HELD_OUT_DAYS):
+    """(cutoff, test_start, end), Unix seconds: the profile is built from plays before cutoff, settings are chosen
+    on sessions starting in [cutoff, test_start), and the result is reported on [test_start, end)."""
+    end = int(seconds[-1]) + 1
+    return end - 2 * days * DAY, end - days * DAY, end
+
+
+def session_sequences(plays, start, stop):
+    """The kept, catalog-matched listens of sessions that begin in [start, stop): [(song IDs, play indexes)]
+    per session, in time order."""
+    keep = plays["kept"] & (plays["song"] >= 0)
+    idx = np.flatnonzero(keep)
+    if not len(idx):
+        return []
+    session = plays["session"][idx]
+    bounds = np.flatnonzero(np.diff(session)) + 1
+    out = []
+    for part in np.split(idx, bounds):
+        if start <= plays["seconds"][part[0]] < stop:
+            out.append((plays["song"][part], part))
+    return out
+
+
+def prefix_windows(sequences, length):
+    """Every position of every sequence as a model input (the up to `length` songs ending there): (X (n, length)
+    right-padded with 0, lengths, play index of each position)."""
+    rows, lengths, where = [], [], []
+    for songs, plays_at in sequences:
+        for i in range(len(songs)):
+            window = songs[max(0, i + 1 - length):i + 1]
+            rows.append(np.pad(window, (0, length - len(window))))
+            lengths.append(len(window))
+            where.append(plays_at[i])
+    return np.array(rows, dtype=np.int64).reshape(-1, length), np.array(lengths), np.array(where, dtype=np.int64)
+
+
+def load_retriever(bundle, device="cpu"):
+    """The bundle's retriever, loaded as the server loads it (recsys.recommender.Recommender)."""
+    import torch
+
+    from recsys.recommender import load_shared, serving_retriever
+
+    bundle = Path(bundle)
+    settings = json.loads((bundle / "settings.json").read_text())
+    model = serving_retriever(settings, np.load(bundle / "retriever_song_inputs.npy")).to(device)
+    load_shared(model, torch.load(bundle / "retriever_shared.pt", weights_only=True))
+    return model, settings
+
+
+def build_profile(plays, bundle, until, key, device="cpu", half_life=HALF_LIFE_DAYS):
+    """The taste profile (recsys.taste) from plays before `until`; recent plays count more (half as much per
+    half_life days back)."""
+    from recsys.search import query_vectors
+    from recsys.taste import make_profile
+
+    bundle = Path(bundle)
+    version = json.loads((bundle / "manifest.json").read_text())["version"]
+    songs = len(json.loads((bundle / "songs.json").read_text())["uris"])
+    song_artist = np.load(bundle / "song_artist.npy")
+    weight = 0.5 ** ((until - plays["seconds"]) / (half_life * DAY))
+    before, ids = plays["seconds"] < until, plays["song"]
+    # taste: the retriever's guess after every position of every session, recency-weighted
+    model, settings = load_retriever(bundle, device)
+    X, lengths, at = prefix_windows(session_sequences(plays, -np.inf, until), settings["input_length"])
+    early = plays["seconds"][at] < until  # a session that runs past the cutoff: only its part before it
+    X, lengths, at = X[early], lengths[early], at[early]
+    h = query_vectors(model, X, np.zeros((len(X), 1), dtype=np.int64), device, lengths=lengths)[:, :-1]
+    w = weight[at]
+    taste = (w[:, None] * h).sum(0) / w.sum()
+    taste *= np.average(np.linalg.norm(h, axis=1), weights=w) / np.linalg.norm(taste)  # a typical query's length
+    # artists: recency-weighted listens, log-scaled to 0-1
+    listened = before & plays["listened"] & (ids >= 0)
+    affinity = np.log1p(np.bincount(song_artist[ids[listened]], weights=weight[listened],
+                                    minlength=int(song_artist.max()) + 1))
+    affinity /= max(affinity.max(), 1e-9)
+    # skips: share of a song's plays skipped (Spotify's flag, or under 30 s), for songs played 3+ times
+    played = before & (ids >= 0)
+    skips = played & (plays["skipped"] | ~plays["listened"])
+    count = np.bincount(ids[played], minlength=songs)
+    skip_rate = np.where(count >= 3, np.bincount(ids[skips], minlength=songs) / np.maximum(count, 1), 0.0)
+    profile = make_profile(key, version, np.append(taste, 1.0), affinity, skip_rate)
+    return profile, {"windows": int(len(X)), "artists_with_listens": int((affinity > 0).sum()),
+                     "songs_with_skip_rate": int((count >= 3).sum()), "until": day(until)}
 
 
 if __name__ == "__main__":
