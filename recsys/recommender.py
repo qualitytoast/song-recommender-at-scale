@@ -33,6 +33,7 @@ from recsys.model import SongRecommender
 from recsys.rank_features import CandidateFeatures
 from recsys.ranker import CandidateRanker, drop_input_songs
 from recsys.search import SearchWorker, mixed_query_vectors
+from recsys.taste import adjust, blend, load_profile
 
 TOP = 10  # recommendations per request
 # MAX_PER_ARTIST and MIX: the defaults for a bundle without its own (settings.json's max_per_artist and mix,
@@ -186,6 +187,7 @@ class Catalog:
         self.lock = threading.Lock()
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
         self.song_search = None  # a recsys.song_search.SongSearch (typo-tolerant), if set: the menu asks it first
+        self.profiles = {}  # key -> recsys.taste.Profile: a request naming one is personalized (load_profiles)
         self.batcher = None  # a recsys.batching.Batcher, if requests are answered in batches
         self.answers = {"total": 0, "partial": 0, "cached": 0}  # counts for /health
         self.admission = None  # a recsys.admission.Admission: requests that waited too long are dropped
@@ -195,6 +197,15 @@ class Catalog:
 
     def close(self):
         pass
+
+    def load_profiles(self, folder):
+        """Load the taste profiles in folder (*.npz, recsys.taste) built for this bundle version; returns how many
+        are loaded. One built for another version is skipped: its song and artist IDs don't fit this bundle."""
+        for path in sorted(Path(folder).glob("*.npz")):
+            profile = load_profile(path)
+            if profile.bundle == self.version:
+                self.profiles[profile.key] = profile
+        return len(self.profiles)
 
     def _starting(self, keys, order, prefix):
         """Song IDs whose key (in sorted keys, songs in order) starts with prefix."""
@@ -262,22 +273,25 @@ class Catalog:
         """(1, width) name-word IDs, as in training: unknown words left out, all padding if none known."""
         return encode_names([name or ""], self.word_id)
 
-    def recommend_ids(self, song_ids, name_ids, mix=MIX):
+    def recommend_ids(self, song_ids, name_ids, mix=MIX, taste=None, w=0.0):
         """The reranked shortlist for a playlist's songs (song IDs, oldest first; the last input_length are
-        read) and its name-word IDs (1, width), best first, with the retriever's guesses mixed by mix (MIX):
-        (song IDs, ranker scores, timings in ms by stage, notes for the response: {"partial": bool} and, if
-        partial, "missing_shards")."""
+        read) and its name-word IDs (1, width), best first, with the retriever's guesses mixed by mix (MIX) and,
+        with a taste vector, the query pulled toward it by w (recsys.taste.blend): (song IDs, ranker scores,
+        timings in ms by stage, notes for the response: {"partial": bool} and, if partial, "missing_shards")."""
         raise NotImplementedError
 
-    def recommend(self, songs, name=None, arrived=None, max_per_artist=None, mix=None):
+    def recommend(self, songs, name=None, arrived=None, max_per_artist=None, mix=None, profile=None):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
         top 10 songs {uri, track, artist, score} with at most max_per_artist by one artist (0: no limit),
         the songs read {uri, track, artist} and the ones left out (no match in the catalog), the bundle
         version, and the time per stage. mix: how much the retriever's guesses after earlier songs count
-        (MIX). None for either: the bundle's default. arrived: when the request came in (time.monotonic()),
-        for dropping it if it waits too long (Overloaded)."""
+        (MIX). None for either: the bundle's default. profile: a loaded profile's key (self.profiles) for an
+        answer nudged toward that listener's taste (recsys.taste); an unknown key gets the usual answer, and
+        "personalized" says which. arrived: when the request came in (time.monotonic()), for dropping it if it
+        waits too long (Overloaded)."""
         max_per_artist = self.max_per_artist if max_per_artist is None else max_per_artist
         mix = self.mix if mix is None else mix
+        profile = self.profiles.get(profile) if profile else None
         start = time.perf_counter()
         arrived = time.monotonic() if arrived is None else arrived
         ids = [self.resolve(s) for s in songs]
@@ -289,15 +303,15 @@ class Catalog:
         name_ids = self.encode_name(name)
         lookup_ms = (time.perf_counter() - start) * 1000
         answer = {"used": [{k: v for k, v in self.describe(j).items() if k != self.popularity} for _, j in used],
-                  "ignored": ignored, "version": self.version}
+                  "ignored": ignored, "version": self.version, "personalized": profile is not None}
         key = (f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
-               f":a{max_per_artist}:m{mix}")
+               f":a{max_per_artist}:m{mix}" + (f":p{profile.cache_id()}" if profile else ""))
         self.answers["total"] += 1
         if self.cache and (cached := self.cache.get(key)) is not None:
             self.answers["cached"] += 1
             return {"recommendations": cached, **answer, "partial": False, "cached": True,
                     "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
-        times, recommendations, notes = self.compute(used, name_ids, arrived, max_per_artist, mix)
+        times, recommendations, notes = self.compute(used, name_ids, arrived, max_per_artist, mix, profile)
         self.answers["partial"] += notes["partial"]
         if self.cache and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
             self.cache.set(key, recommendations)
@@ -306,19 +320,24 @@ class Catalog:
         return {"recommendations": recommendations, **answer, **notes, "cached": False,
                 "timings_ms": {k: round(v, 3) for k, v in times.items()}}
 
-    def compute(self, used, name_ids, arrived=None, max_per_artist=MAX_PER_ARTIST, mix=MIX):
+    def compute(self, used, name_ids, arrived=None, max_per_artist=MAX_PER_ARTIST, mix=MIX, profile=None):
         """(timings, the top 10 as dicts (pick_top), notes) for the resolved songs `used` and name-word IDs;
         in a batch with other requests if a batcher is set, else one request at a time. With an admission
-        policy, a request that waited too long to start raises Overloaded instead."""
+        policy, a request that waited too long to start raises Overloaded instead. With a profile
+        (recsys.taste), its taste vector pulls the query and its artist bonus and skip penalty adjust the
+        ranker's scores before the top 10 are picked."""
         arrived = time.monotonic() if arrived is None else arrived
+        taste, w = (profile.taste, profile.w) if profile else (None, 0.0)
         if self.batcher is not None:
             deadline = self.admission.deadline(arrived) if self.admission else None
-            ids, scores, times, notes = self.batcher.submit(([i for _, i in used], name_ids, mix), deadline)
+            ids, scores, times, notes = self.batcher.submit(([i for _, i in used], name_ids, mix, taste, w), deadline)
         else:
             with self.lock:
                 if self.admission:
                     self.admission.check_started(arrived)
-                ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids, mix)
+                ids, scores, times, notes = self.recommend_ids([i for _, i in used], name_ids, mix, taste, w)
+        if profile:
+            ids, scores = adjust(profile, ids, scores, self.song_artist)
         ids, scores = pick_top(ids, scores, self.song_artist, max_per_artist)
         return times, [{"uri": self.uris[j], "track": self.tracks[j], "artist": self.artists[j], "score": float(x)}
                        for j, x in zip(ids.tolist(), scores)], notes
@@ -346,12 +365,14 @@ class Recommender(Catalog):
         self.search.close()
 
     @torch.no_grad()
-    def recommend_ids(self, song_ids, name_ids, mix=MIX):
+    def recommend_ids(self, song_ids, name_ids, mix=MIX, taste=None, w=0.0):
         clock = Stopwatch(self.device)
         s, device = self.settings, self.device
         X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)[None, :]
         N = np.asarray(name_ids, dtype=np.int64).reshape(1, -1)
         h = mixed_query_vectors(self.retriever, X, N, device, mix)  # (1, d + 1): playlist vector, a 1 appended
+        if taste is not None:
+            h = blend(h, taste, w)
         clock.mark("retriever")
         extra = X.shape[1] if s["exclude_input"] else 0  # search deeper by up to that many input songs dropped
         ids, scores = self.search.search("songs", h, s["shortlist"] + extra)

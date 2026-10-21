@@ -35,6 +35,19 @@ def test_a_batch_gives_each_request_its_own_answer(sharded):
         assert notes == {"partial": False} and times["batch size"] == len(requests)
 
 
+def test_in_a_batch_each_request_gets_its_own_taste(sharded):
+    rec, single, _ = sharded
+    rng = np.random.default_rng(0)
+    tastes = [None, np.append(rng.normal(size=8), 1.0).astype(np.float32), None,
+              np.append(rng.normal(size=8), 1.0).astype(np.float32)]
+    requests = [(songs, single.encode_name(name), 0.5, taste, 0.0 if taste is None else 0.7)
+                for (songs, name), taste in zip(REQUESTS, tastes)]
+    for request, (ids, scores, _, _) in zip(requests, rec.recommend_batch(requests)):
+        expected_ids, expected_scores, _, _ = single.recommend_ids(*request)
+        np.testing.assert_array_equal(ids, expected_ids)
+        np.testing.assert_allclose(scores, expected_scores, rtol=1e-4, atol=1e-4)
+
+
 def test_requests_arriving_together_are_answered_together(sharded):
     rec, single, _ = sharded
     batcher = Batcher(rec.recommend_batch, max_batch=8, wait_ms=50)
@@ -61,3 +74,4 @@ def test_in_a_batch_a_dead_shard_only_fails_the_requests_it_holds_every_song_of(
     assert isinstance(results[0], ShardsUnavailable)  # both its songs live on shard 1
     ids, _, _, notes = results[1]
     assert notes == {"partial": True, "missing_shards": [1]} and len(ids) >= 10 and not (ids % 3 == 1).any()
+

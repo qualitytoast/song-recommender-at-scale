@@ -7,7 +7,8 @@
                     (songs: Spotify URIs or "Track - Artist" text; name optional; "max_per_artist": at most
                     this many of the 10 by one artist, 0 for no limit; "mix": how much the model's guesses
                     after earlier songs count, 0 to 1, 0 for the last song's alone; both default to the
-                    bundle's own, see /health)
+                    bundle's own, see /health; "profile": a taste profile's key (--profiles) for an answer
+                    nudged toward that listener's taste, recsys.taste; an unknown key gets the usual answer)
                     -> {"recommendations": [{"uri", "track", "artist", "score"} x 10],
                         "used": [{"uri", "track", "artist"}], "ignored": [...], "version": ..., "timings_ms": {...}}
                     400 if no songs are given or none of them is in the catalog
@@ -55,6 +56,7 @@ class RecommendRequest(BaseModel):
     # None: the bundle's default (settings.json; recommender.MAX_PER_ARTIST and MIX if it has none)
     max_per_artist: int | None = Field(None, ge=0, le=TOP)  # at most this many of the 10 by one artist (0: any)
     mix: float | None = Field(None, ge=0.0, le=1.0)  # how much the guesses after earlier songs count
+    profile: str | None = Field(None, max_length=128)  # a taste profile's key: personalized (recsys.taste)
 
 
 def busy(message="busy: too many requests in progress; try again"):
@@ -62,14 +64,15 @@ def busy(message="busy: too many requests in progress; try again"):
 
 
 def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, batch=0, batch_wait_ms=2.0,
-               max_pending=64, max_wait_ms=1000.0, max_pending_menu=512, search_url=None):
+               max_pending=64, max_wait_ms=1000.0, max_pending_menu=512, search_url=None, profiles=None):
     """The FastAPI app serving bundle (a recsys.export folder) with the models on device; with shards
     (their addresses, shard i at position i), the songs' data comes from the shard servers; with
     redis_url, answers are shared through a Redis cache (recsys.cache); with batch > 1 (sharded only),
     requests arriving within batch_wait_ms are answered together, up to batch at a time (recsys.batching);
     with search_url, the menu searches with Meilisearch there (recsys.song_search; its key from the
-    MEILI_MASTER_KEY environment variable). max_pending, max_wait_ms: overload limits for recommendations;
-    max_pending_menu: for /songs."""
+    MEILI_MASTER_KEY environment variable); with profiles (a folder), the taste profiles in it built for this
+    bundle can be named by requests (recsys.taste). max_pending, max_wait_ms: overload limits for
+    recommendations; max_pending_menu: for /songs."""
     admission, menu_admission = Admission(max_pending, max_wait_ms), Admission(max_pending_menu)
 
     @asynccontextmanager
@@ -90,6 +93,8 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
             from recsys.song_search import SongSearch
             rec = app.state.recommender
             rec.song_search = SongSearch(search_url, rec.version, len(rec.uris), os.environ.get("MEILI_MASTER_KEY"))
+        if profiles:
+            app.state.recommender.load_profiles(profiles)
         app.state.recommender.admission = admission
         # Plain (def) endpoints run in worker threads: enough for every admitted request, so a request
         # never waits for a thread instead of for its answer.
@@ -108,7 +113,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
             raise busy()
         try:
             return app.state.recommender.recommend(request.songs, request.name, arrived, request.max_per_artist,
-                                                   request.mix)
+                                                   request.mix, request.profile)
         except NoKnownSongs as e:
             raise HTTPException(400, {"error": str(e), "ignored": e.ignored})
         except Overloaded as e:
@@ -141,7 +146,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
         return {"status": status, "version": rec.version, "songs": len(rec.uris),
                 "defaults": {"max_per_artist": rec.max_per_artist, "mix": rec.mix}, "device": str(rec.device),
                 "shards": shards, "cache": rec.cache.report() if rec.cache else None,
-                "search": rec.song_search.report() if rec.song_search else None,
+                "search": rec.song_search.report() if rec.song_search else None, "profiles": len(rec.profiles),
                 "batching": rec.batcher.report() if rec.batcher else None, "answers": rec.answers,
                 "admission": {"recommend": admission.report(), "songs": menu_admission.report()}}
 
@@ -170,6 +175,7 @@ if __name__ == "__main__":
     ap.add_argument("--deadline", type=float, default=2.0, help="seconds each call to a shard may take")
     ap.add_argument("--redis", help="a shared answer cache, e.g. redis://redis:6379/0")
     ap.add_argument("--search", help="Meilisearch for the menu (recsys.song_search), e.g. http://meilisearch:7700")
+    ap.add_argument("--profiles", help="a folder of taste profiles (recsys.taste) requests may name")
     ap.add_argument("--batch", type=int, default=0, help="answer up to this many requests together (sharded)")
     ap.add_argument("--batch-wait-ms", type=float, default=2.0, help="how long a request waits for company")
     ap.add_argument("--max-pending", type=int, default=64, help="recommendation requests admitted at once")
@@ -177,5 +183,6 @@ if __name__ == "__main__":
     args = ap.parse_args()
     shards = args.shards.split(",") if args.shards else None
     uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis, args.batch,
-                           args.batch_wait_ms, args.max_pending, args.max_wait_ms, search_url=args.search),
+                           args.batch_wait_ms, args.max_pending, args.max_wait_ms, search_url=args.search,
+                           profiles=args.profiles),
                 host=args.host, port=args.port)
