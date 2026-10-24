@@ -44,66 +44,22 @@ the one before it ([RESULTS.md](RESULTS.md)).
 
 ## Now: growing the song catalog
 
-The catalog is every song at least N = 5 listeners in the training sample played (1.18M songs). The sample
-is 66M listens: each of 61,752 people's most recent 2,759 from the past year. The whole year is already on
-disk (`data/lb_extract`: 308M usable listens), so the first two options need no new download.
+Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen sample; the full year is on disk.
 
-| Rule (from the step 2 report's counts) | Songs | vs today |
-|---|---|---|
-| N = 5 (today) | 1.18M | 1x |
-| N = 3 | ~2.0M | ~1.7x |
-| N = 2 | ~3.2M | ~2.7x |
-
-Ways to grow it:
-
-- [ ] **Lower N to 3 or 2, on the same 66M listens.** The cheapest option. The added songs are ones only 2-4
-      people played, so the model sees each a handful of times and learns them mostly through their artist,
-      album and genre: they'd score like "a typical song by this artist" and rank below that artist's
-      well-known songs. They'd mainly help as search results and inputs: more of a listener's unmatched
-      songs found (9% of the owner's), fewer "not in the catalog" messages.
-- [ ] **Sample more listens, keeping N = 5.** Raise the per-person cap (to ~4,000-5,000) to use more of the
-      listens already on disk. More people's listening pushes more songs past 5 listeners, and the new songs
-      are better learned, but the catalog grows slower than the data and training time grows with it
-      (roughly 2x the listens for 2x the time). N = 3 plus ~1.5x the listens is about 2x the songs.
-- [ ] **Older years.** Re-download the full 258 GB dump (~14 h at ~5 MB/s), keep more than 12 months, and
-      re-extract (~1 h): back-catalog songs, at a high cost in time and disk.
-- [ ] **Songs nobody in the sample played.** Teach the model to place a song from its artist, album and genre
-      alone (training with the song's own vector sometimes hidden), then add songs from elsewhere: MPD songs
-      ListenBrainz lacks, a listener's unmatched songs, discographies. Limited to what's known about each
-      song: one by a known artist with an album or genre gets a usable vector; one with only a known artist
-      looks like all that artist's other unseen songs; one by an unknown artist can't be placed. A model
-      change, and these are the weakest recommendations.
-
-Serving a bigger catalog:
-
-- [ ] **Resize the server to 12 GB.** Oracle's Always Free Ampere allowance is 1,500 OCPU hours and 9,000 GB
-      hours a month (2 OCPUs and 12 GB), and the account's quota allows 12 GB (8 used), so it stays $0; a stop
-      and start of a few minutes. At ~2x the songs, the shards, front desk and search index would need ~8 GB
-      of today's 7.7.
-- [ ] **Store the song vectors in 8 bits instead of 32** (search vectors and song inputs; FAISS scalar
-      quantization): about 4x less memory for them. First measure the cost on held-out cases through the
-      serving code (top-10 overlap, NDCG@10, shortlist recall), with 16 bits as a middle option.
-
-A 2x catalog: store rebuild (after trimming its memory peak: ~27 GB on a 25.8 GB Mac last time), a new
-retriever and baseline ranker (~4.5-6 h of training; 1.5x the listens: ~6-7 h), export and shards (~20 min),
-the server's search index (~6 min) and the owner's taste profile (seconds): about a day, mostly training.
+- [ ] Lower N to 3 or 2 on the same listens (~1.7x / ~2.7x the songs; the new ones mostly help search and inputs)
+- [ ] Sample more of the year's listens, keeping N = 5 (better-learned songs; N = 3 + 1.5x listens ≈ 2x the songs)
+- [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
+- [ ] Songs nobody played, placed from their artist, album and genre alone (a model change; the weakest picks)
+- [ ] Resize the server to 12 GB, still Always Free (2x the songs needs ~8 GB of today's 7.7)
+- [ ] Store song vectors in 8 bits instead of 32 (~4x less memory; measure the accuracy cost first, and 16 bits)
 
 ## Later
 
-- [ ] **Personalization B-D:** B, fine-tune the pair on one listener's sessions (with general "replay" data
-      against forgetting; a private model); C, a learned vector per listener (fold-in for new ones);
-      D, listening history as an input (an average of the last ~100 plays), trained on ListenBrainz
-      listeners' histories, so any visitor's own on-site history personalizes their requests with no
-      per-person training. Distillation (a retriever trained to agree with the ranker) once a finished
-      personalized model exists.
-- [ ] **The playlist-fit ranker at 1M** (MPD): the next-10 ranker (`ranker_50k_1m_settings_next10w` at 50k)
-      on the 1M MPD retriever, re-tuned serving settings; only the ranker retrained.
-- [ ] **Faster retriever training** (on hold): at 50k, validation is 44% of a retriever run; at 1M, the
-      last 5 of ~9 epochs added only +0.005. Candidates: a learning rate that decays over a fixed number of
-      epochs, validating once an epoch at 50k, starting retriever variants from the trained retriever.
-- [ ] **Mixture of experts, only if a bigger model helps:** first a wider or deeper transformer at 50k (it is
-      still v1's 2 layers, 64 wide); if size helps, a mixture-of-experts layer adds capacity cheaply, and
-      multi-gate MoE (MMoE) once there are several goals (next song, skips, play length).
-- [ ] **Songs the model doesn't know:** today they are left out of a request and listed as ignored. Spotify's
-      API can name any Spotify song's artist and album, which with the features-only vectors above would
-      cover most of them; a shared "unknown song" vector trained on rare songs is the other known trick.
+- [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
+- [ ] Personalization C: a learned vector per listener
+- [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests
+- [ ] Distillation: a retriever trained to agree with the ranker, once a personalized model is finished
+- [ ] The playlist-fit (next-10) ranker on the 1M MPD retriever
+- [ ] Faster retriever training (on hold): a decaying learning rate, fewer validation checks
+- [ ] A bigger transformer if size helps, then mixture of experts
+- [ ] Songs the model doesn't know: their artist and album from Spotify's API, or a shared "unknown song" vector
