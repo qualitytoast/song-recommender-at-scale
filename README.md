@@ -4,693 +4,297 @@
 
 **Live: [songrec.duckdns.org](https://songrec.duckdns.org)**: pick a few songs and it suggests what comes next.
 
-A next-song recommender in PyTorch: given the last 10 songs of a playlist, it
-predicts the next one. It was built and scaled on the Spotify Million Playlist
-Dataset (MPD), uses song and playlist features, and works in two stages: a fast
-retriever narrows a million songs down to 100, then a slower, more careful
-ranker orders those 100. The live site serves the same design trained on 66
-million real listens from ListenBrainz.
+A next-song recommender in PyTorch. Given up to 10 songs, a fast **retriever** narrows a catalog of over a
+million songs down to 100, and a slower, more careful **ranker** orders those 100. It was built and scaled on
+the Spotify Million Playlist Dataset (MPD); the live site serves the same design trained on 66 million real
+listens from ListenBrainz.
 
-It is served as a small distributed system: the million-song catalog is split
-across four gRPC shard servers, behind load-balanced front desks with a shared
-Redis cache, request batching, overload protection and automatic recovery from
-crashed or frozen shards, all in Docker Compose, with a webpage on top.
+It is served as a small distributed system: the catalog split across four gRPC shard servers, behind
+load-balanced front desks with a shared Redis cache, request batching, overload protection and automatic
+recovery from crashed or frozen shards, all in Docker Compose on Oracle Cloud's free tier, with typo-tolerant
+song search and a private per-listener taste toggle. What's next: [ROADMAP.md](ROADMAP.md). Every run, in
+detail: [RESULTS.md](RESULTS.md).
 
 ## Where it comes from
 
-This is v2 of
-[transformer-song-recommender](https://github.com/qualitytoast/transformer-song-recommender),
-a next-song Transformer I built from scratch in NumPy, including its own
-autograd engine, attention, LayerNorm, optimizer and metrics, trained on 5,000
-MPD playlists and served as a REST API.
-
-v2 starts by rebuilding that model layer for layer in PyTorch and proving the
-two match: v1's trained weights, loaded into the v2 model, give the same
-outputs (max difference 5e-6) and the same scores
-(`scripts/check_against_v1.py`). Every change after that is a separate run,
-measured against the one before it.
+This is v2 of [transformer-song-recommender](https://github.com/qualitytoast/transformer-song-recommender), a
+next-song Transformer built from scratch in NumPy (its own autograd, attention, LayerNorm, optimizer and
+metrics), trained on 5,000 MPD playlists. v2 starts by rebuilding that model layer for layer in PyTorch and
+proving the two match: v1's trained weights in the v2 model give the same outputs (max difference 5e-6) and
+scores (`scripts/check_against_v1.py`). Every change after that is a separate run, measured against the one
+before it.
 
 | | v1 (NumPy) | v2 (this repo) |
 |---|---|---|
-| Framework | Hand-written autograd in NumPy, CPU | PyTorch, Apple GPU (mps) |
-| Data | 5,000 playlists, 33,770 songs | All 1,000,000 playlists, 1,053,328 songs |
-| What a song is | Its ID only | ID + artist, album, length, genres (MusicBrainz); plus the playlist's name |
-| Training | One target per 10-song window, full softmax, SGD | Next song predicted at every position (causal attention), sampled softmax, lazy AdamW |
-| Finding recommendations | Score every song | Retriever + FAISS IVF search for the top 100 (songs already in the input left out), then a ranker that rescores them |
-| Serving | One process behind a REST API | The catalog split across 4 gRPC shard servers; front-desk copies behind nginx; Redis cache, batching, fault tolerance, zero-downtime updates; Docker Compose; a webpage |
-| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1731 on 10-song windows like v1's; 0.1692 on inputs of any length, 1 to 10 songs (59x most-popular; retriever + ranker, 1M, a 31x bigger catalog) |
+| Data | 5,000 playlists, 33,770 songs | 1M playlists (1.05M songs); then 66M ListenBrainz listens (1.18M songs) |
+| What a song is | Its ID only | ID + artist, album, length, genres (MusicBrainz) |
+| Training | One target per 10-song window, full softmax, SGD | Next song at every position (causal attention), sampled softmax, lazy AdamW, `torch.compile` |
+| Finding recommendations | Score every song | Retriever + FAISS IVF top 100, then a ranker that rescores them |
+| Serving | One process, REST API | 4 gRPC shards, front desks behind nginx, Redis, batching, fault tolerance, zero-downtime updates, Docker, a webpage, public hosting |
+| Held-out NDCG@10 | 0.0330 (6.7x most-popular) | 0.1731 at 1M (59x most-popular, a 31x bigger catalog) |
 
-The v1 model's architecture is still the core: a small Transformer (2 layers,
-64-dimensional, single-head attention), the same metrics (NDCG@10, Hits@k) and
-the same most-popular baseline.
+The core is still v1's architecture: a small Transformer (2 layers, 64-dimensional, single-head attention),
+the same metrics (NDCG@10, Hits@k) and the same most-popular baseline.
 
 ## How it works
 
 ```
-last 10 songs + playlist name
-        │
-        ▼
- ┌──────────────┐   playlist vector h
- │  Retriever   │───────────────────────┐
- └──────────────┘                       ▼
-                         ┌───────────────────────────────┐
-                         │  Search (FAISS IVF, separate  │  top 100 of 1,053,328 songs,
-                         │  process): highest h · song   │  songs in the input left out
-                         └───────────────────────────────┘
-                                         │
-                                         ▼
-                                 ┌──────────────┐
-                                 │    Ranker    │  rescores the 100, reading each
-                                 └──────────────┘  candidate next to the 10 songs,
-                                                   plus overlap and co-occurrence counts
-                                         │
-                                         ▼
-                                  top 10 next songs
+up to 10 songs
+      │
+      ▼
+┌───────────┐  "what comes next" vector h   ┌──────────────────────────────┐
+│ Retriever │──────────────────────────────►│ Search (FAISS IVF): the 100  │
+└───────────┘                               │ songs with the highest h·song │
+                                            └──────────────────────────────┘
+                                                           │
+                                                           ▼
+                                         ┌──────────┐  rescores the 100, reading each candidate next to
+                                         │  Ranker  │  the input songs, plus overlap and co-occurrence counts
+                                         └──────────┘
+                                                           │
+                                                           ▼
+                                                   top 10 next songs
 ```
 
-**Retriever** (`recsys/model.py`, `recsys/train.py`). A 2-layer Transformer
-over the 10 songs. Each song's input is the sum of learned vectors for the song,
-its artist, album, length bucket and genres; the playlist name's words are
-averaged and added at every position. The last position's output is the
-playlist vector `h`, and a song's score is `h · (its output vector) + bias`, so
-scoring is one dot product per song. Training:
+**Retriever** (`recsys/model.py`, `recsys/train.py`). A 2-layer Transformer. Each song's input is the sum of
+learned vectors for the song, its artist, album, length bucket and genres (the MPD models also add the
+playlist name's words); a song's score is
+`h · (its output vector) + bias`, one dot product per song. Training predicts the next song at every
+position with causal attention (the biggest fix for overfitting), scores each batch's true next songs
+against 4,096 songs drawn by popularity (sampled softmax, `recsys/sampled.py`), and updates only the song
+rows a batch uses (lazy AdamW, `recsys/lazy_adam.py`: ~1.7x faster and better). `torch.compile` and fewer
+sampled songs halved a 1M epoch (16 → 7.7 min), with NDCG@10 within 0.001 at 50k.
 
-- *Every position:* playlists are cut into chunks and the next song is predicted
-  at every position, with causal attention (each position sees only earlier
-  songs). This was the biggest fix for overfitting.
-- *Sampled softmax* (`recsys/sampled.py`): instead of scoring every song for
-  every prediction, each batch scores its own true next songs plus 4,096 random
-  songs drawn by popularity, with a correction for how often each song is drawn.
-- *Lazy AdamW* (`recsys/lazy_adam.py`): a batch uses a few thousand of the
-  million song rows, so only those rows are updated; this made training ~1.7x
-  faster and better.
-- *Speed-ups for 1M:* `torch.compile` on the training step (it fuses many small
-  GPU operations into fewer) and 4,096 instead of 8,192 random songs cut a 1M
-  epoch from 16 to 7.7 min, with held-out NDCG@10 within 0.001 at 50k.
+**Search** (`recsys/search.py`, `recsys/ann.py`). FAISS IVF groups the songs into 4,096 clusters and
+searches the 128 nearest the query, finding 99.5% of the exact top 100 on the MPD. It runs in its own
+process: FAISS and PyTorch each bundle OpenMP and can't share it.
 
-**Search** (`recsys/search.py`, `recsys/ann.py`, `recsys/search_worker.py`).
-Finding the 100 highest dot products. Exact search scores every song; FAISS IVF
-groups the 1M songs into 4,096 clusters (2,048 at 50k and 200k) and searches only
-the 128 nearest the query, which finds 99.5% of the exact top 100.
-FAISS runs in its own process because it and PyTorch each bundle a copy of the
-OpenMP library and can't share one. `scripts/search_benchmark.py` compares exact
-search, FAISS Flat, IVF and HNSW, with and without sharding.
-
-**Ranker** (`recsys/ranker.py`, `recsys/rank_features.py`). A copy of the trained
-retriever that reads the 10 context songs and the 100 candidates together, so
-attention can relate each candidate to each song in the playlist. Context songs
-see only earlier context songs; each candidate sees the context and itself, never
-another candidate, so candidates are scored independently. Its score is the
-retriever's score plus a learned correction: a small network that reads the
-transformer's output for the candidate and a few counts the retriever can't see,
-such as how many of the context songs share its artist, album or genres, and how
-often it came right after them in the retriever's training playlists. The
-correction starts at zero, so before training the ranker reproduces the retriever
-exactly. It trains on the 20% of training playlists that the retriever never saw,
-on the windows whose next song is in the shortlist, each against 31 wrong answers
-drawn from that shortlist.
+**Ranker** (`recsys/ranker.py`, `recsys/rank_features.py`). A copy of the trained retriever that reads the
+input songs and the 100 candidates together (each candidate sees the input and itself, never another
+candidate). Its score is the retriever's plus a learned correction from a small network that also reads
+counts the retriever can't see: input songs sharing the candidate's artist, album or genres, and how often it
+came right after them in training. The correction starts at zero, so an untrained ranker reproduces the
+retriever exactly. It trains on data the retriever never saw (20% of training users or playlists).
 
 ## Results
 
-Held-out NDCG@10 (1 if the true next song is ranked first, less the lower it
-is, 0 outside the top 10). Rows use different catalogs and held-out sets, so
-compare each with its own most-popular baseline. Full tables and notes are in
-[RESULTS.md](RESULTS.md).
+Held-out NDCG@10 (1 if the true next song is ranked first, less the lower it is, 0 outside the top 10).
+Rows use different catalogs and held-out sets, so compare each with its own most-popular baseline.
 
-| Stage | Playlists | Songs | NDCG@10 | × most-popular |
+| Stage | Data | Songs | NDCG@10 | × most-popular |
 |---|---|---|---|---|
-| v1, NumPy | 5,000 | 33,770 | 0.0330 | 6.7x |
-| PyTorch rebuild, AdamW + fixes to v1's data split and quirks | 5,000 | 30,587 | 0.0539 | 7.9x |
-| + song and playlist features, every-position training | 5,000 | 30,587 | 0.0739 | 10.9x |
-| Sampled softmax, lazy AdamW, bigger batches | 50,000 | 166,627 | 0.1213 | 36x |
-| Two-stage at 50k: retriever (80% of training playlists) alone → + ranker | 50,000 | 166,627 | 0.1020 → 0.1146 | 34x |
-| Retriever at 50k, current settings (80% of training playlists) | 50,000 | 166,627 | 0.1172 | 34x |
-| Two-stage at 50k: that retriever (IVF shortlist) alone → + improved ranker | 50,000 | 166,627 | 0.1171 → 0.1351 | 40x |
-| + input songs left out of the shortlist, small-network correction | 50,000 | 166,627 | 0.1255 → 0.1484 | 44x |
-| Retriever at 200k (80% of training playlists) | 200,000 | 412,404 | 0.1257 | 39x |
-| Two-stage at 200k: retriever alone (IVF shortlist) → + ranker | 200,000 | 412,404 | 0.1255 → 0.1255 (no gain yet) | 39x |
-| Two-stage at 200k with the improved ranker: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1344 → 0.1567 | 49x |
-| Two-stage at 200k with the 1M settings: retriever alone (input songs left out) → + ranker | 200,000 | 412,404 | 0.1337 → 0.1576 | 49x |
-| Retriever at 1M (80% of training playlists; faster training settings) | 1,000,000 | 1,053,328 | 0.1397 | 49x |
-| Two-stage at 1M: retriever alone (input songs left out) → + ranker | 1,000,000 | 1,053,328 | 0.1479 → 0.1725 | 59x |
-| **Two-stage at 1M, ranker trained on inputs of any length** | **1,000,000** | **1,053,328** | **0.1479 → 0.1731** | **59x** |
-| ListenBrainz listening (inputs of any length): retriever alone → + next-10 ranker | 4.9M sessions | 1,182,261 | 0.2246 → 0.2477 | 17.7x |
+| v1, NumPy | 5k playlists | 33,770 | 0.0330 | 6.7x |
+| PyTorch rebuild, AdamW, v1's data quirks fixed | 5k playlists | 30,587 | 0.0539 | 7.9x |
+| + song features, every-position training | 5k playlists | 30,587 | 0.0739 | 10.9x |
+| Sampled softmax, lazy AdamW, bigger batches | 50k playlists | 166,627 | 0.1213 | 36x |
+| Two-stage: retriever alone → + ranker | 50k playlists | 166,627 | 0.1255 → 0.1484 | 44x |
+| Two-stage | 200k playlists | 412,404 | 0.1344 → 0.1567 | 49x |
+| **Two-stage, ranker trained on inputs of any length** | **1M playlists** | **1,053,328** | **0.1479 → 0.1731** | **59x** |
+| ListenBrainz, any-length inputs, next-10 ranker | 4.9M sessions | 1,182,261 | 0.2246 → 0.2477 | 17.7x |
 
-The 1M numbers score all 4,938,520 held-out windows. Day to day, runs at 200k
-and up score a fixed sample of 200,000 of them, which read within 0.001 of the
-full set.
+- **Inputs of any length.** Requests hold 1 to 10 songs; over all lengths the 1M pair scores 0.1692 (shorter
+  inputs are harder: the retriever alone 0.1082 with 1 song, 0.1397 with 10).
+- **Scaling.** The same settings at 200k give 0.1576; 5x the data adds +0.015 to retriever and pair alike.
+  The ranker adds ~+0.024 at both sizes.
+- **Songs that belong in the playlist** (50k). A ranker trained on the next 10 songs (weighted) puts 3.4% more
+  of its top 10 later in the playlist and cuts the last artist's share from 41% to 30%, for -7.4% on the very
+  next song; kept. Multi-token heads (from DeepSeek-V3) added nothing.
+- **Real listening.** Trained from scratch on ListenBrainz (66.4M listens from 61,752 users active in the
+  past year, cut into sessions; users split 80/10/10), then asked the same questions as the MPD pair on
+  held-out listeners' sessions whose next song both catalogs know:
 
-**Inputs of any length.** Every number in the table is on 10-song windows. A
-request can hold 1 to 10 songs, so held-out cases now also include every song
-with fewer songs before it (6,242,133 cases at 1M; 79% still have 10 songs). On
-all of them the 1M retriever scores 0.1363 and the final pair **0.1692**:
-shorter inputs are harder (the retriever alone: 0.1082 with 1 song, 0.1397 with
-10). The ranker retrained on inputs of every length beats the one trained on
-10-song windows by +0.0079 with 1 song, +0.0011 overall, and isn't worse at 10.
-
-**What scaling to 1M adds.** The same settings trained on 200k playlists give a
-retriever of 0.1245 and a pair of 0.1576 (all 836,433 of its held-out windows).
-At 1M the retriever gains +0.0152 (+12%) and the pair +0.0149 (+9.5%), with 2.6x
-more songs to choose from. The ranker adds about the same at both sizes (+0.024),
-so the gain comes from the better retriever, carried through.
-
-**Songs that belong in the playlist (50k).** Trained only on the very next
-song, the models mostly follow the playlist's last song. Two training changes
-aimed at the whole playlist were tested at 50k with the 1M settings, on inputs
-of any length: *next-X targets* (any of the next 5 or 10 songs counts as a right
-answer, equally or weighted 0.8 per step further away) and *multi-token heads*
-(from DeepSeek-V3: extra outputs that predict the songs 2 and 3 steps ahead,
-trained alongside the usual one). "Later" is the share of the top 10 that the
-playlist goes on to contain.
-
-| Pair (held-out, 50k) | Next song | Later | By the last song's artist | Run time |
-|---|---|---|---|---|
-| Both trained on the next song (baseline) | 0.1371 | 14.5% | 41% | 6.0 + 2.5 min |
-| **Same retriever, ranker trained on the next 10 (weighted)** | **0.1269** | **15.0%** | **30%** | ranker 3.7 min |
-| Both trained on the next 10 (weighted) | 0.1014 | 16.5% | 25% | 19.2 + 3.8 min |
-| Same retriever, next-10 ranker + 2 multi-token heads | 0.1268 | 15.0% | 30% | ranker 4.1 min |
-
-Every next-X pair put more of its top 10 later in the playlist and spread it
-over more artists, and every one lost on the very next song. The ranker-only
-change (bold) is kept: +3.4% "later" for -7.4% on the next song, with no new
-retriever. Multi-token heads added nothing to the ranker and cost the retriever
-17% on the next song at 2.5x the training time per check; they were dropped.
-
-**Training on real listening (ListenBrainz).** The same pair of models, trained
-from scratch on ListenBrainz listening history instead of playlists: 66.4M
-listens (the MPD's size) from 61,752 users active in the past year, cut into
-listening sessions, with a catalog of the 1.18M songs at least 5 training users
-played. Users are split 80/10/10, so held-out listeners are people the models
-never saw. The pair scores 0.2477 held-out NDCG@10 (17.7x most-popular; the
-retriever alone 0.2246 on its shortlists); the retriever's run took 128 min,
-the ranker's 116.
-Listening is easier to predict than playlists (people play albums through),
-so this number isn't comparable with the MPD's 0.1692. Both pairs were asked
-the same questions instead: held-out listeners' sessions whose next song both
-catalogs know, through the serving code.
-
-| On held-out ListenBrainz listeners (4,614 cases) | Next song | Later | By the last song's artist |
+| 4,614 held-out ListenBrainz cases | Next song | Later in the session | By the last song's artist |
 |---|---|---|---|
-| Today's MPD pair (served on the site) | 0.1996 | 9.3% | 63% |
+| MPD pair | 0.1996 | 9.3% | 63% |
 | **ListenBrainz pair** | **0.2433** | **11.8%** | **51%** |
-| Today's MPD pair, site settings (2 per artist, mix 0.5) | 0.1697 | 5.0% | 15% |
-| **ListenBrainz pair, site settings** | **0.2152** | **6.8%** | **13%** |
 
-The ListenBrainz pair predicts real listeners' next song 22-27% better. BTS
-holds 3.5% of the training listens, but for sessions without BTS it fills
-0.08% of the top 10, the same as its share of their real next songs, so no cap
-per artist was needed.
-
-Some things that didn't work are recorded too: window augmentation (masking,
-cropping, shuffling songs) slowed overfitting but never raised the best score;
-uniform random negatives were clearly worse than popularity-weighted ones.
-
-## Status
-
-- [x] Phase 1: rebuild v1 in PyTorch and match it; AdamW; fix v1's data quirks
-- [x] Phase 2: song and playlist features, one at a time; overfitting experiments
-- [x] Phase 3 so far: compact data store, sampled softmax, 50k and 200k
-      retrievers, two-stage ranking at 50k, faster training, search benchmark
-- [x] Ranker at 200k (with FAISS IVF shortlists): no gain over the retriever, and none
-      at 5k or 50k with the same retriever settings (its 50k gain was on an older retriever)
-- [x] Ranker improvements at 50k: +15.4% over the retriever (in-shortlist training windows,
-      top-100 reranking, overlap and co-occurrence inputs); then input songs left out and a
-      small-network correction: 0.1484 held-out NDCG@10
-- [x] 200k confirmation of the improved ranker: 0.1567 held-out NDCG@10 (49x most-popular),
-      +16.6% over the retriever on the same shortlists
-- [x] Training 2x faster before 1M (torch.compile, fewer random negatives), NDCG@10 within 0.001 at 50k
-- [x] All 1M playlists: retriever 0.1397, retriever + ranker 0.1725 held-out NDCG@10
-      (59x most-popular), the ranker +16.6% over the retriever on the same shortlists
-- [x] Scaling check: the same settings at 200k give 0.1576, so 5x more data adds +0.015
-- [x] Inputs of any length (1 to 10 songs) in validation and testing, and a ranker retrained on
-      them: 0.1692 held-out NDCG@10 over all lengths
-- [x] Serving, phase A: the 1M pair behind a FastAPI REST API: the same top 10 as the offline
-      evaluation for 2,000 of 2,000 requests, ~1.5 ms per request on the CPU
-- [x] Serving, phase B: the song catalog split across 4 gRPC shard servers (same answers as one
-      process for 2,000 of 2,000 requests), Docker Compose, fault tolerance, front-desk copies behind
-      nginx, zero-downtime updates, a shared Redis cache, request batching, overload protection
-- [x] A webpage: type-ahead song search, shareable playlist links, Spotify's embedded player
-- [x] More varied recommendations: at most 2 songs per artist, and guesses from the whole playlist
-      mixed in, not only from its last song
-- [x] Training for the songs that belong in a playlist, tested at 50k: a ranker trained on the next 10
-      songs puts 3.4% more of its top 10 later in the playlist and cuts the last artist's share from 41%
-      to 30%, for -7.4% on the very next song; multi-token heads added nothing
-- [x] Public hosting on Oracle Cloud's free tier: https://songrec.duckdns.org (HTTPS, per-visitor rate limits)
-- [x] Train on ListenBrainz listening history: 66M listens from 61,752 users, 1.18M songs; the pair
-      predicts held-out listeners' next song 22% better than today's MPD pair (0.2433 vs 0.1996)
-- [x] The live site serves the ListenBrainz pair (its own tuned settings: 3 per artist, no mixing),
-      swapped in with ~12 s of downtime
-- [x] Song search that fixes typos and matches title, artist and album words in any order (Meilisearch)
-- [x] Personalization A: a taste profile from the owner's Spotify history, behind a private "Use my taste"
-      toggle: more than twice the new songs they then listened to (1.96 -> 4.40 per 100 recommendations)
-- [ ] Personalization B-D: fine-tuning on one listener, per-listener vectors, listening history as input
+  BTS holds 3.5% of the training listens, yet fills 0.08% of the top 10 for sessions without BTS, the same as
+  its share of their real next songs: no per-artist cap needed.
+- **Personalization** (the owner's own later listening): a skip penalty from their Spotify history more than
+  doubled the new songs they then listened to (1.96 → 4.40 per 100 recommendations), for 29% fewer exact
+  next songs. See [Your taste](#your-taste).
+- **Didn't work:** window augmentation (masking, cropping, shuffling) slowed overfitting but never raised the
+  best score; uniform random negatives were clearly worse than popularity-weighted ones.
 
 ## Serving
 
-### One process (phase A)
-
-```bash
-python -m recsys.export --ranker configs/ranker_1m_any_length.toml   # once: writes bundles/<name>-<version>/ (2.2 GB)
-python -m recsys.serve --device cpu                                   # the newest bundle, on http://127.0.0.1:8000
-curl -s -X POST localhost:8000/recommend -H 'content-type: application/json' \
-  -d '{"songs": ["Nightcall - Kavinsky", "spotify:track:6HZILIRieu8S0iqY8kIKhj"], "name": "night drive"}'
-curl -s 'localhost:8000/songs?q=nightc'   # type-ahead: songs starting with "nightc", most-played first
+```
+browser ──► Caddy (HTTPS) ──► nginx: per-visitor rate limits; spreads requests over front desks; 503 when full
+                                 │
+               front desks (FastAPI): both models' small shared layers, song names, batching, admission
+                 │             │                       │ gRPC: 3 rounds per request, shards asked at once
+               Redis      Meilisearch          ┌────────┬────────┬────────┐
+          (one answer   (song search)       shard 0  shard 1  shard 2  shard 3   song j lives on shard j % 4:
+            cache)                                                             its search index, input vectors,
+                                                                               features, co-occurrence counts
 ```
 
-A request is a playlist's songs, as Spotify track URIs or `"Track - Artist"`
-text (any number; the last 10 known ones are read), and optionally its name.
-`GET /songs` finds songs as the user types: track or artist names starting with
-the text, case and accents ignored, in the most playlists first, so typing
-"nightcall" lists Kavinsky's original before the covers and remixes (~1 ms). The answer is the top 10 songs with
-track, artist and score, plus the songs it left out (not in the catalog), the
-model version, and the time each stage took. The export (`recsys/export.py`)
-writes everything the server needs into one versioned folder: each model's
-small shared layers, one precomputed input vector per song (its song, artist,
-album, length and genre vectors added up once), the saved search index, the
-ranker's per-song tables and the appeared-together counts. The server
-(`recsys/serve.py`, FastAPI + uvicorn; the work is in `recsys/recommender.py`)
-loads it in 1-2 s. The webpage is at `/`, and FastAPI's page at `/docs` lets
-you try requests in a browser.
+**From a model to a server.** `recsys/export.py` writes everything serving needs into one versioned bundle:
+the models' small shared layers, one precomputed input vector per song, the search index, per-song tables,
+co-occurrence counts and the serving defaults. One process (`recsys/serve.py`, FastAPI) answers a request in
+~1.5 ms on the CPU, with the same top 10 as the offline evaluation for 2,000 of 2,000 held-out requests.
 
-Checked on 2,000 held-out requests of every length: the served top 10 equals
-the offline evaluation's in every case, and a request takes ~1.5 ms end to end
-on the CPU (~7x faster than on the Mac GPU, which only pays off with big
-batches).
+**The catalog split across processes** (`recsys/shard.py`, `recsys/frontdesk.py`). Each shard holds a quarter
+of every per-song table (~0.5 GB) and an IVF index built on the full index's cluster centres, so merged top
+lists equal the full index's. A request takes three rounds: the input songs' rows, the search on every shard
+(merged by score, then song ID), the 100 candidates' rows. Messages are protobuf (arrays as raw bytes, never
+pickle) and carry the bundle version, so a front desk can never mix two models. At 1, 2 and 4 shards, natively
+and in Docker, the sharded top 10 equals the single-process one for every request; ~10 ms in Docker.
+
+**When a shard fails.** 250 ms deadlines and retries; shard copies used in turn, skipping unhealthy ones; a
+partial answer (flagged) from the other shards; a circuit breaker that skips a frozen shard for 1 s; Docker
+restarts crashed containers and an autoheal container restarts frozen ones. Under `scripts/chaos.py`:
+
+| Event (requests back to back) | Requests | Partial | Failed | Complete again after |
+|---|---|---|---|---|
+| Shard program killed | 3,043 | 13 | 0 | 1.1 s |
+| Shard frozen | 2,922 | 652 | 23 (one-song inputs on that shard) | 11.2 s |
+
+**More traffic and overload.** Front-desk copies behind nginx (least connections): 58 → 182 recommendations/s
+from 1 to 3 copies. Dynamic batching (requests within 2 ms answered together, `recsys/batching.py`) and the
+shared Redis cache (keyed with the model version; skipped for a second if slow or down, `recsys/cache.py`)
+took one front desk from 107 to 241 recommendations/s (p99 470 → 210 ms). With 1,000 simulated browsing users
+on 3 front desks: p50 15 ms, p99 182 ms, nothing failed. Past capacity, each front desk admits 64 requests and
+drops any that waited 1 s, and nginx refuses the rest at once with `503 Retry-After: 1` (`recsys/admission.py`):
+a separate visitor still got answers in p50 21 ms, and refusals in 1.5 ms.
+
+**Updates without downtime.** Blue/green (`scripts/bluegreen.py`): a second stack starts, an entrance nginx
+switches to it with a graceful reload, the old one drains. Under load: 6,126 requests, 0 errors, p99 14 ms.
+
+**Webpage** (`web/`, plain HTML, CSS and JavaScript): type-ahead song search, the playlist kept in the address
+bar (a link reopens the same recommendations), Spotify's embedded player (songs without a Spotify link, 17% of
+the catalog, say so instead), light and dark mode, phone layouts.
 
 ### What gets recommended
 
-Trained to predict the very next song, the models mostly follow a playlist's
-*last* song, and since people often add several songs by one artist in a row,
-the 10 individually most likely next songs are often all by that artist (after
-a varied 10-song playlist ending in Daft Punk: 9 Daft Punk songs). Two serving
-settings fix that without retraining, each a request field whose default
-comes with the model (set at export, shown at `/health`):
-
-- `max_per_artist` (the MPD pair's default 2): going down the ranker's order of all 100
-  candidates, a song is skipped once its artist has 2 songs in the top 10.
-- `mix` (the MPD pair's default 0.5): the retriever makes a "what comes next" guess after
-  every song of the playlist, not just the last (that's how it was trained).
-  The playlist vector becomes a weighted average of those guesses: the last
-  song's weighs 1, the one before it 0.5, then 0.25, and so on. Scores are
-  dot products, so this averages each song's scores the same way. Mixing the
-  ranker's guesses too scored worse.
-
-Judged on 5,000 held-out cases (`scripts/playlist_eval.py`) by the usual
-question (is the true next song in the top 10?) and a new one, *later in the
-playlist*: how many of the 10 the playlist actually goes on to contain.
-
-| Setting | Next song in the top 10 | Later in the playlist | Different artists | By the last song's artist |
-|---|---|---|---|---|
-| Neither (the models as trained) | 24.1% | 16.6% | 5.7 | 44.3% |
-| Artist limit only | 19.8% | 15.0% | 8.3 | 15.3% |
-| Mixing only | 22.4% | 17.7% | 6.7 | 29.7% |
-| **Both (the default)** | **18.5%** | **15.8%** | **8.5** | **11.6%** |
-
-On varied playlists (3+ songs, every one by a different artist) the default
-raises "later in the playlist" from 13.0% to 14.8% and cuts the last artist's
-share from 24.5% to 6.6%. The artist limit trades some measured accuracy for
-variety: many real playlists do repeat artists. `"max_per_artist": 0, "mix": 0`
-gives the models' own answers, which the checks against the offline evaluation use.
-The same goal in training (a ranker trained on the next 10 songs) was tested at
-50k; see Results and Future work.
-
-**The ListenBrainz pair's settings: 3 per artist, no mixing.** Tuned again on
-5,000 held-out listening cases (`scripts/lb_compare.py tune`). Here mixing never
-raised "later" and always cost the next song, and the artist limit costs more
-"later", because listeners really do stay on one artist (they play albums
-through). 3 per artist keeps ~7 artists in a top 10 for -0.009 next-song NDCG@10
-against no limit; on varied lists it costs nothing.
+Trained on the very next song, the models follow the input's *last* song, often all the way into 9 songs by
+its artist. Two serving settings, each a request field whose default comes with the model (`/health`):
+`max_per_artist` (at most that many of the 10 by one artist) and `mix` (blend in the retriever's guesses after
+earlier songs, each weighing `mix` times the next). Tuned for the ListenBrainz pair on 5,000 held-out listening
+cases (`scripts/lb_compare.py tune`), where mixing never helped and listeners really do stay on an artist:
 
 | ListenBrainz pair | Next song NDCG@10 | Later in the session | Different artists | By the last song's artist |
 |---|---|---|---|---|
-| No limit, no mixing (the models as trained) | 0.2407 | 13.5% | 4.6 | 48% |
-| 2 per artist, mix 0.5 (the MPD pair's settings) | 0.2058 | 7.4% | 7.7 | 13% |
-| **3 per artist, no mixing (its default)** | **0.2321** | **8.9%** | **7.0** | **21%** |
-
-### The catalog split across processes (phase B)
-
-```
-                    browser (webpage) / API clients
-                                 │ HTTP
-                                 ▼
-                        ┌─────────────────┐  least-connections load balancing; answers 503 itself
-                        │      nginx      │  when every front desk is full
-                        └─────────────────┘
-                          │             │
-                          ▼             ▼
-                 ┌──────────────┐ ┌──────────────┐        ┌───────┐
-                 │ front desk 1 │ │ front desk 2 │  ...   │ Redis │  one answer cache for all of them
-                 └──────────────┘ └──────────────┘        └───────┘
-                     FastAPI: the models' small shared layers, song names, batching, admission limits
-                          │ gRPC: 3 rounds per request, each sent to the shards involved at once
-        ┌──────────────┬──┴───────────┬──────────────┐
-        ▼              ▼              ▼              ▼
-   ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐   shard i: the songs with ID % 4 == i, and
-   │ shard 0 │    │ shard 1 │    │ shard 2 │    │ shard 3 │   their search index, input vectors, artist,
-   └─────────┘    └─────────┘    └─────────┘    └─────────┘   album, genres and appeared-together counts
-```
-
-**Shards** (`recsys/shard.py`, `recsys/shard_slices.py`). Song *j* lives on
-shard *j* % 4. Each shard is a gRPC server holding everything per-song for its
-quarter of the catalog (~0.5 GB): an IVF index of its songs' search vectors,
-built on the full index's cluster centres so that the shards' top lists merged
-are exactly the full index's top list, both models' input vectors, the songs'
-artist, album and genres, and the appeared-together counts whose later song it
-holds.
-
-**Front desk** (`recsys/frontdesk.py`). Runs both stages, the retriever's
-transformer and the ranker, but holds only the models' small shared layers and
-the song names: the per-song tables and the search live on the shards, so the
-two-stage system is the front desk and the shards together. A request takes three rounds, each
-sent to every shard involved at the same time: (1) the input songs' rows,
-(2) the playlist vector, searched on every shard, the top lists merged (by
-score, then song ID), (3) the 100 candidates' rows and appeared-together counts.
-The models then run on a table of just this request's ~110 songs, the same
-code and numbers as with the whole catalog. Messages are protobuf
-(`recsys/proto/shard.proto`; arrays as raw bytes + type + shape, never pickle),
-and every one carries the bundle version: a shard refuses another version, so
-a front desk can never mix two models.
-
-gRPC (HTTP/2 + protobuf) was chosen for its built-in deadlines, status codes,
-retries and health checks. For 2,000 held-out requests at 1, 2 and 4 shards,
-natively and in Docker, the sharded top 10 equals the single-process one in
-every case. A request takes ~10 ms in Docker, against ~1.5 ms in one process:
-the price of three network rounds.
-
-### Containers
-
-One Docker image (`docker/Dockerfile`: CPU PyTorch, model files mounted rather
-than baked in) runs every service in `docker-compose.yml`: 4 shards, the front
-desk (scaled with `--scale frontdesk=N`), nginx, Redis, and an autoheal
-container; Meilisearch (the song search) runs from its own image. Each shard and front desk has a health check every 2 s; a container
-whose program dies is restarted by Docker, and one that stops answering its
-health check (frozen, not dead) is restarted by autoheal. One PyTorch thread
-per front desk (`OMP_NUM_THREADS=1`) halved a single request's work in a
-container (17 → 8 ms). `python -m recsys.launch --shards 4` starts the same
-system without Docker.
-
-### When a shard fails
-
-- **Deadlines and retries:** every call to a shard has a 250 ms deadline; a
-  call to a shard that's down is retried up to twice.
-- **Copies:** a shard can run as several copies, used in turn, skipping any
-  whose health check fails.
-- **Partial answers:** if every copy of a shard fails, the answer is built from
-  the other shards and flagged (`"partial": true`, `"missing_shards"`). A request
-  fails (503) only if no shard holding its input songs answered.
-- **Circuit breaker:** a shard that let a call run into its deadline is skipped
-  for 1 s, so a frozen shard costs one slow request instead of slowing every one.
-- **Automatic restarts:** Docker restarts a crashed shard; autoheal restarts a
-  frozen one.
-
-`scripts/chaos.py` breaks shards while requests flow, one after another (cache off):
-
-| Event | Requests | Partial answers | Failed | Complete answers again after |
-|---|---|---|---|---|
-| Shard 1's program killed (Docker restarts it) | 3,043 | 13 | 0 | 1.1 s |
-| Shard 2 frozen (autoheal restarts it) | 2,922 | 652 | 23 | 11.2 s |
-
-The 23 failures were one-song playlists whose only song lives on the frozen
-shard. Through the freeze, requests took p50 13 ms; before the circuit breaker,
-every request during a freeze waited ~520 ms.
-
-### More traffic
-
-- **Front-desk copies behind nginx** (least connections): load tests
-  (`scripts/load_test.py`, locust) with 64 users sending requests back to back:
-  1 front desk tops out at 58 recommendations/s, 3 copies reach 182/s (p50
-  220 ms, p99 310 ms), with no failures.
-- **Dynamic batching** (`recsys/batching.py`): requests arriving within 2 ms of
-  each other (up to 16) are answered together, each shard asked once per round
-  for the whole batch.
-- **A shared Redis cache** (`recsys/cache.py`): one cache for every front desk,
-  keyed with the model version (a new version never serves old answers);
-  partial answers are never stored. If Redis is slow or down, a request waits at
-  most 100 ms and Redis is skipped for the next second.
-
-| One front desk, 64 users | Recommendations/s | p50 | p99 |
-|---|---|---|---|
-| Neither | 107 | 370 ms | 470 ms |
-| Batching | 180 | 180 ms | 280 ms |
-| Cache | 226 | 10 ms | 2.2 s |
-| Both | 241 | 15 ms | 210 ms |
-
-(The cache hit 98% of requests, because the test users cycle through 2,000
-playlists; real traffic would repeat less. The two load-test sets were measured
-in separate sessions, so compare within each.)
-
-With 1,000 simulated users on 3 front desks (batching and cache on; locust
-running on the same Mac): users browsing with 2-8 s between actions got
-recommendations in p50 15 ms, p99 182 ms, and the type-ahead menu in p50 2 ms,
-p99 57 ms; users clicking non-stop got p50 455 ms, p99 1.15 s at 205
-recommendations/s. No request failed in either. (nginx's defaults had dropped
-half the requests at 1,000 users: now a worker per core and 8,192 connections
-each.)
-
-### Overload
-
-When more requests arrive than the front desks can answer, waiting in line only
-makes every answer late. So each front desk admits at most 64 recommendation
-requests at once and drops any that waited 1 s without starting
-(`recsys/admission.py`), and nginx admits at most 96 per front desk: the rest
-get `503` with `Retry-After: 1` at once, and the webpage retries once. One front
-desk under 1,000 non-stop users: a separate visitor (`scripts/probe.py`) got
-answers in p50 21 ms (p99 119 ms) and refusals in 1.5 ms; before nginx did the
-refusing, a refusal took ~800 ms. The container health check (`/live`) never
-waits behind requests, so a busy front desk isn't mistaken for a frozen one.
-
-### Updating without downtime
-
-Blue/green (`scripts/bluegreen.py`, `docker/bluegreen/`): the new version
-starts as a complete second stack, an entrance nginx switches to it with a
-graceful reload (requests already in progress finish on the old stack), and the
-old stack is stopped once drained. During an update under load: 6,126
-requests, 0 errors, 0 partial answers, p99 14 ms; the last old-version answer
-and the first new-version answer each came within 0.1 s of the switch.
-
-### Webpage
-
-`web/` (plain HTML, CSS and JavaScript, served at `/`): type-ahead song search
-(typos fixed, words in any order across title, artist and album: below),
-the playlist kept in the address bar (a link reopens the same recommendations),
-Play buttons with Spotify's embedded player, light and dark mode, and phone
-layouts. 17% of the ListenBrainz catalog's songs have no Spotify link (4.8% of
-the songs it recommends with its default settings); their Play button says so instead of playing.
+| No limit, no mixing | 0.2407 | 13.5% | 4.6 | 48% |
+| 2 per artist, mix 0.5 (the MPD pair's default) | 0.2058 | 7.4% | 7.7 | 13% |
+| **3 per artist, no mixing (the default)** | **0.2321** | **8.9%** | **7.0** | **21%** |
 
 ### Song search
 
-The menu searches with Meilisearch, an open-source search engine in its own container
-(`recsys/song_search.py`). Each song is a document (its title and artist as one field, its album as
-another, and its listen count), indexed once per model version. The typed words match in any order, the
-last one as the start of a word, with one typo in words of 4+ letters and two in 8+. Matches are ordered by
-how many words matched, then fewer typos, then a title or artist match before an album-only one, then the
-most listens (popularity before the field put album-only matches above titles; Meilisearch's own order,
-popularity last, put obscure exact titles and YouTube-style copies first).
+The search box uses Meilisearch, an open-source search engine in its own container (`recsys/song_search.py`),
+with one index per model version. Typed words match in any order across title, artist and album, the last as
+a prefix, with a typo in words of 4+ letters (two in 8+). Results are ranked by words matched, then fewer
+typos, then title or artist before album-only matches, then most listens. "one more tpme", "radiohed creep",
+"daft punk one more" and "discovery daft punk" (an album) found nothing before and now find the right songs.
+Per keystroke: p50 9 ms, p99 26 ms on the server. If Meilisearch errors or takes over 250 ms, the box answers
+from the front desk's own name index (names starting with the text) and skips Meilisearch for a second.
 
-| Typed | Before (names starting with it) | Now |
-|---|---|---|
-| one more tpme | (nothing) | One More Time - Daft Punk |
-| radiohed creep | (nothing) | Creep - Radiohead |
-| daft punk one more | (nothing) | One More Time - Daft Punk |
-| discovery daft punk | (nothing) | One More Time, Harder Better Faster Stronger, ... (the album) |
-| kendrik lamar humble | (nothing) | HUMBLE. - Kendrick Lamar |
-| mr brightside | 2 remixes, not The Killers ("Mr." has a period) | Mr. Brightside - The Killers |
+### Your taste
 
-Typing 200 songs letter by letter (~4,300 requests, each prefix once) took p50 2.7 ms, p99 7.1 ms end to end locally and p50 8.9 ms, p99 26 ms on the server. The
-front desk gives Meilisearch 250 ms per search; if it errors or is too slow, the menu answers from the
-front desk's own name index (names starting with the text, no typos) and skips Meilisearch for a second,
-and those answers aren't cached.
-
-### Your taste (personalization A)
-
-A request can name a taste profile (`"profile": <key>`), built from one listener's Spotify Extended
-Streaming History (`recsys/personal.py`; only the plays' time, length, song, names and skip flag are read).
-Without one, or with an unknown key, the answer is exactly the usual one; personalized answers have their own
-cache entries. The webpage keeps a key given once as `?me=<key>` in the browser (never in shared links) and
-then shows a "Use my taste" toggle, off by default. The key is a long random secret, so each listener's
-taste only shapes their own requests.
-
-A profile (`recsys/taste.py`) can pull the search toward the listener's average taste, boost artists they
-play, and push down songs they usually skip. Tuned on the owner's own later listening (6 weeks to choose,
-6 weeks to report; 70% weight on new songs they went on to listen to, 30% on predicting their next song):
-only the skip penalty helped. On the test weeks it raised new songs the owner then listened to from 1.96 to
-4.40 per 100 recommendations (95% range +1.8 to +3.1), with 43% of the top 10 new to them instead of 17%,
-for 29% fewer exact next songs. The average-taste pull made every result worse, and the artist boost found
-fewer new songs.
+A request can name a taste profile (`"profile": <key>`) built from one listener's Spotify Extended Streaming
+History (`recsys/personal.py`, `recsys/taste.py`); without one, or with an unknown key, the answer is the
+usual one, and personalized answers have their own cache entries. The webpage keeps a key given once as
+`?me=<key>` in the browser (never in shared links) and shows a "Use my taste" toggle, off by default. A
+profile can pull the search toward the listener's average taste, boost artists they play, and push down
+songs they usually skip. Tuned on the owner's later listening (6 weeks to choose, 6 to report; 70% weight on
+new songs they went on to listen to, 30% on their next song), only the skip penalty helped: 43% of the top 10
+new to them instead of 17%, and 4.40 instead of 1.96 new songs per 100 that they then listened to (95% range
+of the gain +1.8 to +3.1).
 
 ### Hosting
 
-Live at **https://songrec.duckdns.org**, on one Oracle Cloud Arm machine (2 cores, 8 GB), the whole Docker
-Compose system on it (~4.3 GB for the containers, serving the ListenBrainz pair; Meilisearch is 1.4 GB of it). `docker-compose.oracle.yml`
-adds Caddy in front, which gets and renews
-the HTTPS certificate from Let's Encrypt by itself; nginx is then reachable only from the machine itself.
-Each visitor may ask for 5 recommendations and 20 song searches a second (with short bursts); past that,
-nginx answers 429 at once, so one visitor can't take the 2 cores.
-
-On the server, 2,000 of 2,000 requests gave the offline evaluation's top 10 in order, for both the MPD
-pair (p50 27 ms, p99 66 ms) and the ListenBrainz pair that replaced it (p50 30 ms, p99 64 ms; the Mac's
-10-core Docker setup: ~8-10 ms). The swap was a plain restart on the new bundle: the site answered "busy"
-for ~12 s. Free capacity for Oracle's Arm machines is scarce: the
-machine came after ~2,900 automatic requests from a free account (`scripts/oracle_launch.py`), on the
-first request after upgrading to Pay As You Go, which still costs nothing within the Always Free
-allowance. Quota rules make Oracle refuse anything beyond that allowance (other machine types, more
-than 2 Arm cores or 12 GB, more than 200 GB of disk), and a budget emails on any spend.
-
-A visit, step by step:
-
-```
-browser ── songrec.duckdns.org ──► DuckDNS: the server's address
-   │
-   ▼
-Caddy        HTTPS (certificate, encryption); passes the visitor's address on
-   │
-   ▼
-nginx        per-visitor rate limit ("slow down": 429, try again in a second); spreads requests over front desks
-   │
-   ▼
-front desk   the webpage; song search: Meilisearch (its own name index if Meilisearch can't answer), cached
-   │           in Redis; recommendations:
-   │           Redis has this exact request (same songs, same model version)? answer from the cache. Otherwise:
-   │           1. shards: the input songs' details
-   │           2. front desk: the retriever's "what comes next" vector (its guesses after each song, blended)
-   │           3. shards: each searches its quarter of the catalog, returns its best 100 + (number of input songs)
-   │           4. front desk: merges the four lists, drops the playlist's own songs, keeps the best 100
-   │           5. shards: those 100 candidates' details and how often each came after the input songs
-   │           6. front desk: the ranker, then at most 2 songs per artist -> the top 10, saved in Redis
-   ▼
-browser      the 10 songs, played with Spotify's embedded player (the music comes from Spotify)
-```
-
-Each part runs in its own Docker container; Docker restarts any that crash (and starts them all at boot),
-and autoheal restarts any that stop answering their health checks. The models are loaded once at start:
-the front desk holds both models' shared layers, each shard its quarter of the per-song tables. Redis is
-only a cache: if it's down, every answer is computed.
-
-Updating the site after a change on main:
+Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores, 8 GB, Always Free; quota
+rules make Oracle refuse anything beyond the free allowance, and a budget emails on any spend), running the
+whole Compose system (~4.3 GB). `docker-compose.oracle.yml` adds Caddy for HTTPS (Let's Encrypt, renewed by
+itself). Each visitor may ask for 5 recommendations and 20 searches a second. On the server, 2,000 of 2,000
+held-out requests gave the offline top 10 in order (p50 29 ms, p99 74 ms); a model switch is a restart on the
+new bundle, ~10-30 s of "busy".
 
 ```bash
 ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build'
-# a new model: index its songs first (BUNDLE=<its folder> ... run --rm search-index), then point .env's BUNDLE at it
+# a new model: copy its bundle, index its songs (BUNDLE=<its folder> docker compose ... run --rm search-index),
+# then point .env's BUNDLE at it
 ```
-
-## Future work
-
-Ideas to test. Each would be a separate run, measured like every other change.
-
-- **The playlist-fit ranker at 1M** (next): train the ranker on the next 10
-  songs, weighted (`ranker_50k_1m_settings_next10w` at 50k), on the existing 1M
-  retriever, export it, re-tune `max_per_artist` and `mix` with
-  `scripts/playlist_eval.py` (its own top 10 is already more varied), and swap
-  it in with a blue/green update. Only the ranker is retrained.
-- **Faster retriever training** (on hold): at 50k, validation is 44% of a
-  retriever run; at 1M, the last 5 of ~9 epochs added only +0.005. Candidates:
-  a learning rate that decays over a fixed number of epochs, validating once an
-  epoch at 50k, starting retriever variants from the trained retriever.
-- **Low-precision song vectors for serving:** store the search index's song
-  vectors in 8 bits instead of 32 (FAISS scalar quantization), about 4x less
-  memory (282 MB → ~70 MB at 1M). Measure what it costs in search recall.
-- **Mixture of experts, only if a bigger model helps:** first test a wider or
-  deeper transformer at 50k (it is still v1's 2 layers, 64 wide). If size
-  helps, a mixture-of-experts layer (several small feed-forward "experts" and
-  a router that picks 1–2 per position) adds that capacity cheaply. Once
-  listening history brings several goals (next song, skips, play length),
-  multi-gate MoE (MMoE) shares experts across them.
-
-## Notes for later: songs the model doesn't know
-
-A request can include songs outside the catalog. For now they are left out of
-the input and listed as ignored; a song the model knows nothing about (not the
-song, its artist, album or genres) can't be recommended either. Two things
-make "knows nothing" rare in practice:
-
-- **Spotify can always tell us something.** Any real Spotify song ID has a
-  name, artist and album available through Spotify's API. Once those lookups
-  are in place (planned for the ListenBrainz stage), "nothing known" really
-  means "the artist is also new to us." A song with a known artist or album can
-  get a features-only vector: its artist, album and genre vectors without a
-  song vector of its own.
-- **An "unknown song" placeholder** is a known trick: train the model with one
-  shared vector that stands in for every rare song, so it learns what "some
-  song I don't know" usually means. That's a model change for later, not a fix
-  for now.
 
 ## Running it
 
-Python 3.13; `pip install -r requirements.txt` (PyTorch, NumPy, FAISS, FastAPI,
-gRPC, the Redis client, locust). Docker for the containerized system.
+Python 3.13; `pip install -r requirements.txt`. Docker for the containerized system.
 
-**Data.** Download the MPD from
-[AIcrowd](https://www.aicrowd.com/challenges/spotify-million-playlist-dataset-challenge)
-into `data/mpd/` (1,000 JSON slices, 31 GB), then build the compact store once
-(~4 min, 502 MB):
+**MPD data.** Download the MPD from
+[AIcrowd](https://www.aicrowd.com/challenges/spotify-million-playlist-dataset-challenge) into `data/mpd/`
+(1,000 JSON slices, 31 GB), then build the compact store (~4 min, 502 MB) and genres:
 
 ```bash
 python -m recsys.mpd_store --raw data/mpd --out data/mpd_store
-# genres for every MPD artist, from the MusicBrainz JSON dump (~20 min, streamed)
 python scripts/genres_from_dump.py --store data/mpd_store --out data/genres/musicbrainz_all_mpd_artists.jsonl
 ```
 
-**Train and evaluate.** Every run is a config in `configs/` (no hidden
-defaults: a missing setting is an error); results go to
-`runs/<group>/<config>/seed<k>/` (e.g.
-`runs/retriever_ranker_runs/1m/retriever_1m/seed1/`).
+**ListenBrainz data.** A full listens dump (~258 GB, one `.tar.zst`) from
+[ListenBrainz's dumps](https://data.metabrainz.org/pub/musicbrainz/listenbrainz/fullexport/), then a 12-month
+extract (~1 h, 14 GB), MusicBrainz genres for its artists, and the training store (~5 min):
 
 ```bash
-python -m recsys.train    --config configs/retriever_1m.toml   # retriever (~75 min on an M-series Mac)
-python -m recsys.evaluate --config configs/retriever_1m.toml   # held-out NDCG@10, Hits@k, recall@K
-python -m recsys.ranker   --config configs/ranker_1m.toml      # ranker: train, then evaluate (~45 min)
-# final numbers on every held-out window instead of the 200,000-window sample (eval_all.json)
-python -m recsys.evaluate --config configs/retriever_1m.toml --all-held-out
-python -m recsys.ranker   --config configs/ranker_1m.toml --all-held-out
-python scripts/search_benchmark.py real --config configs/retriever_1m.toml --k 100
-python -m pytest                                              # tests
+python scripts/parallel_download.py <dump url> --out ~/Downloads/<file> --connections 16   # resumable
+python -m recsys.lb_extract --source ~/Downloads/<file> --start 2025-10-15 --end 2026-10-15 --out data/lb_extract
+python scripts/genres_from_dump.py --file artist.tar.xz --listenbrainz data/lb_extract --out data/genres/musicbrainz_lb_artists.jsonl
+python -m recsys.lb_store --extract data/lb_extract --out data/lb_store
 ```
 
-**Serve.** After the export (see Serving):
+**Train and evaluate.** Every run is a config in `configs/` (no hidden defaults: a missing setting is an
+error), with results in `runs/<group>/<config>/seed<k>/`. Names follow the phases: `v1_*`, `p2_*` (features,
+overfitting), `p3_*` (scaling), then `retriever_<size>[_variant]` and `ranker_<size>[_variant]` (e.g.
+`retriever_1m_lb`, `ranker_1m_lb_next10w`). A ranker starts from its retriever's checkpoint.
 
 ```bash
-python -m recsys.launch --shards 4                    # sharded, without Docker (cuts the slices if needed)
-python -m recsys.shard_slices --bundle bundles/<bundle> --shards 4   # slices for Docker, once
-docker compose up -d --build --scale frontdesk=3      # shards, front desks, nginx, Redis, autoheal: http://localhost:8000
-python scripts/serving_check.py cases --ranker configs/ranker_1m_any_length.toml --out runs/serving/cases
-python scripts/serving_check.py serve --cases runs/serving/cases --url http://127.0.0.1:8000 --label docker
-REDIS_URL= docker compose up -d --scale frontdesk=1   # cache off, then break shards under load:
-python scripts/chaos.py --cases runs/serving/cases --out runs/serving/chaos.json
-python scripts/load_test.py --copies 1 3 --users 1 16 64 --seconds 30 --out runs/serving/load.json
-python scripts/bluegreen.py --bundle bundles/<bundle> --cases runs/serving/cases --out runs/serving/bluegreen.json
-python scripts/playlist_eval.py cases --config configs/retriever_1m.toml --bundle bundles/<bundle> --out runs/serving/playlist_eval
-python scripts/playlist_eval.py score --cases runs/serving/playlist_eval --bundle bundles/<bundle>
+python -m recsys.train    --config configs/retriever_1m_lb.toml       # retriever (~2 h on an M-series Mac)
+python -m recsys.evaluate --config configs/retriever_1m_lb.toml       # held-out NDCG@10, Hits@k, recall
+python -m recsys.ranker   --config configs/ranker_1m_lb_next10w.toml  # ranker: train, then evaluate (~2 h)
+scripts/run_queue.sh configs/a.toml configs/b.toml                    # runs one after another
+python -m pytest
 ```
 
-`docker-compose.yml` reads the bundle folder from `BUNDLE`; `BATCH=0` turns
-batching off and an empty `REDIS_URL=` turns the cache off.
+**Serve.**
 
-Config names follow the phases: `v1_*` (Phase 1), `p2_*` (features and
-overfitting), `p3_*` (scaling), `retriever_<size>` and `ranker_<size>` (two-stage
-pairs: `ranker_1m` is trained on `retriever_1m`; earlier rankers are
-`retriever_ranker_*`). Runs go in matching
-folders: `runs/v1_runs/`, `runs/p2_runs/`, `runs/p3_runs/`, and `runs/retriever_ranker_runs/<size>/`
-(`5k/`, `50k/`, `200k/`, `1m/`).
+```bash
+python -m recsys.export --ranker configs/ranker_1m_lb_next10w.toml --max-per-artist 3 --mix 0
+python -m recsys.shard_slices --bundle bundles/<bundle> --shards 4
+docker compose up -d --build                      # http://localhost:8000 (MEILI_MASTER_KEY in .env)
+docker compose run --rm search-index              # the song search's index, once per bundle
+python scripts/serving_check.py cases --ranker configs/ranker_1m_lb_next10w.toml --out runs/serving/lb_cases
+python scripts/serving_check.py serve --cases runs/serving/lb_cases --url http://127.0.0.1:8000 --label docker
+python -m recsys.serve --bundle bundles/<bundle>  # or: one process, no Docker
+```
+
+Also: `scripts/chaos.py`, `scripts/load_test.py`, `scripts/bluegreen.py` (failure, load and update tests),
+`scripts/lb_compare.py` (MPD vs ListenBrainz pairs, serving settings), `scripts/search_check.py`
+(song search). In `docker-compose.yml`, `BUNDLE` picks the bundle; empty `REDIS_URL=` or `SEARCH_URL=` turn
+the cache or Meilisearch off, `BATCH=0` batching.
+
+**Personalize.** From a Spotify Extended Streaming History zip:
+
+```bash
+python -m recsys.personal plays --export <zip> --bundle bundles/<bundle>   # match plays, cut sessions
+python scripts/personal_eval.py --bundle bundles/<bundle>                  # tune and measure (held-out weeks)
+python -m recsys.personal profile --bundle bundles/<bundle> --beta 7.02    # the served profile, secret key
+```
 
 ## Layout
 
 | Path | What's there |
 |---|---|
-| `recsys/data.py`, `recsys/mpd_store.py` | Playlists → vocab, splits, windows, chunks, features; the compact MPD store |
-| `recsys/model.py` | The retriever (`SongRecommender`) |
-| `recsys/train.py`, `recsys/evaluate.py` | Training loop with early stopping; held-out evaluation |
+| `recsys/data.py`, `recsys/mpd_store.py` | Playlists or sessions → vocab, splits, windows, features; the compact MPD store |
+| `recsys/listenbrainz.py`, `recsys/lb_extract.py`, `recsys/lb_sessions.py`, `recsys/lb_store.py` | ListenBrainz: reading the dump, the 12-month extract, session rules, the training store |
+| `recsys/model.py`, `recsys/train.py`, `recsys/evaluate.py` | The retriever, training with early stopping, held-out evaluation |
 | `recsys/sampled.py`, `recsys/lazy_adam.py`, `recsys/augment.py` | Sampled softmax, lazy AdamW, window augmentation |
-| `recsys/ranker.py` | The second-stage ranker: shortlists, training, evaluation |
+| `recsys/ranker.py`, `recsys/rank_features.py` | The ranker: shortlists, extra inputs, training, evaluation |
 | `recsys/search.py`, `recsys/ann.py`, `recsys/search_worker.py` | Exact search; FAISS indexes in their own process |
-| `recsys/export.py`, `recsys/recommender.py`, `recsys/serve.py` | Serving: the versioned bundle, answering requests from it, the FastAPI server |
-| `recsys/shard.py`, `recsys/shard_slices.py`, `recsys/frontdesk.py`, `recsys/wire.py`, `recsys/proto/` | Phase B: shard servers and their slices, the front desk, arrays in messages, the gRPC service |
-| `recsys/batching.py`, `recsys/cache.py`, `recsys/admission.py`, `recsys/healthcheck.py`, `recsys/launch.py` | Batching, the Redis cache, overload limits, container health checks, the one-command launcher |
-| `docker/`, `docker-compose.yml`, `docker-compose.oracle.yml` | The image, nginx, the blue/green stacks; the public server's additions (Caddy for HTTPS) |
-| `web/` | The webpage |
-| `.github/workflows/` | Tests on every pull request and push to main (CI) |
+| `recsys/export.py`, `recsys/recommender.py`, `recsys/serve.py` | The versioned bundle, answering requests, the FastAPI server |
+| `recsys/shard.py`, `recsys/shard_slices.py`, `recsys/frontdesk.py`, `recsys/wire.py`, `recsys/proto/` | Shards and their slices, the front desk, arrays in messages, the gRPC service |
+| `recsys/batching.py`, `recsys/cache.py`, `recsys/admission.py`, `recsys/healthcheck.py`, `recsys/launch.py` | Batching, the Redis cache, overload limits, health checks, the one-command launcher |
+| `recsys/song_search.py`, `recsys/personal.py`, `recsys/taste.py` | Song search (Meilisearch); personalization |
 | `recsys/metrics.py`, `recsys/baselines.py` | NDCG@k, Hits@k; most-popular baseline |
-| `scripts/` | v1 equivalence check, genre fetching, profiling, search benchmark, short-input test, serving check, chaos test, load tests (locust), probe, blue/green update, playlist evaluation, Oracle launch |
-| `configs/`, `tests/` | One config per run; tests |
-| `RESULTS.md` | Every run, with what changed and what was learned |
+| `docker/`, `docker-compose.yml`, `docker-compose.oracle.yml`, `web/` | The image, nginx, blue/green stacks, the server's Caddy; the webpage |
+| `scripts/`, `configs/`, `tests/`, `.github/workflows/` | Tools and checks; one config per run; tests; CI on every pull request |
+| `RESULTS.md`, `ROADMAP.md` | Every run and what was learned; done and planned work |
 
-Genre data: MusicBrainz (CC BY-NC-SA).
+Data: ListenBrainz listens (CC0); genres from MusicBrainz (CC BY-NC-SA); the MPD isn't redistributed.
