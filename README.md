@@ -221,7 +221,7 @@ of the gain +1.8 to +3.1).
 
 ### Hosting
 
-Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores, 8 GB, Always Free; quota
+Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores, 12 GB, Always Free; quota
 rules make Oracle refuse anything beyond the free allowance, and a budget emails on any spend), running the
 whole Compose system (~4.3 GB). `docker-compose.oracle.yml` adds Caddy for HTTPS (Let's Encrypt, renewed by
 itself). Each visitor may ask for 5 recommendations and 20 searches a second. On the server, 2,000 of 2,000
