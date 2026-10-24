@@ -13,7 +13,8 @@ add, commit, push, a PR set to merge automatically, delete the branch after it m
    branches while a training or evaluation run is using the code.
 2. **Test.** `.venv/bin/python -m pytest -q`. If anything fails, stop and report the failure; don't ship.
 3. **Commit.** Look at `git status` first. Add only this work's files: no secrets (`.env`, keys), nothing that
-   `.gitignore` covers, no unrelated changes. One short, clear commit message.
+   `.gitignore` covers, no unrelated changes. If the work finishes or adds a roadmap item, update ROADMAP.md
+   first (the `roadmap` skill). One short, clear commit message.
 4. **Push and open the PR.** `git push -u origin <branch>`, then `gh pr create --base main --head <branch>`
    with a short body (what changed, which checks ran), then `gh pr merge <branch> --auto --merge`.
 5. **Wait for the merge in the background** (don't poll in the foreground): a loop on
