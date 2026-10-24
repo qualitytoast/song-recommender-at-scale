@@ -1,0 +1,5 @@
+{"reference": {"next_ndcg@10": 0.2321, "next_hit@10": 0.258, "shortlist_recall": 0.3588, "bytes": {"retriever_song_inputs.npy": 302658944, "ranker_song_inputs.npy": 302658944, "search_index.faiss": 317943815}, "seconds": 6}}
+{"other": {"next_ndcg@10": 0.2322, "next_hit@10": 0.2582, "shortlist_recall": 0.3586, "bytes": {"retriever_song_inputs.npy": 151329536, "ranker_song_inputs.npy": 151329536, "search_index.faiss": 164249930}, "seconds": 10, "same_songs_in_top_10": 0.9959, "identical_top_10": 0.937}}
+real 17.05
+user 15.61
+sys 2.07
