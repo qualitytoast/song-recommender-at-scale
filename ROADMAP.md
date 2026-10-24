@@ -42,7 +42,7 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Personalization A: a taste profile from the owner's Spotify history, behind a private "Use my taste"
       toggle: more than twice the new songs they then listened to (1.96 -> 4.40 per 100 recommendations)
 
-## Now: growing the song catalog
+## TODO Now
 
 Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen sample; the full year is on disk.
 
@@ -52,9 +52,6 @@ Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen s
 - [ ] Songs nobody played, placed from their artist, album and genre alone (a model change; the weakest picks)
 - [ ] Resize the server to 12 GB, still Always Free (2x the songs needs ~8 GB of today's 7.7)
 - [ ] Store song vectors in 8 bits instead of 32 (~4x less memory; measure the accuracy cost first, and 16 bits)
-
-## Later
-
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
 - [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests

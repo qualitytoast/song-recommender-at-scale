@@ -38,22 +38,12 @@ the same metrics (NDCG@10, Hits@k) and the same most-popular baseline.
 
 ## How it works
 
-```
-up to 10 songs
-      │
-      ▼
-┌───────────┐  "what comes next" vector h   ┌──────────────────────────────┐
-│ Retriever │──────────────────────────────►│ Search (FAISS IVF): the 100  │
-└───────────┘                               │ songs with the highest h·song │
-                                            └──────────────────────────────┘
-                                                           │
-                                                           ▼
-                                         ┌──────────┐  rescores the 100, reading each candidate next to
-                                         │  Ranker  │  the input songs, plus overlap and co-occurrence counts
-                                         └──────────┘
-                                                           │
-                                                           ▼
-                                                   top 10 next songs
+```mermaid
+flowchart TD
+    I["Up to 10 songs"] --> R["Retriever<br/>2-layer Transformer"]
+    R -- "'what comes next' vector h" --> S["Search (FAISS IVF)<br/>the 100 songs with the highest h · song"]
+    S --> K["Ranker<br/>rescores the 100 next to the input songs,<br/>plus overlap and co-occurrence counts"]
+    K --> T["Top 10 next songs"]
 ```
 
 **Retriever** (`recsys/model.py`, `recsys/train.py`). A 2-layer Transformer. Each song's input is the sum of
@@ -118,15 +108,20 @@ Rows use different catalogs and held-out sets, so compare each with its own most
 
 ## Serving
 
-```
-browser ──► Caddy (HTTPS) ──► nginx: per-visitor rate limits; spreads requests over front desks; 503 when full
-                                 │
-               front desks (FastAPI): both models' small shared layers, song names, batching, admission
-                 │             │                       │ gRPC: 3 rounds per request, shards asked at once
-               Redis      Meilisearch          ┌────────┬────────┬────────┐
-          (one answer   (song search)       shard 0  shard 1  shard 2  shard 3   song j lives on shard j % 4:
-            cache)                                                             its search index, input vectors,
-                                                                               features, co-occurrence counts
+```mermaid
+flowchart TD
+    B["Browser / API client"] --> C["Caddy<br/>HTTPS"]
+    C --> N["nginx<br/>per-visitor rate limits, spreads requests over front desks,<br/>503 when every front desk is full"]
+    N --> F["Front desks (FastAPI)<br/>both models' small shared layers, song names,<br/>batching, admission limits"]
+    F <--> RD[("Redis<br/>one answer cache")]
+    F <--> M[("Meilisearch<br/>song search")]
+    subgraph SH["Shards: song j lives on shard j mod 4, with its search index, input vectors, features, co-occurrence counts"]
+        S0["shard 0"]
+        S1["shard 1"]
+        S2["shard 2"]
+        S3["shard 3"]
+    end
+    F -- "gRPC: 3 rounds per request,<br/>shards asked at once" --> SH
 ```
 
 **From a model to a server.** `recsys/export.py` writes everything serving needs into one versioned bundle:
