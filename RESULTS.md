@@ -1741,3 +1741,60 @@ in words of 4+ letters, two in 8+.
   shards' first load of the new bundle from the slow disk (~50 MB/s) took 38 s, past their 30 s start period:
   autoheal restarted 3 shards mid-load, `docker compose up` gave up waiting, and the front desk wasn't started
   until by hand: the site was down 5 min 20 s. Shards now get 120 s; the redeploy with that fix: 33 s down.
+
+# Personalization A: the owner's taste profile
+
+A request can name a taste profile built from one listener's history; without one the answer is unchanged
+(2026-10-20 to 10-23; `recsys/personal.py`, `recsys/taste.py`, `scripts/personal_eval.py`; results
+`runs/personal/`, totals only). The listener here is the project's owner, from their Spotify Extended
+Streaming History (2018-10 to 2026-10). Of each play only its time, ms played, track URI, track and artist
+names and skipped flag are read.
+
+**The history** (4.4 s to read, match and sessionize): 83,190 plays of songs, 60,614 of them listens
+(30 s+), 36.6% flagged skipped, 8,769 different songs. 91.2% of the listens match the catalog: 48,449 by
+Spotify URI, 6,856 more by cleaned artist + title (the ListenBrainz song key), so 7,477 catalog songs.
+With the ListenBrainz session rules: 3,220 sessions holding 50,856 listens.
+
+**The profile** (`build_profile`, ~1 s): a taste vector (the retriever's guesses after every position of
+the listener's sessions, averaged, recent plays weighted more: half as much per 180 days back, scaled to a
+typical query's length), artist affinity (recency-weighted listens, log-scaled to 0-1) and skip rates
+(Spotify's flag or under 30 s, for songs played 3+ times). With a profile, the query becomes
+(1 - w) x its own + w x taste, and after the ranker each candidate gets + alpha x its artist's affinity -
+beta x its skip rate (alpha and beta in units of the base's typical score gap between ranks 1 and 10:
+1.75).
+
+**Measured on the owner's later listening.** The profile used plays before 2026-07-11; the settings were
+chosen on the sessions of 2026-07-11 to 08-22 (96 sessions, 1,031 cases) and reported on 2026-08-22 to
+10-03 (123 sessions, 1,406 cases): each catalog song with a catalog song before it in its session, the up to
+10 before it as the request, answered by the serving code with the site's settings (3 per artist, no mixing).
+"New finds": songs in the 10 never listened to before the period that the owner then listened to (30 s+, not
+skipped) in it. The owner's goal: 0.7 x new finds / the base's + 0.3 x next-song NDCG@10 / the base's.
+
+- The base model predicts the owner's next song far less well than ListenBrainz's held-out listeners'
+  (NDCG@10 0.04 vs 0.24): 28% of their plays are on shuffle, 9% of their listens aren't in the catalog. 83%
+  of its top 10 are songs they already know.
+- First grid (w 0-0.7, alpha 0-1, beta 0-1; 84 s): the best was beta 1, the grid's edge. Second grid (beta up
+  to 4, w down to 0.05; 212 s): the 70/30 score rose with beta all the way (1.00, 1.46, 1.91, 2.16, 2.35 at
+  beta 0, 1, 2, 3, 4, w = alpha = 0): the more songs the owner tends to skip are pushed out, the more new
+  songs fill the 10 (19% -> 57%), while next-song NDCG falls (0.042 -> 0.032). The owner liked about 1 in 10
+  of the new songs at every strength (11.9% -> 10.2%): more new songs, not better ones. Any taste pull (w > 0)
+  lowered the score, a strong one to 0.11; the artist bonus raised next-song NDCG a little but found fewer new
+  songs.
+- The owner chose beta 4 (7.02 score points). On the test weeks against the base, 95% ranges from resampling
+  whole sessions:
+
+| Test weeks (1,406 cases) | Base | Skip penalty, beta 4 | 95% range of the change |
+|---|---|---|---|
+| 70/30 score | 1.00 | **1.78** | 1.56 - 2.11 |
+| New finds per 100 | 1.96 | **4.40** | +1.85 to +3.11 |
+| New songs in the 10 | 16.5% | 43.2% | +25 to +28 points |
+| Next-song NDCG@10 | 0.0357 | 0.0255 | -0.015 to -0.005 |
+| Next-song hit@10 | 0.062 | 0.040 | -0.033 to -0.011 |
+| Different artists | 6.71 | 7.28 | +0.48 to +0.67 |
+
+**Served** (step 6): the profile to serve is built from all the plays (to 2026-10-03; 5.1 MB, in the
+bundle's `profiles/` folder, as it only fits that bundle version) under a long random key kept on the owner's
+Mac. `serve --profiles` loads the profiles for its bundle; a request naming an unknown key gets the usual
+answer. The webpage keeps a `?me=<key>` in the browser and shows a "Use my taste" toggle, off by default.
+Deployed with a front-desk restart (~6 s of 503s). Over HTTPS, the same request with the key changed most of
+the 10; without it, the usual answer.

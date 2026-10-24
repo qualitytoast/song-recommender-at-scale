@@ -1,7 +1,9 @@
 // The recommender's webpage: build a playlist with a type-ahead search (/songs), ask for the next songs
 // (/recommend), play them with Spotify's embedded player (songs with a Spotify link). The playlist lives in
 // the address bar (?songs=uri,uri), so a link reopens the same recommendations. Text from the server is
-// always set as text (textContent), never as HTML.
+// always set as text (textContent), never as HTML. A listener with a taste profile on the server opens the
+// page once with ?me=<their key>: the browser keeps the key (and drops it from the address, so shared links
+// never carry it) and shows a "Use my taste" toggle that adds it to their own requests (recsys.taste).
 "use strict";
 
 const $ = (id) => document.getElementById(id);
@@ -9,6 +11,8 @@ const search = $("search"), menu = $("menu"), playlistEl = $("playlist");
 const goButton = $("go"), clearButton = $("clear"), statusEl = $("status"), notesEl = $("notes"), resultsEl = $("results");
 
 let playlist = [];        // [{uri, track, artist}]
+const tasteToggle = $("taste");
+let tasteKey = null;      // this browser's taste-profile key, if it has one
 let menuItems = [];       // the songs the menu shows
 let active = -1;          // the highlighted menu row
 let searchTimer = null, searchAbort = null;
@@ -18,6 +22,14 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function stored(name, value) {  // localStorage, which can be unavailable (private windows): never fatal
+  try {
+    if (value === undefined) return localStorage.getItem(name);
+    localStorage.setItem(name, value);
+  } catch (e) {}
+  return null;
 }
 
 function setStatus(text, isError = false) {
@@ -206,7 +218,8 @@ async function recommend(retried = false) {
     const response = await fetch("/recommend", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ songs: playlist.map((s) => s.uri) }),
+      body: JSON.stringify({ songs: playlist.map((s) => s.uri),
+                             profile: tasteKey && tasteToggle.checked ? tasteKey : null }),
     });
     if (response.status === 503 && !retried) {
       const wait = Number(response.headers.get("Retry-After") || 1);
@@ -224,6 +237,9 @@ async function recommend(retried = false) {
     const notes = [];
     if (body.ignored.length) notes.push(`Not in the catalog: ${body.ignored.join(", ")}.`);
     if (body.partial) notes.push("Part of the catalog didn't answer, so these come from the rest.");
+    if (tasteKey && tasteToggle.checked && !body.personalized) {
+      notes.push("Your taste profile isn't on the server right now, so these are the usual recommendations.");
+    }
     notesEl.textContent = notes.join(" ");
     setStatus("");
     return body;
@@ -235,6 +251,10 @@ async function recommend(retried = false) {
 }
 
 goButton.addEventListener("click", () => recommend());
+tasteToggle.addEventListener("change", () => {
+  stored("useTaste", tasteToggle.checked ? "1" : "0");
+  if (resultsEl.children.length) recommend();  // the shown recommendations, again with (or without) the taste
+});
 clearButton.addEventListener("click", () => {
   playlist = [];
   changed();
@@ -251,6 +271,14 @@ async function start() {
     $("model").textContent = `${h.songs.toLocaleString()} songs · model ${h.version}`;
   }).catch(() => {});
   const params = new URLSearchParams(location.search);
+  if (params.get("me")) {  // a taste-profile key: kept in this browser, never left in the address
+    stored("tasteKey", params.get("me"));
+    params.delete("me");
+    history.replaceState(null, "", params.toString() ? `?${params}` : location.pathname);
+  }
+  tasteKey = stored("tasteKey");
+  $("taste-toggle").hidden = !tasteKey;
+  tasteToggle.checked = Boolean(tasteKey) && stored("useTaste") === "1";
   const uris = (params.get("songs") || "").split(",").filter(Boolean);
   renderPlaylist();
   if (uris.length) {  // a shared link: the songs' names come back with the recommendations

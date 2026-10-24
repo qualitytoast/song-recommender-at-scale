@@ -41,6 +41,7 @@ from recsys.rank_features import CandidateFeatures
 from recsys.ranker import drop_input_songs
 from recsys.recommender import MIX, Catalog, Stopwatch, load_shared, serving_ranker, serving_retriever
 from recsys.search import mixed_query_vectors
+from recsys.taste import blend
 from recsys.wire import pack, unpack
 
 ROWS = ("retriever_inputs", "ranker_inputs", "artist", "album", "genres")
@@ -195,7 +196,7 @@ class ShardedRecommender(Catalog):
         return out
 
     @torch.no_grad()
-    def recommend_ids(self, song_ids, name_ids, mix=MIX):
+    def recommend_ids(self, song_ids, name_ids, mix=MIX, taste=None, w=0.0):
         clock = Stopwatch(self.device)
         s, device, songs = self.settings, self.device, self.settings["songs"]
         X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)
@@ -215,6 +216,8 @@ class ShardedRecommender(Catalog):
         self.retriever.song_embedding.rows = torch.from_numpy(inputs["retriever_inputs"]).to(device)
         context = np.arange(L)[None, :]  # local IDs: the inputs are 0..L-1
         h = mixed_query_vectors(self.retriever, context, N, device, mix)
+        if taste is not None:
+            h = blend(h, taste, w)
         clock.mark("retriever")
         # 2. search every shard, merge what came back
         k = s["shortlist"] + (L if s["exclude_input"] else 0)
@@ -277,8 +280,9 @@ class ShardedRecommender(Catalog):
 
     @torch.no_grad()
     def recommend_batch(self, requests):
-        """recommend_ids for several (song IDs, name-word IDs[, mix]) requests at once (recsys.batching): each
-        shard is asked once per round for the whole batch (every distinct song once), and the models run
+        """recommend_ids for several (song IDs, name-word IDs[, mix[, taste, w]]) requests at once
+        (recsys.batching): each shard is asked once per round for the whole batch (every distinct song once),
+        and the models run
         on all of them together, shorter inputs padded (and masked, as for any-length cases). Returns one
         (ids, scores, timings, notes) per request, or a ShardsUnavailable for a request none of whose input
         songs could be read."""
@@ -287,6 +291,8 @@ class ShardedRecommender(Catalog):
         Xs = [np.asarray(r[0][-s["input_length"]:], dtype=np.int64) for r in requests]
         names = [np.asarray(r[1], dtype=np.int64).reshape(-1) for r in requests]
         mixes = np.array([r[2] if len(r) > 2 else MIX for r in requests], dtype=np.float64)
+        tastes = [r[3] if len(r) > 3 else None for r in requests]
+        ws = np.array([r[4] if len(r) > 4 and r[3] is not None else 0.0 for r in requests], dtype=np.float64)
         missing = set()
         # 1. the rows of every input song of the batch
         uniq_in = np.unique(np.concatenate(Xs))
@@ -310,6 +316,9 @@ class ShardedRecommender(Catalog):
         clock.mark("shards: input songs")
         self.retriever.song_embedding.rows = torch.from_numpy(in_rows["retriever_inputs"]).to(device)
         h = mixed_query_vectors(self.retriever, np.searchsorted(uniq_in, X_glob), N, device, mixes, lengths=lengths)
+        if ws[live].any():  # each request's own taste vector (a row of zeros, weight 0, for one without)
+            T = np.stack([tastes[i] if tastes[i] is not None else np.zeros(h.shape[1], h.dtype) for i in live])
+            h = blend(h, T, ws[live])
         clock.mark("retriever")
         # 2. every shard searched once for all the queries; merged per request (searching L deep for every
         #    request: a request with fewer input songs keeps the same top shortlist after dropping them)

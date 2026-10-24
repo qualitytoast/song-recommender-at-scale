@@ -241,7 +241,9 @@ uniform random negatives were clearly worse than popularity-weighted ones.
 - [x] The live site serves the ListenBrainz pair (its own tuned settings: 3 per artist, no mixing),
       swapped in with ~12 s of downtime
 - [x] Song search that fixes typos and matches title, artist and album words in any order (Meilisearch)
-- [ ] Personalization to one listener's history (add distillation?)
+- [x] Personalization A: a taste profile from the owner's Spotify history, behind a private "Use my taste"
+      toggle: more than twice the new songs they then listened to (1.96 -> 4.40 per 100 recommendations)
+- [ ] Personalization B-D: fine-tuning on one listener, per-listener vectors, listening history as input
 
 ## Serving
 
@@ -498,6 +500,23 @@ Typing 200 songs letter by letter (~4,300 requests, each prefix once) took p50 2
 front desk gives Meilisearch 250 ms per search; if it errors or is too slow, the menu answers from the
 front desk's own name index (names starting with the text, no typos) and skips Meilisearch for a second,
 and those answers aren't cached.
+
+### Your taste (personalization A)
+
+A request can name a taste profile (`"profile": <key>`), built from one listener's Spotify Extended
+Streaming History (`recsys/personal.py`; only the plays' time, length, song, names and skip flag are read).
+Without one, or with an unknown key, the answer is exactly the usual one; personalized answers have their own
+cache entries. The webpage keeps a key given once as `?me=<key>` in the browser (never in shared links) and
+then shows a "Use my taste" toggle, off by default. The key is a long random secret, so each listener's
+taste only shapes their own requests.
+
+A profile (`recsys/taste.py`) can pull the search toward the listener's average taste, boost artists they
+play, and push down songs they usually skip. Tuned on the owner's own later listening (6 weeks to choose,
+6 weeks to report; 70% weight on new songs they went on to listen to, 30% on predicting their next song):
+only the skip penalty helped. On the test weeks it raised new songs the owner then listened to from 1.96 to
+4.40 per 100 recommendations (95% range +1.8 to +3.1), with 43% of the top 10 new to them instead of 17%,
+for 29% fewer exact next songs. The average-taste pull made every result worse, and the artist boost found
+fewer new songs.
 
 ### Hosting
 

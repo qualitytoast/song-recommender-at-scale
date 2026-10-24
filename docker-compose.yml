@@ -53,7 +53,7 @@ services:
       python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
       --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
       --redis "${REDIS_URL-redis://redis:6379/0}" --batch ${BATCH:-16} --batch-wait-ms ${BATCH_WAIT_MS:-2}
-      --search "${SEARCH_URL-http://meilisearch:7700}"
+      --search "${SEARCH_URL-http://meilisearch:7700}" --profiles /bundle/profiles
     environment:
       OMP_NUM_THREADS: "1"  # one request's computations are tiny: splitting them over threads costs more
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
