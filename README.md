@@ -38,12 +38,26 @@ the same metrics (NDCG@10, Hits@k) and the same most-popular baseline.
 
 ## How it works
 
-```mermaid
-flowchart TD
-    I["Up to 10 songs"] --> R["Retriever<br/>2-layer Transformer"]
-    R -- "'what comes next' vector h" --> S["Search (FAISS IVF)<br/>the 100 songs with the highest h · song"]
-    S --> K["Ranker<br/>rescores the 100 next to the input songs,<br/>plus overlap and co-occurrence counts"]
-    K --> T["Top 10 next songs"]
+```
+ Up to 10 songs
+       │
+       ▼
+ ┌─────────────────────┐
+ │ Retriever           │  2-layer Transformer
+ └─────────────────────┘
+       │  "what comes next" vector h
+       ▼
+ ┌─────────────────────┐
+ │ Search (FAISS IVF)  │  100 songs with highest h · song
+ └─────────────────────┘
+       │  100 candidates
+       ▼
+ ┌─────────────────────┐
+ │ Ranker              │  rescores next to the input songs,
+ └─────────────────────┘  plus overlap and co-occurrence counts
+       │
+       ▼
+ Top 10 next songs
 ```
 
 **Retriever** (`recsys/model.py`, `recsys/train.py`). A 2-layer Transformer. Each song's input is the sum of
@@ -108,20 +122,29 @@ Rows use different catalogs and held-out sets, so compare each with its own most
 
 ## Serving
 
-```mermaid
-flowchart TD
-    B["Browser / API client"] --> C["Caddy<br/>HTTPS"]
-    C --> N["nginx<br/>per-visitor rate limits, spreads requests over front desks,<br/>503 when every front desk is full"]
-    N --> F["Front desks (FastAPI)<br/>both models' small shared layers, song names,<br/>batching, admission limits"]
-    F <--> RD[("Redis<br/>one answer cache")]
-    F <--> M[("Meilisearch<br/>song search")]
-    subgraph SH["Shards: song j lives on shard j mod 4, with its search index, input vectors, features, co-occurrence counts"]
-        S0["shard 0"]
-        S1["shard 1"]
-        S2["shard 2"]
-        S3["shard 3"]
-    end
-    F -- "gRPC: 3 rounds per request,<br/>shards asked at once" --> SH
+```
+ Browser / API client
+          │
+          ▼
+ ┌──────────────────┐
+ │ Caddy            │  HTTPS
+ └──────────────────┘
+          │
+          ▼
+ ┌──────────────────┐
+ │ nginx            │  per-visitor rate limits, spreads load,
+ └──────────────────┘  503 when every front desk is full
+          │
+          ▼
+ ┌──────────────────┐      ┌─────────────────┐
+ │ Front desks      │◄────►│ Redis (cache)   │
+ │ (FastAPI)        │◄────►│ Meilisearch     │
+ └──────────────────┘      └─────────────────┘
+          │  gRPC, 3 rounds, all shards at once
+          ▼
+ ┌────────┬────────┬────────┬────────┐
+ │shard 0 │shard 1 │shard 2 │shard 3 │   song j → shard j mod 4
+ └────────┴────────┴────────┴────────┘
 ```
 
 **From a model to a server.** `recsys/export.py` writes everything serving needs into one versioned bundle:
