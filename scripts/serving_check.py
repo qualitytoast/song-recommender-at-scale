@@ -4,11 +4,16 @@
     python scripts/serving_check.py cases --ranker configs/ranker_1m_any_length.toml --out runs/serving/cases
     # 2. send them to a server (python -m recsys.serve ...) one at a time over HTTP
     python scripts/serving_check.py serve --cases runs/serving/cases --url http://127.0.0.1:8000 --label cpu
+    # a 16-bit bundle (export --vector-bits 16): first take the expected answers from it, in one process
+    python scripts/serving_check.py reference --cases runs/serving/cases --bundle bundles/<bundle> --out <folder>
 
 cases: per_length held-out cases of each length 1..input_length from the ranker's any-length held-out
 set (a fixed random sample), each with its songs as Spotify URIs, its playlist name as text (the
 known name words, which encode back to the same IDs), and the top 10 the offline evaluation's code
 gives it (cached shortlists, the trained ranker).
+reference: the same cases with the top 10 the one-process recommender gives on a bundle (no artist limit,
+no mixing), for a bundle whose song vectors are rounded (a 16-bit one differs from the full-precision
+offline evaluation in ~2% of the orders), so the served answers can still be checked for exact equality.
 serve: sends each case to the server once (after a few warm-up requests), compares its top 10 with
 the offline one (same list, same order), the NDCG@10 of both, and reports the time per stage (the
 server's own timings) and end to end (as the client sees it), p50 and p99, and the memory of the
@@ -70,6 +75,27 @@ def make_cases(args):
     (out / "cases.json").write_text(json.dumps({"ranker": args.ranker, "shortlists_from_cache": bool(from_cache),
                                                 "cases": cases}))
     print(f"{len(cases):,} cases ({args.per_length} of each length 1-{L}) -> {out / 'cases.json'}")
+
+
+def make_reference(args):
+    """The cases' expected top 10s from the one-process recommender on a bundle (no artist limit, no mixing):
+    the reference for a bundle whose answers differ slightly from the full-precision offline evaluation
+    (export --vector-bits 16), so the served answers can still be checked for being exactly the same."""
+    from recsys.recommender import Recommender
+
+    data = json.loads((Path(args.cases) / "cases.json").read_text())
+    rec = Recommender(args.bundle, "cpu")
+    try:
+        for case in data["cases"]:
+            case["offline_top10"] = [r["uri"] for r in rec.recommend(case["songs"], case["name"], max_per_artist=0,
+                                                                       mix=0)["recommendations"]]
+    finally:
+        rec.close()
+    data["reference"] = f"one process, bundle {rec.version}"
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "cases.json").write_text(json.dumps(data))
+    print(f"{len(data['cases']):,} cases, expected answers from {data['reference']} -> {out / 'cases.json'}")
 
 
 def post(url, body):
@@ -140,10 +166,14 @@ if __name__ == "__main__":
     c.add_argument("--seed", type=int, default=1)
     c.add_argument("--per-length", type=int, default=200)
     c.add_argument("--out", required=True)
+    r = sub.add_parser("reference", help="expected answers from the one-process recommender on a bundle")
+    r.add_argument("--cases", required=True)
+    r.add_argument("--bundle", required=True)
+    r.add_argument("--out", required=True)
     s = sub.add_parser("serve")
     s.add_argument("--cases", required=True)
     s.add_argument("--url", default="http://127.0.0.1:8000")
     s.add_argument("--label", required=True)
     s.add_argument("--warmup", type=int, default=50)
     args = ap.parse_args()
-    make_cases(args) if args.mode == "cases" else check_server(args)
+    {"cases": make_cases, "reference": make_reference, "serve": check_server}[args.mode](args)

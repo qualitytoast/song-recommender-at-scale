@@ -11,7 +11,8 @@ Songs are searched by maximum dot product (METRIC_INNER_PRODUCT) of
 
   flat: exact search on the CPU, every song scored
   ivf:  songs grouped into nlist clusters (k-means on the song vectors); a query
-        searches only the nprobe clusters whose centres best match it
+        searches only the nprobe clusters whose centres best match it; encoding "fp16" stores each
+        vector's numbers as 16-bit floats (FAISS's scalar quantizer: half the memory) instead of 32-bit
   hnsw: a graph linking each song to similar songs (hnsw_m links each); a query
         walks it toward higher scores, keeping ef_search candidates (must be >= k)
   shards > 1: the catalog split into that many contiguous parts, one index each,
@@ -23,13 +24,25 @@ import faiss
 import numpy as np
 
 
-def faiss_index(vectors, kind, nlist=None, nprobe=None, hnsw_m=32, ef_search=None, ef_construction=200):
+def ivf_index(quantizer, d, nlist, encoding=None):
+    """An empty IVF index for inner products over the given cluster quantizer: each vector stored as 32-bit
+    floats, or with encoding "fp16" as 16-bit floats."""
+    if encoding is None:
+        return faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
+    if encoding != "fp16":
+        raise ValueError(f"unknown encoding {encoding!r}")
+    return faiss.IndexIVFScalarQuantizer(quantizer, d, nlist, faiss.ScalarQuantizer.QT_fp16,
+                                         faiss.METRIC_INNER_PRODUCT)
+
+
+def faiss_index(vectors, kind, nlist=None, nprobe=None, hnsw_m=32, ef_search=None, ef_construction=200,
+                encoding=None):
     d = vectors.shape[1]
     vectors = np.ascontiguousarray(vectors, dtype=np.float32)
     if kind == "flat":
         index = faiss.IndexFlatIP(d)
     elif kind == "ivf":
-        index = faiss.IndexIVFFlat(faiss.IndexFlatIP(d), d, nlist, faiss.METRIC_INNER_PRODUCT)
+        index = ivf_index(faiss.IndexFlatIP(d), d, nlist, encoding)
         index.train(vectors)  # k-means: the nlist cluster centres
         index.nprobe = nprobe
     elif kind == "hnsw":

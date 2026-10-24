@@ -53,6 +53,7 @@ Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen s
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
 - [ ] Songs nobody played, placed from their artist, album and genre alone (a model change; the weakest picks)
 - [ ] Store song vectors in 16 or 8 bits on the server (the precision to choose; -456 or -685 MB on the shards)
+- [ ] Store the co-occurrence counts more compactly (1.17 GB on the shards, 12 bytes a pair; ~6: one song ID, capped counts)
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
 - [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests

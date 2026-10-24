@@ -3,7 +3,7 @@
 checkpoints.
 
     python -m recsys.export --ranker configs/ranker_1m_any_length.toml
-    python -m recsys.export --ranker configs/ranker_1m_lb_next10w.toml --max-per-artist 3 --mix 0
+    python -m recsys.export --ranker configs/ranker_1m_lb_next10w.toml --max-per-artist 3 --mix 0 --vector-bits 16
 
 Writes bundles/<ranker config name>-<version>/:
   settings.json                  shapes and settings (input length, shortlist, IVF, extra inputs, ...), and
@@ -14,6 +14,9 @@ Writes bundles/<ranker config name>-<version>/:
   ranker_song_inputs.npy           added up once here, so serving reads one row instead of five tables
   search_vectors.npy             each song's output vector with its bias ([h, 1] . vector = its score)
   search_index.faiss             the IVF index over them, saved so the server doesn't rebuild it
+With --vector-bits 16 (settings.json vector_bits), the two input tables and the search vectors are stored as
+16-bit floats and the index keeps its vectors at 16 bits (ann.ivf_index): half their memory, no measurable
+change in the answers (scripts/quantize_check.py).
   song_artist.npy, song_album.npy, song_genres.npy   per-song IDs for the ranker's overlap inputs
   pair_keys.npy, pair_counts.npy the appeared-together table (sorted keys a * songs + b; 2-byte counts)
   songs.json                     Spotify URIs, track names and artist names
@@ -125,12 +128,14 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     (partial / "settings.json").write_text(json.dumps(settings, indent=2))
     torch.save(shared_state(retriever), partial / "retriever_shared.pt")
     torch.save(shared_state(ranker), partial / "ranker_shared.pt")
-    save("retriever_song_inputs", song_inputs(retriever, device))
-    save("ranker_song_inputs", song_inputs(ranker.retriever, device))
-    vectors = song_vectors(retriever)
+    stored = np.float16 if settings.get("vector_bits") == 16 else np.float32  # the song vectors' precision
+    save("retriever_song_inputs", song_inputs(retriever, device).astype(stored))
+    save("ranker_song_inputs", song_inputs(ranker.retriever, device).astype(stored))
+    vectors = song_vectors(retriever).astype(stored)  # the index is built from these, as the shards' are
     save("search_vectors", vectors)
     with SearchWorker() as worker:
-        worker.build("songs", vectors, kind="ivf", nlist=settings["ivf_nlist"], nprobe=settings["ivf_nprobe"])
+        worker.build("songs", vectors, kind="ivf", nlist=settings["ivf_nlist"], nprobe=settings["ivf_nprobe"],
+                     encoding="fp16" if settings.get("vector_bits") == 16 else None)
         worker.save("songs", (partial / "search_index.faiss").resolve())
     song_artist = retriever.song_feature_ids("artist").cpu().numpy().astype(np.int32)
     save("song_artist", song_artist)
@@ -156,9 +161,10 @@ def write_bundle(out_root, name, retriever, ranker, settings, uris, tracks, arti
     return final
 
 
-def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ARTIST, mix=MIX):
+def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ARTIST, mix=MIX, vector_bits=32):
     """Bundle the ranker config's best checkpoint and its retriever's (see write_bundle), with max_per_artist
-    and mix as the serving defaults for requests that don't set them."""
+    and mix as the serving defaults for requests that don't set them, and the song vectors at vector_bits
+    (32 or 16)."""
     rc = load_ranker_config(ranker_config)
     if rc.search != "ivf":
         raise ValueError("serving searches with the IVF index; this ranker config uses exact search")
@@ -175,7 +181,7 @@ def export(ranker_config, seed=1, out_root="bundles", max_per_artist=MAX_PER_ART
     listens = (Path(cfg.data.folder) / "playlist_split.npy").exists()  # a ListenBrainz store (recsys.lb_store)
     settings = {"shortlist": rc.shortlist, "exclude_input": rc.exclude_input, "ivf_nlist": rc.ivf_nlist,
                 "ivf_nprobe": rc.ivf_nprobe, "features": rc.features, "correction_hidden": rc.correction_hidden,
-                "windows": rc.windows, "max_per_artist": max_per_artist, "mix": mix,
+                "windows": rc.windows, "max_per_artist": max_per_artist, "mix": mix, "vector_bits": vector_bits,
                 "popularity": "listens" if listens else "playlists",
                 "sources": {"ranker_config": str(ranker_config), "retriever_config": rc.retriever,
                                                    "ranker_checkpoint_sha256": file_fingerprint(ranker_path),
@@ -195,5 +201,7 @@ if __name__ == "__main__":
     ap.add_argument("--max-per-artist", type=int, default=MAX_PER_ARTIST,
                     help="serving default: at most this many of the 10 by one artist (0: no limit)")
     ap.add_argument("--mix", type=float, default=MIX, help="serving default: recommender.MIX")
+    ap.add_argument("--vector-bits", type=int, choices=(32, 16), default=32,
+                    help="the song vectors' precision: 16 halves their memory (scripts/quantize_check.py)")
     args = ap.parse_args()
-    print(export(args.ranker, args.seed, args.out, args.max_per_artist, args.mix))
+    print(export(args.ranker, args.seed, args.out, args.max_per_artist, args.mix, args.vector_bits))

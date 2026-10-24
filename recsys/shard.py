@@ -60,8 +60,10 @@ class Shard(shard_pb2_grpc.ShardServicer):
         self.check(request, context)
         at = self.rows_of(unpack(request.ids), context)
         r = {name: rows[at] for name, rows in self.rows.items()}
-        return shard_pb2.LookupReply(retriever_inputs=pack(r["retriever_song_inputs"]),
-                                     ranker_inputs=pack(r["ranker_song_inputs"]), artist=pack(r["song_artist"]),
+        # the input tables may be kept at 16 bits here (export --vector-bits 16); the front desk gets float32
+        return shard_pb2.LookupReply(retriever_inputs=pack(r["retriever_song_inputs"].astype(np.float32)),
+                                     ranker_inputs=pack(r["ranker_song_inputs"].astype(np.float32)),
+                                     artist=pack(r["song_artist"]),
                                      album=pack(r["song_album"]), genres=pack(r["song_genres"]))
 
     def Counts(self, request, context):
