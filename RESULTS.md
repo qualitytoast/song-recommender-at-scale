@@ -1804,3 +1804,30 @@ Mac. `serve --profiles` loads the profiles for its bundle; a request naming an u
 answer. The webpage keeps a `?me=<key>` in the browser and shows a "Use my taste" toggle, off by default.
 Deployed with a front-desk restart (~6 s of 503s). Over HTTPS, the same request with the key changed most of
 the 10; without it, the usual answer.
+
+# Growing the catalog: making room
+
+Before a bigger catalog (`ROADMAP.md`), the server was resized to 12 GB (see Public hosting, 2026-10-24), and
+the cost of storing song vectors in fewer bits was measured.
+
+**Song vectors in 16 and 8 bits** (2026-10-24, `scripts/quantize_check.py`, `runs/quantize/`). The vectors are
+the two per-song input tables (retriever and ranker, 1.18M x 64) and the search index: 923 MB of the shards'
+2.0 GB (the co-occurrence counts take 1.17 GB). Copies of the served bundle with them at 16 bits (half
+floats) or 8 bits (each dimension split into 256 even steps between its lowest and highest value; the index
+rebuilt with FAISS's scalar quantizer on the same IVF clusters, so only the precision changes) answered the
+comparison's 5,000 held-out ListenBrainz cases with the bundle's own settings (3 per artist, no mixing), next
+to today's 32 bits. Building the variants: 7 s; scoring all three: 26 s.
+
+| Song vectors | Next-song NDCG@10 | Hit@10 | Shortlist holds the next song | Same songs as 32-bit | Identical top 10 | Vector bytes |
+|---|---|---|---|---|---|---|
+| 32-bit (today) | 0.2321 | 25.80% | 35.88% | | | 923 MB |
+| 16-bit | 0.2321 | 25.80% | 35.88% | 99.95% | 97.8% | 467 MB |
+| 8-bit | 0.2318 | 25.72% | 35.74% | 97.3% | 34.6% | 238 MB |
+
+- 16 bits changes nothing measurable: the same scores, 99.95% of the same songs, and the same order in 98% of
+  the answers, for half the memory.
+- 8 bits costs -0.0003 NDCG@10 and -0.14 points of shortlist recall (within run-to-run noise on 5,000 cases),
+  keeps 97.3% of the songs, but reorders close-scoring songs in 65% of the answers, for a quarter of the
+  memory. The exact-same-answers checks would then need offline answers from the 8-bit bundle too.
+- These copies store the rounded values as 32-bit floats: the accuracy test. Saving the memory on the server
+  also needs the shards to keep the tables at that precision (and the index's scalar quantizer).
