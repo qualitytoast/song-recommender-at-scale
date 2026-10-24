@@ -190,3 +190,41 @@ def test_a_shard_with_two_copies_survives_losing_one(bundle):
                 np.testing.assert_array_equal(ids, expected)
         finally:
             rec.close()
+
+
+@pytest.fixture(scope="module")
+def bundle16(tmp_path_factory):
+    path, *_ = write_tiny_bundle(tmp_path_factory.mktemp("bundles16"), settings={"vector_bits": 16})
+    single = Recommender(path, "cpu")
+    yield path, single
+    single.close()
+
+
+def test_a_16_bit_bundle_keeps_its_vectors_at_16_bits_and_its_shards_answer_as_one_process(bundle16, bundle):
+    path, single = bundle16
+    assert json.loads((path / "settings.json").read_text())["vector_bits"] == 16
+    folders = slices(path, 2)
+    for folder in (path, *folders):
+        for name in ("retriever_song_inputs", "ranker_song_inputs"):
+            assert np.load(folder / f"{name}.npy").dtype == np.float16
+    kinds = subprocess.run(  # FAISS in its own process (it can't share one with PyTorch)
+        [sys.executable, "-c", "import faiss, sys; print(*(type(faiss.downcast_index(faiss.read_index(p))).__name__ "
+         "for p in sys.argv[1:]))", *(str(f / "search_index.faiss") for f in (path, *folders))],
+        cwd=ROOT, check=True, capture_output=True, text=True).stdout.split()
+    assert set(kinds) == {"IndexIVFScalarQuantizer"}
+    name = single.encode_name("road trip")
+    requests = ([7], [7, 21], [3, 17, 9], [1, 2, 3, 4, 5])
+    with shard_servers(folders) as addresses:
+        rec = ShardedRecommender(path, addresses, "cpu", startup_wait=60)
+        try:
+            for songs in requests:  # the shards' 16-bit codes equal the whole index's: the same answers
+                ids, scores, _, _ = rec.recommend_ids(songs, name, 0.0)
+                expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name, 0.0)
+                np.testing.assert_array_equal(ids, expected_ids)
+                np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
+        finally:
+            rec.close()
+    full = bundle[1]  # the same model at 32 bits: nearly the same top 10s
+    shared = [len(set(single.recommend_ids(s, name, 0.0)[0][:10]) & set(full.recommend_ids(s, name, 0.0)[0][:10]))
+              for s in requests]
+    assert np.mean(shared) >= 9

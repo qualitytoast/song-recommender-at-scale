@@ -16,7 +16,7 @@ x-recommender: &recommender
   build: {context: ., dockerfile: docker/Dockerfile}
   image: song-recommender:latest
   volumes:
-    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-ba9b20873aac}:/bundle:ro
+    - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-843e59aa82f6}:/bundle:ro
   restart: unless-stopped   # a crashed container is started again
   init: true                # a small init process runs the program, so the program's crash ends the container
   labels:
@@ -120,7 +120,7 @@ services:
     image: song-recommender:latest
     profiles: ["tools"]
     volumes:
-      - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-ba9b20873aac}:/bundle:ro
+      - ${BUNDLE:-./bundles/ranker_1m_lb_next10w-843e59aa82f6}:/bundle:ro
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
     command: python -m recsys.song_search --bundle /bundle --url http://meilisearch:7700

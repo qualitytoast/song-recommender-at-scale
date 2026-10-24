@@ -79,3 +79,8 @@ bundles/ranker_1m_lb_next10w-ba9b20873aac
         471532164252  instructions retired
         212535651944  cycles elapsed
          16517360704  peak memory footprint
+--- 2026-10-24 re-export with 16-bit song vectors (--vector-bits 16)
+bundles/ranker_1m_lb_next10w-843e59aa82f6
+real 79.31
+user 71.12
+sys 6.42

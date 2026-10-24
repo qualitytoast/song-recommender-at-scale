@@ -223,10 +223,10 @@ of the gain +1.8 to +3.1).
 
 Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores, 12 GB, Always Free; quota
 rules make Oracle refuse anything beyond the free allowance, and a budget emails on any spend), running the
-whole Compose system (~4.3 GB). `docker-compose.oracle.yml` adds Caddy for HTTPS (Let's Encrypt, renewed by
-itself). Each visitor may ask for 5 recommendations and 20 searches a second. On the server, 2,000 of 2,000
-held-out requests gave the offline top 10 in order (p50 29 ms, p99 74 ms); a model switch is a restart on the
-new bundle, ~10-30 s of "busy".
+whole Compose system (~3.4 GB; song vectors stored at 16 bits). `docker-compose.oracle.yml` adds Caddy for
+HTTPS (Let's Encrypt, renewed by itself). Each visitor may ask for 5 recommendations and 20 searches a second.
+On the server, 2,000 of 2,000 held-out requests gave the offline top 10 in order (p50 32 ms, p99 85 ms); a
+model switch is a restart on the new bundle, ~10-30 s of "busy".
 
 ```bash
 ssh ubuntu@<server> 'cd song-recommender-at-scale && git pull && docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d --build'

@@ -9,6 +9,7 @@ Writes <bundle>/shards-N/shard-<i>/:
   search_index.faiss         an IVF index of its songs' search vectors, under their global IDs, using
                              the bundle index's cluster centres: every shard searches the same clusters
                              for a query, so the shards' top k merged is exactly the whole index's top k
+                             (at 16 bits if the bundle's vectors are: settings.json vector_bits)
   retriever_song_inputs.npy, ranker_song_inputs.npy, song_artist.npy, song_album.npy, song_genres.npy
                              the bundle's per-song rows for its songs, in ids.npy's order
   pair_keys.npy, pair_counts.npy   the appeared-together pairs (a, b) whose later song b it holds
@@ -22,6 +23,8 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+from recsys.ann import ivf_index
+
 PER_SONG = ("retriever_song_inputs", "ranker_song_inputs", "song_artist", "song_album", "song_genres")
 
 
@@ -32,13 +35,18 @@ def cluster_centres(index_path):
     return np.array(faiss.downcast_index(ivf.quantizer).reconstruct_n(0, ivf.nlist))
 
 
-def shard_index(centres, vectors, ids, nprobe):
-    """An IVF index over vectors (stored under ids) with the given, already computed, cluster centres."""
+def shard_index(centres, vectors, ids, nprobe, encoding=None):
+    """An IVF index over vectors (stored under ids) with the given, already computed, cluster centres; encoding
+    "fp16" keeps the vectors at 16 bits, like the bundle's index (each vector's code depends only on it and its
+    centre, so a shard's codes equal the whole index's)."""
     quantizer = faiss.IndexFlatIP(centres.shape[1])
     quantizer.add(np.ascontiguousarray(centres, dtype=np.float32))
-    index = faiss.IndexIVFFlat(quantizer, centres.shape[1], len(centres), faiss.METRIC_INNER_PRODUCT)
+    index = ivf_index(quantizer, centres.shape[1], len(centres), encoding)
+    vectors = np.ascontiguousarray(vectors, dtype=np.float32)
+    if not index.is_trained:  # the 16-bit encoder: nothing to learn (the centres are given, not clustered again)
+        index.train(vectors[:max(len(centres), 1)])
     assert index.is_trained  # the centres are the training: nothing is clustered again
-    index.add_with_ids(np.ascontiguousarray(vectors, dtype=np.float32), np.asarray(ids, dtype=np.int64))
+    index.add_with_ids(vectors, np.asarray(ids, dtype=np.int64))
     index.nprobe = nprobe  # (FAISS's Python wrapper keeps the quantizer alive as long as the index)
     return index
 
@@ -66,7 +74,8 @@ def write_slices(bundle, shards):
         mine = later % shards == i  # still sorted: a subset of sorted keys
         np.save(folder / "pair_keys.npy", keys[mine])
         np.save(folder / "pair_counts.npy", counts[mine])
-        faiss.write_index(shard_index(centres, vectors[ids], ids, settings["ivf_nprobe"]),
+        faiss.write_index(shard_index(centres, vectors[ids], ids, settings["ivf_nprobe"],
+                                      "fp16" if settings.get("vector_bits") == 16 else None),
                           str(folder / "search_index.faiss"))
         (folder / "info.json").write_text(json.dumps({"version": version, "index": i, "shards": shards,
                                                       "songs": len(ids), "catalog": songs}))

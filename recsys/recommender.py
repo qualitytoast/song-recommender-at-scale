@@ -351,9 +351,10 @@ class Recommender(Catalog):
     def __init__(self, bundle, device="cpu"):
         super().__init__(bundle, device)
         s = self.settings
-        self.retriever = serving_retriever(s, self.load("retriever_song_inputs")).to(self.device)
+        inputs = lambda name: self.load(name).astype(np.float32, copy=False)  # 16-bit bundles: float32 here
+        self.retriever = serving_retriever(s, inputs("retriever_song_inputs")).to(self.device)
         load_shared(self.retriever, torch.load(self.path / "retriever_shared.pt", weights_only=True))
-        self.ranker = serving_ranker(s, self.load("ranker_song_inputs")).to(self.device)
+        self.ranker = serving_ranker(s, inputs("ranker_song_inputs")).to(self.device)
         load_shared(self.ranker, torch.load(self.path / "ranker_shared.pt", weights_only=True))
         self.features = CandidateFeatures(s["features"], s["songs"], None, (self.load("pair_keys"),
                                           self.load("pair_counts")), self.device, song_artist=self.load("song_artist"),

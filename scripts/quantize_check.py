@@ -5,6 +5,8 @@
     # 2. the held-out cases through each (the serving code: recsys.recommender)
     python scripts/quantize_check.py score --bundle bundles/<bundle> --variants <scratch folder> \\
         --cases runs/listenbrainz/compare --out runs/quantize
+    # two real bundles of the same model (e.g. export --vector-bits 32 and 16)
+    python scripts/quantize_check.py compare --bundle bundles/<32-bit> --against bundles/<16-bit> --out runs/quantize
 
 build: a copy of the bundle per precision (unchanged files as APFS clones, no extra disk), with the two
 per-song input-vector tables rounded to that precision (8 bits: each of the 64 dimensions split into 256 even
@@ -77,12 +79,26 @@ def build(args):
 
 
 def score(args):
-    from recsys.recommender import Recommender, pick_top
-
-    cases = json.loads((Path(args.cases) / "cases.json").read_text())["all"]
     sizes = json.loads((Path(args.variants) / "sizes.json").read_text())
     paths = {"32": Path(args.bundle), **{b: Path(args.variants) / f"bits{b}" for b in VARIANTS}}
-    answers, results, began = {}, {"cases": len(cases)}, time.perf_counter()
+    evaluate(paths, sizes, args.cases, Path(args.out) / "check.json")
+
+
+def compare(args):
+    """The same scores for two real bundles: the first is the reference."""
+    paths = {"reference": Path(args.bundle), "other": Path(args.against)}
+    sizes = {k: {f: (p / f).stat().st_size for f in INPUTS + ["search_index.faiss"]} for k, p in paths.items()}
+    evaluate(paths, sizes, args.cases, Path(args.out) / f"compare_{paths['other'].name}.json")
+
+
+def evaluate(paths, sizes, cases_folder, out_file):
+    """Answer the cases with each bundle in paths ({label: folder}, the first one the reference)."""
+    from recsys.recommender import Recommender, pick_top
+
+    cases = json.loads((Path(cases_folder) / "cases.json").read_text())["all"]
+    first = next(iter(paths))
+    answers, results, began = {}, {"cases": len(cases), "bundles": {k: p.name for k, p in paths.items()}}, \
+        time.perf_counter()
     for bits, path in paths.items():
         start = time.perf_counter()
         rec = Recommender(path, "cpu")
@@ -101,15 +117,14 @@ def score(args):
         results[bits] = {"next_ndcg@10": round(m[0], 4), "next_hit@10": round(m[1], 4),
                          "shortlist_recall": round(m[2], 4), "bytes": sizes[bits],
                          "seconds": round(time.perf_counter() - start)}
-        if bits != "32":
-            shared = [len(set(a) & set(b)) / 10 for a, b in zip(answers["32"], tops)]
+        if bits != first:
+            shared = [len(set(a) & set(b)) / 10 for a, b in zip(answers[first], tops)]
             results[bits]["same_songs_in_top_10"] = round(float(np.mean(shared)), 4)
-            results[bits]["identical_top_10"] = round(float(np.mean([a == b for a, b in zip(answers["32"], tops)])), 4)
+            results[bits]["identical_top_10"] = round(float(np.mean([a == b for a, b in zip(answers[first], tops)])), 4)
         print(json.dumps({bits: results[bits]}), flush=True)
     results["seconds"] = round(time.perf_counter() - began)
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "check.json").write_text(json.dumps(results, indent=2))
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(json.dumps(results, indent=2))
 
 
 def main():
@@ -123,8 +138,13 @@ def main():
     s.add_argument("--variants", required=True)
     s.add_argument("--cases", default="runs/listenbrainz/compare")
     s.add_argument("--out", default="runs/quantize")
+    c = sub.add_parser("compare")
+    c.add_argument("--bundle", required=True, help="the reference bundle")
+    c.add_argument("--against", required=True)
+    c.add_argument("--cases", default="runs/listenbrainz/compare")
+    c.add_argument("--out", default="runs/quantize")
     args = ap.parse_args()
-    (build if args.mode == "build" else score)(args)
+    {"build": build, "score": score, "compare": compare}[args.mode](args)
 
 
 if __name__ == "__main__":

@@ -1831,3 +1831,37 @@ to today's 32 bits. Building the variants: 7 s; scoring all three: 26 s.
   memory. The exact-same-answers checks would then need offline answers from the 8-bit bundle too.
 - These copies store the rounded values as 32-bit floats: the accuracy test. Saving the memory on the server
   also needs the shards to keep the tables at that precision (and the index's scalar quantizer).
+
+**Serving the song vectors at 16 bits** (2026-10-24, `baadb57`, `55bf624`). `recsys.export --vector-bits 16`
+stores the two input tables and the search vectors as 16-bit floats and builds the index with FAISS's 16-bit
+scalar quantizer; the shards keep their slices at 16 bits and send rows as 32-bit floats, so nothing after
+them changes. Re-export 79 s, shard slices 6 s (`runs/listenbrainz/export.out`); bundle 3.4 GB (was 4.4),
+its shards 1.6 GB (was 2.0); tables 151 MB each and index 164 MB (were 303 and 318).
+
+- Accuracy against the 32-bit bundle, the same 5,000 held-out cases (`runs/quantize/compare_*.json`, 16 s):
+  NDCG@10 0.2321 -> 0.2322, hit@10 25.80% -> 25.82%, shortlist recall 35.88% -> 35.86%; 99.59% of the same
+  songs, identical top 10 in 93.7%. Less identical than the test copies above (99.95%, 97.8%), which kept
+  the old index clusters: the export re-runs the clustering on the 16-bit vectors, so some songs land in
+  other clusters. Scores unchanged.
+- Same answers as the one-process recommender on the 16-bit bundle (`scripts/serving_check.py reference`):
+  the Mac's Docker setup 2,000 of 2,000 in order (p50 8.4 ms end to end), the server 2,000 of 2,000
+  (`runs/serving/lb16_cases/`). Against the 32-bit answers: 1,872 in order, 1,923 as a set, NDCG@10 0.2604
+  vs 0.2597 (`runs/serving/lb_cases/check_docker16_vs_full_precision.json`).
+- Memory on the server: each shard 432-451 MB, was ~545 (~110 MB less each, ~430 MB for the four); all
+  containers ~3.4 GB, 8.2 GB of 11.9 available. On the Mac: ~435 MB a shard, was ~544.
+- Speed on the server, cache cleared and shards warm: total p50 28.4 ms, p99 78.6 ms, vs 26.1 / 67.0 at 32
+  bits (`runs/serving/lb_cases/check_oracle_search.json`); the shards' search went from 5.3 to 6.8 ms at
+  p50 (13.5 to 20.0 at p99), as FAISS turns each 16-bit number back into 32 bits to compare vectors. The
+  first check after the restart: 28.7 / 84.9 ms. So ~2 ms a request for the memory. Each check: 2,000
+  requests, 72 s.
+- Deploy: upload 158 s (53 files, checksums verified), search index 181 s (built before the switch). The
+  switch gave **17 min 34 s of 503s** (21:53:04 to 22:10:31 UTC), not the expected ~30-40 s. Compose
+  recreated the shards and the front desk, the front desk came back at a different address on Docker's
+  network, and nginx, which had looked the name `frontdesk` up only when it started, kept sending every
+  request to the old address (connection refused, so "busy"). Earlier switches had reused the old address.
+  `nginx -s reload` fixed it at once. The fix (`docker/nginx.conf`): nginx asks Docker's DNS again every 5 s
+  (`resolver 127.0.0.11 valid=5s` and `resolve` on the upstream server). Reproduced on the Mac (a throwaway
+  container held the old address, so the recreated front desk got a new one: 503s), then with the fix the
+  front desk moved address and was answered as soon as it was healthy, 5 s after its restart.
+- Cleanup: `song_search --drop-others` rebuilds the live index before it deletes the others, so search used
+  its fallback for ~3 min; the old index and bundle are gone (server disk 16 -> 12 GB used).
