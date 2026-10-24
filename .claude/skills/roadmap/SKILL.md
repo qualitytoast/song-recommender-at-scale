@@ -6,8 +6,7 @@ description: Keep ROADMAP.md current. Use when a piece of work on the roadmap is
 # Update the roadmap
 
 `ROADMAP.md` has two lists: **Done** (`- [x]`, oldest first) and **TODO Now** (`- [ ]`). Every entry is one
-line, about the length of the others (~110 characters), in the same plain style. Details belong in RESULTS.md,
-not here.
+line, about the length of the others (~110 characters), in the same plain style.
 
 **A task is finished** (merged, deployed, or measured, whatever it was meant to deliver):
 1. Find its line in TODO Now (or the closest one; a task can finish one part of a broader line).
