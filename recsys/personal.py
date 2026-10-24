@@ -18,7 +18,9 @@ the listener's history) and prints only totals.
 
 Then, split by time (split_times): the taste profile (build_profile, recsys.taste) comes from plays before a
 cutoff 12 weeks before the export's end; sessions of the 6 weeks after it choose the profile's settings, the
-last 6 weeks report the result (scripts/personal_eval.py).
+last 6 weeks report the result (scripts/personal_eval.py). The profile to serve is built from all the plays:
+
+    python -m recsys.personal profile --bundle bundles/<bundle> --beta 7.02   # 4 x the typical score gap
 """
 import argparse
 import json
@@ -211,6 +213,28 @@ def build_profile(plays, bundle, until, key, device="cpu", half_life=HALF_LIFE_D
                      "songs_with_skip_rate": int((count >= 3).sum()), "until": day(until)}
 
 
+def serve_profile(bundle, plays_folder, key_file, w=0.0, alpha=0.0, beta=0.0, name="owner"):
+    """Build the profile to serve from ALL the listener's plays, with the chosen settings, and save it as
+    <bundle>/profiles/<name>.npz (the server's --profiles folder: a profile only fits its bundle version). Its
+    key is a long random secret, made once and kept in key_file (readable by the owner only) for rebuilds.
+    Returns (path, profile info)."""
+    import secrets
+
+    from recsys.taste import save_profile
+
+    key_file = Path(key_file)
+    if not key_file.exists():
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(secrets.token_urlsafe(24))
+        key_file.chmod(0o600)
+    plays = load_plays(plays_folder, bundle)
+    profile, info = build_profile(plays, bundle, until=int(plays["seconds"][-1]) + 1, key=key_file.read_text().strip())
+    out = Path(bundle) / "profiles" / f"{name}.npz"
+    out.parent.mkdir(exist_ok=True)
+    save_profile(out, profile.with_settings(w, alpha, beta))
+    return out, info
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -218,5 +242,16 @@ if __name__ == "__main__":
     p.add_argument("--export", required=True, help="the Extended Streaming History zip")
     p.add_argument("--bundle", required=True)
     p.add_argument("--out", default="data/personal")
+    q = sub.add_parser("profile", help="build the profile to serve, from all the plays (after `plays`)")
+    q.add_argument("--bundle", required=True)
+    q.add_argument("--plays", default="data/personal")
+    q.add_argument("--key-file", default="data/personal/owner_key.txt", help="the profile's secret key (made once)")
+    q.add_argument("--w", type=float, default=0.0, help="taste blend (recsys.taste)")
+    q.add_argument("--alpha", type=float, default=0.0, help="artist bonus, in score points")
+    q.add_argument("--beta", type=float, default=0.0, help="skip penalty, in score points")
     args = ap.parse_args()
-    print(json.dumps(build_plays(args.export, args.bundle, args.out), indent=2))
+    if args.mode == "plays":
+        print(json.dumps(build_plays(args.export, args.bundle, args.out), indent=2))
+    else:
+        path, info = serve_profile(args.bundle, args.plays, args.key_file, args.w, args.alpha, args.beta)
+        print(path, json.dumps(info))

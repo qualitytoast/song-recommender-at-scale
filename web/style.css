@@ -85,6 +85,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .quiet:hover { color: var(--fg); }
 
 .actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+.taste { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: 13px; color: var(--muted); }
+.taste[hidden] { display: none; }
 
 /* search menu */
 

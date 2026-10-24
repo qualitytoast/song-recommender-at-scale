@@ -97,3 +97,26 @@ def test_build_profile_from_the_plays_before_the_cutoff(tmp_path):
     later, _ = build_profile(plays, bundle, until=T0 + 60 * 60, key="me")   # only the first hour's plays
     assert not np.allclose(later.taste, profile.taste) and later.skip_rate[9] == 0.0   # nothing after the cutoff
     assert DAY == 86_400
+
+
+def test_the_served_profile_uses_all_plays_a_kept_secret_key_and_loads_on_the_server(tmp_path):
+    import stat
+
+    from recsys.personal import build_plays, serve_profile
+    from recsys.recommender import Recommender
+    from recsys.taste import load_profile
+    bundle = write_tiny_bundle(tmp_path)[0]
+    build_plays(write_export(tmp_path / "e.zip", [play(m, f"spotify:track:{m % 5}") for m in range(0, 60, 4)]),
+                bundle, tmp_path / "personal")
+    key_file = tmp_path / "personal" / "key.txt"
+    path, info = serve_profile(bundle, tmp_path / "personal", key_file, beta=2.0)
+    profile, key = load_profile(path), key_file.read_text()
+    assert path == bundle / "profiles" / "owner.npz" and profile.key == key and len(key) >= 32
+    assert (profile.w, profile.alpha, profile.beta) == (0.0, 0.0, 2.0) and info["windows"] == 15   # every play
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert load_profile(serve_profile(bundle, tmp_path / "personal", key_file)[0]).key == key    # kept on rebuilds
+    rec = Recommender(bundle, "cpu")
+    try:
+        assert rec.load_profiles(bundle / "profiles") == 1 and key in rec.profiles
+    finally:
+        rec.close()
