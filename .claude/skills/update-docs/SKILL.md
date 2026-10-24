@@ -22,7 +22,7 @@ Never rewrite old entries. Only correct a mistake, and say that it was corrected
 
 Keep it correct, not complete. When the work changes a fact the README states, change that fact, a line or
 two at most: a headline result (a row of the results table or one line), a feature of the site, how it's
-served, a command in "Running it", or a diagram (Mermaid) when the architecture changes. Details go in
+served, a command in "Running it", or a diagram (drawn as text boxes, like the existing ones) when the architecture changes. Details go in
 RESULTS.md. Most experiments don't touch the README.
 
 Polishing it (rewording, reorganizing, choosing what to highlight, trimming) is the user's call: never restyle

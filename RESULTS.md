@@ -1382,6 +1382,12 @@ limits in nginx. Code from `git clone`, model files uploaded separately: only wh
   got nothing; after upgrading to Pay As You Go (still free within the Always Free allowance) the first
   request got a machine. Quota rules refuse anything past that allowance (other machine types, more than 2
   Arm cores or 12 GB, more than 200 GB of disk, load balancers, databases); a $1 budget emails on any spend.
+- Resized to 2 cores / 12 GB (2026-10-24), the whole Always Free Ampere allowance (1,500 OCPU hours and
+  9,000 GB hours a month; quota now 2 of 2 cores, 12 of 12 GB), to make room for a bigger catalog (at ~2x
+  the songs, the stack would need ~8 GB of the 7.7). Through the API (the flexible shape's memory changed in
+  place): stopped and running again in 95 s; the site was down ~3 min (no connection while the machine
+  restarted, then 503s while the shards loaded from disk). After: 11.9 GB, 8.5 GB available (was 3.7), every
+  container healthy again on its own (Docker starts at boot, all set to restart).
 
 # Playlist fit: training for the songs that belong in a playlist
 

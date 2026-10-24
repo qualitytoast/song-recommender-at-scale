@@ -41,6 +41,7 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Song search that fixes typos and matches title, artist and album words in any order (Meilisearch)
 - [x] Personalization A: a taste profile from the owner's Spotify history, behind a private "Use my taste"
       toggle: more than twice the new songs they then listened to (1.96 -> 4.40 per 100 recommendations)
+- [x] Server resized to 12 GB, the Always Free maximum, for a bigger catalog (8.5 GB free; ~3 min down)
 
 ## TODO Now
 
@@ -50,7 +51,6 @@ Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen s
 - [ ] Sample more of the year's listens, keeping N = 5 (better-learned songs; N = 3 + 1.5x listens ≈ 2x the songs)
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
 - [ ] Songs nobody played, placed from their artist, album and genre alone (a model change; the weakest picks)
-- [ ] Resize the server to 12 GB, still Always Free (2x the songs needs ~8 GB of today's 7.7)
 - [ ] Store song vectors in 8 bits instead of 32 (~4x less memory; measure the accuracy cost first, and 16 bits)
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
