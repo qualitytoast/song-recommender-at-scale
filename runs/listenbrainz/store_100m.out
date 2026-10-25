@@ -1,0 +1,79 @@
+18:31:50 sorting 465,330,204 listens by user, then time
+18:33:15 choosing the cap: 308,163,309 listens, target 99,519,642
+18:33:32   cap 4,096: 89,154,614 listens, 1,416,689 songs
+18:33:54   cap 8,192: 136,877,870 listens, 1,824,402 songs
+18:34:13   cap 6,144: 116,357,149 listens, 1,660,512 songs
+18:34:30   cap 5,120: 103,733,795 listens, 1,551,640 songs
+18:34:47   cap 4,608: 96,721,310 listens, 1,488,221 songs
+18:35:04   cap 4,864: 100,287,488 listens, 1,520,437 songs
+18:35:20   cap 4,736: 98,519,564 listens, 1,504,543 songs
+18:35:38   cap 4,800: 99,407,046 listens, 1,512,632 songs
+18:35:56   cap 4,832: 99,848,801 listens, 1,516,640 songs
+18:36:13   cap 4,816: 99,628,835 listens, 1,514,661 songs
+18:36:30   cap 4,808: 99,518,402 listens, 1,513,641 songs
+18:36:47   cap 4,812: 99,573,759 listens, 1,514,164 songs
+18:37:04   cap 4,810: 99,546,117 listens, 1,513,893 songs
+18:37:21   cap 4,809: 99,532,247 listens, 1,513,761 songs
+18:37:22 6,931,490 sessions, 1,513,761 songs; reading the songs' details
+18:38:15 done in 385 s
+{
+  "source": "/Users/nathanhung/Projects/song-recommender-at-scale/data/lb_extract",
+  "window": {
+    "start": "2025-10-15T00:00:00+00:00",
+    "end": "2026-10-15T00:00:00+00:00"
+  },
+  "rules": {
+    "max_listens_per_day": 1000,
+    "skip_seconds": 30,
+    "session_gap_seconds": 1800,
+    "min_session_songs": 4,
+    "min_users_per_song": 5,
+    "target_listens": 99519642,
+    "split": "users: 80% training (20% of them ranker), 10% validation, 10% held-out",
+    "seed": 42
+  },
+  "cap_per_user": 4809,
+  "listens": {
+    "listens": 465330204,
+    "after the noise filter": 342003753,
+    "after the session rules": 308163309,
+    "final": 99532247
+  },
+  "playlists": 6931490,
+  "track_entries": 99532247,
+  "tracks": 1513761,
+  "artists": 207499,
+  "albums": 614489,
+  "held_out_listens_in_catalog": 0.7605,
+  "users": 61977,
+  "listens_by_side": {
+    "retriever": 63768100,
+    "ranker": 15869265,
+    "validation": 9993821,
+    "held_out": 9901061
+  },
+  "tracks_with_spotify_uri": 1213625,
+  "tracks_with_length": 1510160,
+  "tracks_in_mpd": 384680,
+  "artists_with_genres": 84694,
+  "build_seconds": 385,
+  "built": "2026-10-25 18:38:15"
+}
+      385.91 real       336.29 user        28.07 sys
+         16227958784  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            22479886  page reclaims
+              727165  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 725  voluntary context switches
+              349955  involuntary context switches
+       2297632839738  instructions retired
+       1606407292924  cycles elapsed
+         14416084712  peak memory footprint

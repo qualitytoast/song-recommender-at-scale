@@ -1865,3 +1865,68 @@ its shards 1.6 GB (was 2.0); tables 151 MB each and index 164 MB (were 303 and 3
   front desk moved address and was answered as soon as it was healthy, 5 s after its restart.
 - Cleanup: `song_search --drop-others` rebuilds the live index before it deletes the others, so search used
   its fallback for ~3 min; the old index and bundle are gone (server disk 16 -> 12 GB used).
+
+# Growing the catalog: more songs
+
+Today's catalog is the 1,182,480 songs at least 5 (N) training users played in the 66M-listen sample. Two ways
+to grow it were chosen for separate runs: a lower N on the same listens, and more of the year's listens at
+N = 5 (older years: later; songs placed from their artist and album alone: skipped).
+
+**What's outside the catalog** (2026-10-25, a one-off count over `data/lb_extract`: every user, the whole year,
+before the store's filters; scratch script, 125 s). 22,146,436 songs were played at least once; the catalog
+holds 77.8% of the year's listens. The 20,963,956 others, by how many users played them:
+
+| Users in the year | Songs | By an artist in the catalog | ... with 2+ listens |
+|---|---|---|---|
+| 1 | 14,388,976 | 4,182,568 | 1,399,107 |
+| 2 | 2,809,728 | 1,283,492 | 1,283,492 |
+| 3-4 | 1,970,330 | 1,160,361 | 1,160,361 |
+| 5+ | 1,794,922 | 1,370,477 | 1,370,477 |
+
+- Every song here has a listen: songs nobody played would need an outside list (MusicBrainz). The 5+ row is
+  songs the store's per-user cap or its training-users-only count left out: more listens bring them in.
+
+**The store builder, trimmed** (2026-10-25, `316361f`). Its last run peaked at 26.8 GB on this 25.8 GB Mac, so
+before bigger stores its memory was measured per step (a sampler of the process's memory footprint, the number
+`/usr/bin/time -l` reports) and cut, with the output unchanged.
+
+- Most of that peak was memory the builder had already freed: macOS keeps big freed blocks inside the process
+  for reuse (and counts them), and the arrays change size at each filter (465M -> 342M -> 308M listens), so
+  the reuse is partial and the reading creeps up (22.9 GB on a rerun of the same build). With
+  `MallocLargeCache=0` freed memory goes back to the system at once, which shows the memory really in use.
+- Changes: the per-song details (each song's most common Spotify link and album, its median length) counted
+  per 50M-listen chunk and the counts added up, instead of one (song, value) pair per listen collected and
+  sorted at once; true/false masks (1 byte a listen) instead of lists of positions (8 bytes) in the noise filter
+  and the session rules; the columns filtered one at a time; the session numbers of the first session pass
+  freed (they were kept to the end); the per-user ranks in 4-byte integers. Tried and undone: sorting the key
+  in place instead of a sorted copy (both peak at 12.0 GB, ~70 s: the sort's own memory is the peak there).
+
+| Memory in use (`MallocLargeCache=0`) | Before | After |
+|---|---|---|
+| Sort, noise filter, session rules | 13.9 GB | 13.1 GB |
+| Choosing the per-user cap (14 trials) | 11.6-13.4 GB | 10.2-11.6 GB |
+| Per-song details | 17.8 GB | 5.3 GB |
+| **Peak** | **18.0 GB** | **13.1 GB** |
+| Build time | 305 s | 303 s (328 s with the in-place sort, undone) |
+
+- Same output: today's store rebuilt with the new code is byte for byte the store of 2026-10-18 (all 18 data
+  files; `store.json` differs only in its build time and a new number, below), checked twice, the second time
+  with the final code. Tests: chunked counts give the same most common value and median as one pass; a store
+  built in 7-listen chunks equals one built in 50M-listen chunks.
+- New in `store.json`: `held_out_listens_in_catalog`, the share of the held-out users' listens (after the
+  session rules, before the cap) whose song is in the catalog: what the model could ever recommend them.
+
+**Three candidate stores** (2026-10-25, `recsys.lb_store` with `--min-users` or `--target`, `MallocLargeCache=0`;
+`runs/listenbrainz/store_n3`, `store_n2`, `store_100m` `.out` and `.json`; `data/lb_store_*`).
+
+| Store | Songs | Listens | Cap per user | Sessions | Artists | Held-out listens in the catalog | Spotify link | Build | Peak memory | Size |
+|---|---|---|---|---|---|---|---|---|---|---|
+| N = 5 (today) | 1,182,480 | 66.35M | 2,759 | 4,889,520 | 164,228 | 73.3% | 83.0% | 303 s | 13.1 GB | 555 MB |
+| N = 3 | 1,936,418 (1.64x) | 66.37M | 2,455 | 4,782,983 | 275,702 | 77.7% | 74.6% | 309 s | 13.1 GB | 664 MB |
+| N = 2 | 3,002,058 (2.54x) | 66.36M | 2,241 | 4,693,012 | 451,672 | 80.9% | 64.4% | 318 s | 13.1 GB | 828 MB |
+| N = 5, 1.5x listens | 1,513,761 (1.28x) | 99.53M | 4,809 | 6,931,490 | 207,499 | 76.1% | 80.2% | 385 s | 14.4 GB | 785 MB |
+
+- A lower N keeps more of each user's listens through the catalog filter, so the same 66M target is reached
+  with a lower cap: each user's 2,455 (N = 3) or 2,241 (N = 2) most recent listens instead of 2,759.
+- The added songs are rarer: fewer have a Spotify link (64-75% vs 83%) or an artist with genres.
+- The same users in every store (the split is by user, seed 42): 61,752-62,924 with sessions left.
