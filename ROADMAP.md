@@ -42,7 +42,6 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Personalization A: a taste profile from the owner's Spotify history, behind a private "Use my taste"
       toggle: more than twice the new songs they then listened to (1.96 -> 4.40 per 100 recommendations)
 - [x] Server resized to 12 GB, the Always Free maximum, for a bigger catalog (8.5 GB free; ~3 min down)
-- [x] Measured song vectors in fewer bits: 16-bit costs nothing (half the memory), 8-bit -0.0003 NDCG@10 (a quarter)
 - [x] The site stores song vectors at 16 bits: same NDCG@10 (0.2322), ~430 MB less on the shards, ~2 ms slower p50
 - [x] Store builder trimmed for bigger catalogs: 18.0 -> 13.1 GB in use, the same store byte for byte
 
