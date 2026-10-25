@@ -5,8 +5,10 @@ import numpy as np
 
 from recsys.lb_extract import extract
 from recsys.lb_sessions import rank_from_end
+from recsys import lb_store
 from recsys.lb_store import (HELD_OUT, RANKER, RETRIEVER, VALIDATION, build_store, capped_catalog, choose_cap,
-                             median_per_song, mode_per_song, noise, split_users)
+                             median_from_counts, median_per_song, merged_counts, mode_from_counts, mode_per_song,
+                             noise, split_users, value_counts)
 from recsys.mpd_store import load_store
 from tests.test_listenbrainz import dump_bytes, listen_line
 
@@ -37,6 +39,20 @@ def test_mode_and_median_per_song():
     values = np.array([7, 5, 7, 9, 1, 1, 9])
     assert list(mode_per_song(songs, values, 4)) == [7, -1, 1, -1]      # ties: the smaller value
     assert list(median_per_song(songs, np.array([10, 30, 20, 4, 1, 3, 2]), 4)) == [20, 0, 2, 0]
+
+
+def test_counts_merged_over_chunks_give_the_same_mode_and_median():
+    rng = np.random.default_rng(0)
+    songs, values = rng.integers(0, 50, 5000), rng.integers(0, 20, 5000)
+    keys, counts = merged_counts([value_counts(songs[i:i + 700], values[i:i + 700]) for i in range(0, 5000, 700)])
+    for s in range(60):
+        mine = np.sort(values[songs == s])
+        if not len(mine):
+            assert mode_from_counts(keys, counts, 60)[s] == -1 and median_from_counts(keys, counts, 60)[s] == 0
+            continue
+        tally = np.bincount(mine)
+        assert mode_from_counts(keys, counts, 60)[s] == np.flatnonzero(tally == tally.max())[0]  # ties: smaller
+        assert median_from_counts(keys, counts, 60)[s] == mine[(len(mine) - 1) // 2]            # lower middle
 
 
 def test_choose_cap_finds_the_smallest_cap_reaching_the_target():
@@ -121,3 +137,14 @@ def test_build_store_end_to_end(tmp_path):
     genres = [json.loads(line) for line in (tmp_path / "store" / "genres.jsonl").read_text().splitlines()]
     assert genres == [{"artist_uri": "listenbrainz:artist:band", "artist_name": "Band",
                        "mbids": ["7fa7fc04-1011-4876-8095-ecd232edea87"], "genres": [{"name": "rock", "count": 3}]}]
+    assert 0 < meta["held_out_listens_in_catalog"] < 1   # the held-out users' rare songs aren't in it
+
+
+def test_build_store_reads_the_song_details_in_any_chunk_size(tmp_path, monkeypatch):
+    extract_dir, mb = tiny_store_inputs(tmp_path)
+    build_store(extract_dir, tmp_path / "whole", target=150, min_users=3, seed=0, mb_genres=mb)
+    monkeypatch.setattr(lb_store, "CHUNK", 7)
+    build_store(extract_dir, tmp_path / "chunks", target=150, min_users=3, seed=0, mb_genres=mb)
+    for f in (tmp_path / "whole").iterdir():
+        if f.name != "store.json":                       # it holds the build time
+            assert f.read_bytes() == (tmp_path / "chunks" / f.name).read_bytes(), f.name
