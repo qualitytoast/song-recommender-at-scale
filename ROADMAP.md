@@ -44,15 +44,15 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Server resized to 12 GB, the Always Free maximum, for a bigger catalog (8.5 GB free; ~3 min down)
 - [x] Measured song vectors in fewer bits: 16-bit costs nothing (half the memory), 8-bit -0.0003 NDCG@10 (a quarter)
 - [x] The site stores song vectors at 16 bits: same NDCG@10 (0.2322), ~430 MB less on the shards, ~2 ms slower p50
+- [x] Store builder trimmed for bigger catalogs: 18.0 -> 13.1 GB in use, the same store byte for byte
 
 ## TODO Now
 
 Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen sample; the full year is on disk.
 
-- [ ] Lower N to 3 or 2 on the same listens (~1.7x / ~2.7x the songs; the new ones mostly help search and inputs)
+- [ ] Lower N to 3 or 2 on the same listens (1.64x / 2.54x the songs; the new ones mostly help search and inputs)
 - [ ] Sample more of the year's listens, keeping N = 5 (better-learned songs; N = 3 + 1.5x listens ≈ 2x the songs)
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
-- [ ] Songs nobody played, placed from their artist, album and genre alone (a model change; the weakest picks)
 - [ ] Store the co-occurrence counts more compactly (1.17 GB on the shards, 12 bytes a pair; ~6: one song ID, capped counts)
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener

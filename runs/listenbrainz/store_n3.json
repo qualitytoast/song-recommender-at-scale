@@ -1,0 +1,43 @@
+{
+  "source": "/Users/nathanhung/Projects/song-recommender-at-scale/data/lb_extract",
+  "window": {
+    "start": "2025-10-15T00:00:00+00:00",
+    "end": "2026-10-15T00:00:00+00:00"
+  },
+  "rules": {
+    "max_listens_per_day": 1000,
+    "skip_seconds": 30,
+    "session_gap_seconds": 1800,
+    "min_session_songs": 4,
+    "min_users_per_song": 3,
+    "target_listens": 66346428,
+    "split": "users: 80% training (20% of them ranker), 10% validation, 10% held-out",
+    "seed": 42
+  },
+  "cap_per_user": 2455,
+  "listens": {
+    "listens": 465330204,
+    "after the noise filter": 342003753,
+    "after the session rules": 308163309,
+    "final": 66366447
+  },
+  "playlists": 4782983,
+  "track_entries": 66366447,
+  "tracks": 1936418,
+  "artists": 275702,
+  "albums": 813290,
+  "held_out_listens_in_catalog": 0.777,
+  "users": 62344,
+  "listens_by_side": {
+    "retriever": 42745042,
+    "ranker": 10644683,
+    "validation": 6505175,
+    "held_out": 6471547
+  },
+  "tracks_with_spotify_uri": 1443603,
+  "tracks_with_length": 1925013,
+  "tracks_in_mpd": 434706,
+  "artists_with_genres": 98926,
+  "build_seconds": 309,
+  "built": "2026-10-25 18:26:30"
+}

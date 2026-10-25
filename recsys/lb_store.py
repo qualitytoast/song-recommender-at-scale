@@ -21,8 +21,12 @@ Writes the MPD store's files (sessions as playlists, with no names) plus:
   3 held-out), playlist_starts.npy (the session's first listen, Unix seconds), track_mpd.npy (the MPD store's
   track ID of each song, -1 none), genres.jsonl (per artist URI, the format of data/genres/*.jsonl).
 
-    python -m recsys.lb_store --extract data/lb_extract --out data/lb_store \\
+    MallocLargeCache=0 python -m recsys.lb_store --extract data/lb_extract --out data/lb_store \\
         --mb-genres data/genres/musicbrainz_lb_artists.jsonl
+
+Memory: at most ~13 GB in use for the 465M-listen extract (the noise filter over every listen). On macOS,
+MallocLargeCache=0 hands freed memory back to the system at once; by default macOS keeps big freed blocks
+for reuse, and the process holds ~24 GB.
 """
 import argparse
 import calendar
@@ -57,7 +61,7 @@ def noise(users, seconds, max_day=1000, skip=30):
     del day
     run = np.cumsum(new_day, dtype=np.int32)
     run -= 1
-    drop = np.bincount(run)[run] > max_day
+    drop = (np.bincount(run) > max_day)[run]       # per day first: one byte per listen, not eight
     del run, new_day
     same_user = ~first[1:]
     gap = np.diff(seconds)
@@ -121,39 +125,69 @@ def choose_cap(users, seconds, songs, training, n_songs, min_users, target, repo
     return hi, *best
 
 
-def mode_per_song(songs, values, n_songs):
-    """The most common value per song (-1 if none), from parallel arrays; ties: the smaller value."""
+def value_counts(songs, values):
+    """The distinct (song, value) pairs of parallel arrays as sorted keys song << 32 | value (values >= 0),
+    and how many times each occurs."""
+    return np.unique(songs.astype(np.int64) << 32 | values.astype(np.int64), return_counts=True)
+
+
+def merged_counts(parts):
+    """Several value_counts results (one per chunk of listens) as one: each key once, its counts added."""
+    keys = np.concatenate([k for k, _ in parts])
+    counts = np.concatenate([c for _, c in parts])
+    if not len(keys):
+        return keys, counts
+    order = np.argsort(keys, kind="stable")
+    keys, counts = keys[order], counts[order]
+    first = np.flatnonzero(np.append(True, keys[1:] != keys[:-1]))
+    return keys[first], np.add.reduceat(counts, first)
+
+
+def mode_from_counts(keys, counts, n_songs):
+    """The most common value per song (-1 if none), from value_counts keys and counts; ties: the smaller value."""
     out = np.full(n_songs, -1, dtype=np.int64)
-    if not len(songs):
+    if not len(keys):
         return out
-    pairs, counts = np.unique(songs.astype(np.int64) << 32 | values.astype(np.int64), return_counts=True)
-    song = pairs >> 32
+    song = keys >> 32
     order = np.lexsort((-counts, song))          # per song, the highest count first
     first = np.ones(len(order), dtype=bool)
     first[1:] = song[order][1:] != song[order][:-1]
     winners = order[first]
-    out[song[winners]] = pairs[winners] & 0xFFFFFFFF
+    out[song[winners]] = keys[winners] & 0xFFFFFFFF
     return out
+
+
+def median_from_counts(keys, counts, n_songs):
+    """The median value per song (0 if none; of an even number, the lower middle one), from value_counts keys
+    and counts: the value the song's middle listen has, with its listens in value order."""
+    out = np.zeros(n_songs, dtype=np.int64)
+    if not len(keys):
+        return out
+    song = keys >> 32
+    starts = np.flatnonzero(np.append(True, song[1:] != song[:-1]))
+    total = np.add.reduceat(counts, starts)      # each song's listens
+    end = np.cumsum(counts)                      # one past each key's last listen, all songs' listens in a row
+    middle = end[starts] - counts[starts] + (total - 1) // 2
+    out[song[starts]] = keys[np.searchsorted(end, middle, side="right")] & 0xFFFFFFFF
+    return out
+
+
+def mode_per_song(songs, values, n_songs):
+    """The most common value per song (-1 if none), from parallel arrays; ties: the smaller value."""
+    return mode_from_counts(*value_counts(songs, values), n_songs)
 
 
 def median_per_song(songs, values, n_songs):
     """The median value per song (0 if none)."""
-    out = np.zeros(n_songs, dtype=np.int64)
-    if not len(songs):
-        return out
-    key = np.sort(songs.astype(np.int64) << 32 | values.astype(np.int64))
-    song = key >> 32
-    starts = np.flatnonzero(np.append(True, song[1:] != song[:-1]))
-    ends = np.append(starts[1:], len(key))
-    out[song[starts]] = key[(starts + ends - 1) // 2] & 0xFFFFFFFF
-    return out
+    return median_from_counts(*value_counts(songs, values), n_songs)
 
 
 def per_song_columns(extract, catalog):
     """For catalog songs, from every listen in the extract: the most common Spotify track (code), album (code)
-    and the median length (ms, plausible lengths only), read in chunks."""
+    and the median length (ms, plausible lengths only). Read in chunks; each chunk's (song, value) pairs are
+    counted before the next is read, so memory holds the distinct pairs, not one pair per listen."""
     n_songs = len(catalog)
-    spotify_pairs, release_pairs, length_pairs = [], [], []
+    spotify_counts, release_counts, length_counts = [], [], []
     for start in range(0, extract.meta["listens"], CHUNK):
         song = np.asarray(extract.song[start:start + CHUNK])
         keep = catalog[song]
@@ -161,13 +195,13 @@ def per_song_columns(extract, catalog):
         spotify = np.asarray(extract.spotify[start:start + CHUNK])[keep]
         release = np.asarray(extract.release[start:start + CHUNK])[keep]
         length = np.asarray(extract.duration_ms[start:start + CHUNK])[keep]
-        spotify_pairs.append((song[spotify >= 0], spotify[spotify >= 0]))
-        release_pairs.append((song[release >= 0], release[release >= 0]))
+        spotify_counts.append(value_counts(song[spotify >= 0], spotify[spotify >= 0]))
+        release_counts.append(value_counts(song[release >= 0], release[release >= 0]))
         plausible = (length >= 20_000) & (length <= 30 * 60_000)
-        length_pairs.append((song[plausible], length[plausible]))
-    join = lambda pairs: (np.concatenate([p[0] for p in pairs]), np.concatenate([p[1] for p in pairs]))
-    return (mode_per_song(*join(spotify_pairs), n_songs), mode_per_song(*join(release_pairs), n_songs),
-            median_per_song(*join(length_pairs), n_songs))
+        length_counts.append(value_counts(song[plausible], length[plausible]))
+    return (mode_from_counts(*merged_counts(spotify_counts), n_songs),
+            mode_from_counts(*merged_counts(release_counts), n_songs),
+            median_from_counts(*merged_counts(length_counts), n_songs))
 
 
 def read_genre_files(mpd_genres, mb_genres):
@@ -207,20 +241,26 @@ def build_store(extract_dir, out, target=MPD_SIZE, min_users=5, seed=42, max_day
     log(f"sorting {extract.meta['listens']:,} listens by user, then time")
     users, seconds, songs, user_ids = by_user_and_time(extract.user, extract.timestamp, extract.song, start)
     counts = {"listens": len(users)}
-    drop = noise(users, seconds, max_day, skip)
-    keep = np.flatnonzero(~drop)
-    counts["after the noise filter"] = len(keep)
-    del drop
-    users, seconds, songs = users[keep], seconds[keep], songs[keep]
-    kept, _ = sessions(users, seconds, songs)
-    users, seconds, songs = users[kept], seconds[kept], songs[kept]
+    keep = ~noise(users, seconds, max_day, skip)
+    counts["after the noise filter"] = int(keep.sum())
+    users = users[keep]                          # one column at a time: each original is freed before the next
+    seconds = seconds[keep]                      # copy (a true/false mask, not a list of 8-byte positions)
+    songs = songs[keep]
+    del keep
+    kept = sessions(users, seconds, songs)[0]
+    users = users[kept]
+    seconds = seconds[kept]
+    songs = songs[kept]
     counts["after the session rules"] = len(users)
-    del keep, kept
+    del kept
 
     split = split_users(len(user_ids), seed)
     training = split[users] <= RANKER
     log(f"choosing the cap: {len(users):,} listens, target {target:,}")
     cap, final, catalog, session = choose_cap(users, seconds, songs, training, n_songs, min_users, target)
+    held_out = split[users] == HELD_OUT          # what share of the held-out users' listening the catalog holds
+    coverage = float(catalog[songs[held_out]].mean()) if held_out.any() else None
+    del held_out
     users, seconds, songs = users[final], seconds[final], songs[final]
     counts["final"] = len(users)
     del final, training
@@ -339,6 +379,7 @@ def build_store(extract_dir, out, target=MPD_SIZE, min_users=5, seed=42, max_day
                       "seed": seed},
             "cap_per_user": cap, "listens": counts, "playlists": len(starts), "track_entries": int(len(users)),
             "tracks": len(codes), "artists": len(artist_uris), "albums": len(album_uris),
+            "held_out_listens_in_catalog": round(coverage, 4) if coverage is not None else None,
             "users": int(len(np.unique(session_users))),
             "listens_by_side": dict(zip(("retriever", "ranker", "validation", "held_out"), map(int, sides))),
             "tracks_with_spotify_uri": sum(u.startswith("spotify:track:") for u in uris),

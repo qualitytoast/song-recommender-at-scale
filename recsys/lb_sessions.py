@@ -65,7 +65,7 @@ def sessions(users, seconds, songs, gap=SESSION_GAP, min_len=MIN_SESSION):
     repeat = np.zeros(len(songs), dtype=bool)
     repeat[1:] = ~start[1:] & (songs[1:] == songs[:-1])
     lengths = np.bincount(session[~repeat], minlength=session[-1] + 1 if len(session) else 0)
-    kept = ~repeat & (lengths[session] >= min_len)
+    kept = ~repeat & (lengths >= min_len)[session]  # per session first: one byte per listen, not eight
     return kept, session
 
 
@@ -78,11 +78,14 @@ def most_recent(users, k):
 
 
 def rank_from_end(users):
-    """0 for each user's most recent listen, 1 for the one before, ... (listens sorted by user, then time)."""
+    """0 for each user's most recent listen, 1 for the one before, ... (listens sorted by user, then time).
+    Computed in int32 (fewer than 2^31 listens), in place."""
     first = np.flatnonzero(user_starts_from(users))
-    ends = np.append(first[1:], len(users))
-    end_of = np.repeat(ends, np.diff(np.append(first, len(users))))
-    return (end_of - np.arange(len(users)) - 1).astype(np.int32)
+    ends = np.append(first[1:], len(users)).astype(np.int32)
+    rank = np.repeat(ends, np.diff(np.append(first, len(users))))   # one past the user's last listen
+    rank -= np.arange(len(users), dtype=np.int32)
+    rank -= 1
+    return rank
 
 
 def users_per_song(users, songs, n_songs, mask=None):
