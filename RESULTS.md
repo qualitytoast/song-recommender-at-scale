@@ -1930,3 +1930,26 @@ before bigger stores its memory was measured per step (a sampler of the process'
   with a lower cap: each user's 2,455 (N = 3) or 2,241 (N = 2) most recent listens instead of 2,759.
 - The added songs are rarer: fewer have a Spotify link (64-75% vs 83%) or an artist with genres.
 - The same users in every store (the split is by user, seed 42): 61,752-62,924 with sessions left.
+
+**Setup for the runs** (2026-10-25). Run A: `retriever_1m_lb_n2` and `ranker_1m_lb_n2_next10w` on
+`data/lb_store_n2` (the model knows 2,990,619 songs: the store's 3,002,058 less those only validation or
+held-out users played). Run B: `retriever_1m_lb_1.5x` and `ranker_1m_lb_1.5x_next10w` on `data/lb_store_100m`
+(1,513,540 songs). Each retriever is `retriever_1m_lb` with only the store and the check interval changed (a
+quarter epoch: 39,922,894 and 59,346,752 training targets vs 39,463,824); each ranker is
+`ranker_1m_lb_next10w` with only its retriever and the check interval changed (scaled to 9,946,003 and
+14,762,508 ranker cases vs 9,810,450). The rankers keep its 4,096 search clusters (the run rules).
+
+**Comparing pairs across catalogs** (2026-10-25, `scripts/lb_compare.py catalog-cases` and `catalog-score`;
+`runs/listenbrainz/compare_catalogs/scores.json`). 5,000 cases from the N = 2 store's held-out sessions
+(459,899 sessions, 5,894,980 cases; 8 s), the biggest catalog, so the closest to what was played. Songs are
+matched across stores by song key (artist + title, cleaned): a Spotify URI goes to one song per store, so the
+same URI can mean different songs. Each pair's input is the case's songs it knows; a next song it doesn't know
+is a miss, and so is a case with no input song it knows. Today's pair on them (22 s):
+
+| Today's pair | Next song | Hit@10 | Later | Artists | Last artist | No Spotify link | Answers | Knows the next song |
+|---|---|---|---|---|---|---|---|---|
+| Own answers (0, 0) | 0.2155 | 25.2% | 0.132 | 4.68 | 46.8% | 3.3% | 98.6% | 90.7% |
+| Site settings (3, 0) | 0.2082 | 23.1% | 0.084 | 6.98 | 20.5% | 4.5% | 98.6% | 90.7% |
+
+- 9.3% of these next songs are outside today's catalog, and 1.4% of the cases have no input song it knows:
+  misses a bigger catalog can turn into hits.
