@@ -229,6 +229,17 @@ def test_output_genre_vectors_are_averaged_per_song():
     assert shift[3] == 0                                             # no genres: unaffected
 
 
+def test_output_vectors_are_the_same_with_the_genre_average_in_chunks(monkeypatch):
+    import recsys.model
+    model = genre_model().eval()
+    with torch.no_grad():
+        model.output_genres.weight.normal_()
+    whole, bias = model.output_vectors()
+    monkeypatch.setattr(recsys.model, "GENRE_CHUNK", 2)              # 7 songs: chunks of 2, 2, 2, 1
+    chunked, chunked_bias = model.output_vectors()
+    assert torch.equal(whole, chunked) and torch.equal(bias, chunked_bias)
+
+
 def test_input_genre_vector_changes_predictions():
     model = genre_model().eval()
     ids = torch.tensor([[0, 3, 6]])

@@ -297,6 +297,9 @@ def train(config_path, train_seed):
             raise FloatingPointError(f"Training loss became {train_loss} by check {check}. Training diverged.")
         train_seconds = time.perf_counter() - interval_start
         val_start = time.perf_counter()
+        # The last step's gradients would stay in memory until the next step clears them; free them now, for
+        # validation's full-catalog scoring (~1.8 GiB at 2.5M songs). Nothing reads them in between.
+        optimizer.zero_grad()
         val = val_cases.scores(model)
         val_loss, val_ndcg = val["loss"], val["ndcg@10"]
         val_seconds = time.perf_counter() - val_start
