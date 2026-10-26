@@ -1,0 +1,81 @@
+{
+  "case_store": "data/lb_store_100m",
+  "counts": {
+    "held_out_sessions": 697697,
+    "cases": 9203364,
+    "sampled": 5000
+  },
+  "today": {
+    "bundle": "ranker_1m_lb_next10w-843e59aa82f6",
+    "store": "data/lb_store",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2344,
+      "next_hit@10": 0.2728,
+      "later_p@10": 0.1352,
+      "artists": 4.6078,
+      "last_artist": 0.4745,
+      "no_spotify_link": 0.0354,
+      "answered": 0.9948,
+      "knows_the_next_song": 0.9662
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2262,
+      "next_hit@10": 0.2496,
+      "later_p@10": 0.0875,
+      "artists": 6.9604,
+      "last_artist": 0.2066,
+      "no_spotify_link": 0.0466,
+      "answered": 0.9948,
+      "knows_the_next_song": 0.9662
+    }
+  },
+  "n2": {
+    "bundle": "ranker_1m_lb_n2_next10w-4ae5a2112e31",
+    "store": "data/lb_store_n2",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2389,
+      "next_hit@10": 0.2744,
+      "later_p@10": 0.1296,
+      "artists": 4.7347,
+      "last_artist": 0.4623,
+      "no_spotify_link": 0.037,
+      "answered": 0.9998,
+      "knows_the_next_song": 0.9982
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2319,
+      "next_hit@10": 0.255,
+      "later_p@10": 0.086,
+      "artists": 7.0044,
+      "last_artist": 0.2017,
+      "no_spotify_link": 0.0467,
+      "answered": 0.9998,
+      "knows_the_next_song": 0.9982
+    }
+  },
+  "1.5x": {
+    "bundle": "ranker_1m_lb_1.5x_next10w-c7bd8e5ba3f2",
+    "store": "data/lb_store_100m",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2455,
+      "next_hit@10": 0.2856,
+      "later_p@10": 0.1425,
+      "artists": 4.3552,
+      "last_artist": 0.4958,
+      "no_spotify_link": 0.0367,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2364,
+      "next_hit@10": 0.26,
+      "later_p@10": 0.0933,
+      "artists": 6.8214,
+      "last_artist": 0.2131,
+      "no_spotify_link": 0.0491,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    }
+  },
+  "seconds": 99
+}

@@ -29,5 +29,53 @@
       "knows_the_next_song": 0.9066
     }
   },
-  "seconds": 22
+  "n2": {
+    "bundle": "ranker_1m_lb_n2_next10w-4ae5a2112e31",
+    "store": "data/lb_store_n2",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2268,
+      "next_hit@10": 0.2636,
+      "later_p@10": 0.1291,
+      "artists": 4.9128,
+      "last_artist": 0.4467,
+      "no_spotify_link": 0.0404,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.219,
+      "next_hit@10": 0.2416,
+      "later_p@10": 0.083,
+      "artists": 7.105,
+      "last_artist": 0.1991,
+      "no_spotify_link": 0.0508,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    }
+  },
+  "1.5x": {
+    "bundle": "ranker_1m_lb_1.5x_next10w-c7bd8e5ba3f2",
+    "store": "data/lb_store_100m",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2305,
+      "next_hit@10": 0.2694,
+      "later_p@10": 0.1392,
+      "artists": 4.4365,
+      "last_artist": 0.485,
+      "no_spotify_link": 0.0397,
+      "answered": 0.9902,
+      "knows_the_next_song": 0.9386
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2236,
+      "next_hit@10": 0.2502,
+      "later_p@10": 0.0904,
+      "artists": 6.8501,
+      "last_artist": 0.212,
+      "no_spotify_link": 0.0526,
+      "answered": 0.9902,
+      "knows_the_next_song": 0.9386
+    }
+  },
+  "seconds": 99
 }
