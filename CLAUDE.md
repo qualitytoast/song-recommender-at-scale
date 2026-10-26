@@ -6,7 +6,7 @@ To see where the project stands, check `git log` and `RESULTS.md`.
 
 - After each step that works, add and commit w/ a short, but clear commit message.
 - Use subagents when they'd speed things up: independent pieces of work (e.g. two separate parts of a change, or reading/reviewing a large part of the code) can go to subagents in parallel. Training and evaluation runs share the Mac's one GPU and its memory, so run those one at a time, queued back to back, not in parallel.
-- When a task needs to be broken up, for example for clarification, break it up as part A, B, C, D, e.t.c.
+- When a task needs to be broken up, for example for clarification, break it up as part A, B, C, D, e.t.c. Don't label anything inside those parts with letters (subtasks, runs, options): state each plainly by what it is, e.g. "the N = 3 + 1.5x listens run", not "run C".
 - Run the "audit" skill automatically after every training run
 - Avoid making new branches, worktrees or copies of the repo unless they're really needed.
 - Git and GitHub: limit yourself to making a branch for each piece of work, adding, committing and pushing to it, opening a pull request set to merge automatically once the tests pass, and deleting the branch after it merges. Nothing else (repo settings, workflows, worktrees) unless I ask.
