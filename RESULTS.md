@@ -1953,3 +1953,57 @@ is a miss, and so is a case with no input song it knows. Today's pair on them (2
 
 - 9.3% of these next songs are outside today's catalog, and 1.4% of the cases have no input song it knows:
   misses a bigger catalog can turn into hits.
+
+**The runs** (2026-10-25/26, one seed; `runs/retriever_ranker_runs/1m/retriever_1m_lb_n2`, `ranker_1m_lb_n2_next10w`,
+`retriever_1m_lb_1.5x`, `ranker_1m_lb_1.5x_next10w`; `runs/queue.log`). Queued back to back: 8.0 h in all.
+
+- Memory: run A's retriever (2,990,619 songs: 609M parameters, vs 235M today) grew every check with PyTorch's
+  defaults (footprint 27.2 -> 31.7 GB in 20 min on the 25.8 GB Mac; memory held for the GPU 14.7 -> 17.9 GB;
+  validation 63 -> 82 s a check). PyTorch's GPU allocator may hold up to 1.7x the 17.8 GiB macOS recommends
+  here, 30.3 GiB: more than the Mac. Stopped after check 4 (25 min) and restarted with
+  `PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.0`, `PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9` (at most 17.8 GiB, cached
+  blocks freed from 16 GiB) and `MallocLargeCache=0`: footprint flat at ~23.6 GB, checks 230 s instead of
+  264-284 s, the same scores within run-to-run noise (check 0: 0.1068 vs 0.1064). `scripts/run_queue.sh` now
+  skips a ranker whose retriever failed earlier in the queue (a crash leaves a half-trained checkpoint).
+
+| Retriever | Checks (best) | Training | Validation | Evaluation | Run |
+|---|---|---|---|---|---|
+| `retriever_1m_lb` (today) | 32 (26: 6.75 epochs) | 93.0 min | 17.9 min | ~17 min | 128 min |
+| `retriever_1m_lb_n2` (A) | 29 (23: 6.0 epochs) | 84.0 min | 28.8 min | ~38 min | 151 min (+25 min stopped) |
+| `retriever_1m_lb_1.5x` (B) | 21 (15: 4.0 epochs) | 65.2 min | 9.8 min | ~21 min | 96 min |
+
+| Ranker | Checks (best) | Training (validation included) | Shortlists | Evaluation | Run |
+|---|---|---|---|---|---|
+| `ranker_1m_lb_next10w` (today) | 26 (20) | ~79 min | 34 min | ~2 min | 116 min |
+| `ranker_1m_lb_n2_next10w` (A) | 28 (22) | ~108 min | 39.5 min | ~2 min | 150 min |
+| `ranker_1m_lb_1.5x_next10w` (B) | 13 (7) | ~47 min | 25.8 min | ~1 min | 76 min |
+
+| Each on its own store's held-out cases (200,000) | Retriever, exact | Retriever, IVF (as served) | + ranker | Ranker's gain | Shortlist holds the next song | Later |
+|---|---|---|---|---|---|---|
+| Today | 0.2398 | 0.2246 | 0.2477 | +0.0231 (+10.3%) | 36.6% | 0.142 |
+| A (N = 2) | 0.2169 | 0.2041 | 0.2323 | +0.0282 (+13.8%) | 33.6% | 0.127 |
+| B (1.5x listens) | 0.2379 | 0.2234 | 0.2472 | +0.0238 (+10.7%) | 37.0% | 0.149 |
+
+- Not comparable across rows: each store has its own held-out cases and catalog (A's hold rarer songs). The run
+  rules' measure across retrievers: A's ranker adds the most over its own retriever (+13.8%), B's about as
+  much as today's.
+- Exports (16 bits, 3 per artist, no mixing; `MallocLargeCache=0`): A 104 s, peak 24.4 GB, bundle 3.1 GB before
+  shards (song vectors 2.5x; pair counts 1.29 GB vs 1.17, the same listens); B 97 s, 19.2 GB, 2.6 GB.
+
+**Today's pair vs A vs B on the same held-out listens** (`scripts/lb_compare.py catalog-score`;
+`runs/listenbrainz/compare_catalogs` and `compare_catalogs_100m`, 5,000 cases each, 99 s each). Cases drawn from
+the N = 2 store (every next song in A's catalog) and, as a check, from the 1.5x store (every next song in B's).
+
+| Pair | N = 2 cases: own answers | site settings | knows the next song | 1.5x cases: own answers | site settings | knows the next song |
+|---|---|---|---|---|---|---|
+| Today | 0.2155 | 0.2082 | 90.7% | 0.2344 | 0.2262 | 96.6% |
+| A (N = 2) | 0.2268 (+5.2%) | 0.2190 | 100% | 0.2389 (+1.9%) | 0.2319 | 99.8% |
+| **B (1.5x listens)** | **0.2305 (+7.0%)** | **0.2236** | 93.9% | **0.2455 (+4.7%)** | **0.2364** | 100% |
+
+- More listens helps more than a lower N, on both sets: even on the N = 2 store's cases, where 6.1% of the next
+  songs are outside B's catalog. A gets right songs today's pair doesn't know, but its songs are learned from
+  fewer listens each: its retriever's shortlist holds the next song less often (33.6% vs 36.6-37.0%), and its
+  top 10 holds less of what the session goes on to play (later 0.129 vs B's 0.139 on the N = 2 cases).
+- B's retriever stopped earlier (4 epochs vs 6-6.75), each epoch 1.5x the listens. A vs B differ by 0.004-0.007
+  on 5,000 paired cases: B ahead on both sets, the gap small.
+- Songs without a Spotify link in the top 10 (own answers, N = 2 cases): today 3.3%, A 4.0%, B 4.0%.

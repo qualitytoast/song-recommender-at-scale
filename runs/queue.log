@@ -54,3 +54,15 @@
 2026-10-18 18:40:51 start ranker_1m_lb_next10w
 2026-10-18 20:37:12 done ranker_1m_lb_next10w in 116 min
 2026-10-18 20:37:12 queue finished
+2026-10-25 20:52:26 queue of 4: configs/retriever_1m_lb_n2.toml configs/ranker_1m_lb_n2_next10w.toml configs/retriever_1m_lb_1.5x.toml configs/ranker_1m_lb_1.5x_next10w.toml
+2026-10-25 20:52:26 start retriever_1m_lb_n2
+2026-10-25 21:17:38 queue of 4: configs/retriever_1m_lb_n2.toml configs/ranker_1m_lb_n2_next10w.toml configs/retriever_1m_lb_1.5x.toml configs/ranker_1m_lb_1.5x_next10w.toml
+2026-10-25 21:17:38 start retriever_1m_lb_n2
+2026-10-25 23:49:11 done retriever_1m_lb_n2 in 151 min
+2026-10-25 23:49:13 start ranker_1m_lb_n2_next10w
+2026-10-26 02:19:58 done ranker_1m_lb_n2_next10w in 150 min
+2026-10-26 02:19:59 start retriever_1m_lb_1.5x
+2026-10-26 03:56:45 done retriever_1m_lb_1.5x in 96 min
+2026-10-26 03:56:47 start ranker_1m_lb_1.5x_next10w
+2026-10-26 05:12:56 done ranker_1m_lb_1.5x_next10w in 76 min
+2026-10-26 05:12:56 queue finished
