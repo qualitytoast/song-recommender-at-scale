@@ -1,0 +1,33 @@
+{
+  "case_store": "data/lb_store_n2",
+  "counts": {
+    "held_out_sessions": 459899,
+    "cases": 5894980,
+    "sampled": 5000
+  },
+  "today": {
+    "bundle": "ranker_1m_lb_next10w-843e59aa82f6",
+    "store": "data/lb_store",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2155,
+      "next_hit@10": 0.252,
+      "later_p@10": 0.1317,
+      "artists": 4.6771,
+      "last_artist": 0.4681,
+      "no_spotify_link": 0.0325,
+      "answered": 0.986,
+      "knows_the_next_song": 0.9066
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2082,
+      "next_hit@10": 0.2314,
+      "later_p@10": 0.0841,
+      "artists": 6.9848,
+      "last_artist": 0.2054,
+      "no_spotify_link": 0.0448,
+      "answered": 0.986,
+      "knows_the_next_song": 0.9066
+    }
+  },
+  "seconds": 22
+}

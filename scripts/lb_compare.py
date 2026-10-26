@@ -7,6 +7,10 @@
     python scripts/lb_compare.py score --cases runs/listenbrainz/compare --lb-bundle ... --mpd-bundle ...
     # 3. the ListenBrainz bundle on the "all" cases with each serving setting in GRID (choosing its defaults)
     python scripts/lb_compare.py tune --cases runs/listenbrainz/compare --lb-bundle ...
+    # 4. ListenBrainz pairs trained on different stores (catalogs) on the same held-out listens
+    python scripts/lb_compare.py catalog-cases --store data/lb_store_n2 --out runs/listenbrainz/compare_catalogs
+    python scripts/lb_compare.py catalog-score --cases runs/listenbrainz/compare_catalogs \\
+        --pair today bundles/<bundle> data/lb_store --pair n2 bundles/<bundle> data/lb_store_n2 ...
 
 cases: two samples of the held-out users' any-length cases (a song with a known song right before it in the same
 session; the input: the up to 10 known songs before it), each with the rest of its session:
@@ -22,6 +26,14 @@ score: per bundle and setting (the models' own answers: max_per_artist 0, mix 0;
 tune: the same scores for the ListenBrainz model on "all", per setting in GRID, and on its "mixed" cases (3+ input
   songs, every one by a different artist: closer to a list typed into the webpage than a session that plays an
   album through); saved to <cases>/tune.json.
+catalog-cases: a sample of one store's held-out any-length cases (the store with the biggest catalog keeps the most of
+  what was played), each song as its song key (recsys.listenbrainz.song_key: artist + title, cleaned), which is the
+  same in every store; Spotify URIs aren't (each goes to one song per store, the most played first).
+catalog-score: each pair (a bundle and the store it was trained on) answers every case. Its input is the case's songs
+  it knows, as on the site; a next song it doesn't know is a miss, and so is a case with no input song it knows (no
+  answer). Next NDCG@10, hit@10 and later p@10 over every case; artists, last artist and no Spotify link over the
+  cases it answers; the shares of cases it answers and whose next song it knows. With its own answers (0, 0) and
+  the site's settings (3, 0); saved to <cases>/scores.json.
 """
 import argparse
 import json
@@ -37,6 +49,7 @@ sys.path.insert(0, str(ROOT))
 
 HELD_OUT = 3
 SETTINGS = [{"max_per_artist": 0, "mix": 0.0}, {"max_per_artist": 2, "mix": 0.5}]
+CATALOG_SETTINGS = [{"max_per_artist": 0, "mix": 0.0}, {"max_per_artist": 3, "mix": 0.0}]  # own; the site's
 GRID = [{"max_per_artist": a, "mix": m} for a in (0, 1, 2, 3) for m in (0.0, 0.25, 0.5)]
 WATCHED_ARTIST = "BTS"
 
@@ -176,6 +189,94 @@ def tune(args):
     (Path(args.cases) / "tune.json").write_text(json.dumps(results, indent=2))
 
 
+def store_song_keys(store):
+    """Each store track's song key: its artist's key (a ListenBrainz store's artist URIs are
+    listenbrainz:artist:<key>) and its cleaned title, as recsys.listenbrainz.song_key made it."""
+    from recsys.listenbrainz import clean_title
+
+    artist_keys = [uri.split(":", 2)[2] for uri in store.artist_uris]
+    return [f"{artist_keys[a]}|{clean_title(name)}" for a, name in zip(store.track_artist, store.track_names)]
+
+
+def build_catalog_cases(keys, tracks, offsets, n_cases, seed, input_length=10):
+    """(cases, counts): case dicts {songs, target, later} as song keys, from held-out sessions (tracks: store
+    track IDs, offsets per session). Every song of the store is known to it, so every position with a song before
+    it in the same session is a case."""
+    t, starts, session = case_positions(offsets, np.ones(offsets[-1], dtype=bool), input_length)
+    picked = np.sort(np.random.RandomState(seed).choice(len(t), min(n_cases, len(t)), replace=False))
+    cases = [{"songs": [keys[j] for j in tracks[starts[i]:t[i]]], "target": keys[tracks[t[i]]],
+              "later": list(dict.fromkeys(keys[j] for j in tracks[t[i]:offsets[session[t[i]] + 1]]))}
+             for i in picked]
+    return cases, {"held_out_sessions": len(offsets) - 1, "cases": int(len(t)), "sampled": len(cases)}
+
+
+def as_known(cases, uri_of):
+    """The cases as one pair sees them (uri_of: song key -> its URI, for the songs it knows): input and later
+    songs it doesn't know left out, a target it doesn't know as None."""
+    return [{"songs": [uri_of[k] for k in c["songs"] if k in uri_of], "target": uri_of.get(c["target"]),
+             "later": [uri_of[k] for k in c["later"] if k in uri_of]} for c in cases]
+
+
+def catalog_scores(cases, answer_songs, artist_of):
+    """One pair's scores on its as_known cases; answer_songs(songs) -> (top URIs, their artists)."""
+    every, answered = [], []
+    for c in cases:
+        if not c["songs"]:                        # no input song it knows: no answer, a miss
+            every.append([0.0, 0.0, 0.0])
+            continue
+        top, artists = answer_songs(c["songs"])
+        later = set(c["later"])
+        every.append([ndcg_at_10(top, c["target"]), c["target"] in top, np.mean([u in later for u in top])])
+        answered.append([len(set(artists)), np.mean([a == artist_of(c["songs"][-1]) for a in artists]),
+                         np.mean([not u.startswith("spotify:track:") for u in top])])
+    out = dict(zip(["next_ndcg@10", "next_hit@10", "later_p@10"], np.mean(every, axis=0).round(4).tolist()))
+    if answered:
+        out.update(zip(["artists", "last_artist", "no_spotify_link"], np.mean(answered, axis=0).round(4).tolist()))
+    out["answered"] = round(len(answered) / len(cases), 4)
+    out["knows_the_next_song"] = round(float(np.mean([c["target"] is not None for c in cases])), 4)
+    return out
+
+
+def make_catalog_cases(args):
+    from recsys.data import concat_playlists
+    from recsys.mpd_store import load_store
+
+    store = load_store(args.store)
+    held = np.flatnonzero(np.load(Path(args.store) / "playlist_split.npy") == HELD_OUT)
+    tracks, offsets = concat_playlists(store, held)
+    cases, counts = build_catalog_cases(store_song_keys(store), np.asarray(tracks), np.asarray(offsets),
+                                        args.cases, args.seed)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "cases.json").write_text(json.dumps({"store": args.store, "seed": args.seed, "counts": counts,
+                                                "cases": cases}))
+    print(json.dumps(counts, indent=2))
+
+
+def score_catalogs(args):
+    from recsys.mpd_store import load_store
+    from recsys.recommender import Recommender
+
+    data = json.loads((Path(args.cases) / "cases.json").read_text())
+    results, began = {"case_store": data["store"], "counts": data["counts"]}, time.perf_counter()
+    for name, bundle, store_dir in args.pair:
+        store = load_store(store_dir)
+        catalog = set(json.loads((Path(bundle) / "songs.json").read_text())["uris"])
+        uri_of = {k: u for k, u in zip(store_song_keys(store), store.track_uris) if u in catalog}
+        cases = as_known(data["cases"], uri_of)
+        rec = Recommender(bundle, args.device)
+        artist_of = lambda uri: rec.artists[rec.song_id[uri]] if uri in rec.song_id else None
+        results[name] = {"bundle": Path(bundle).name, "store": store_dir}
+        for s in CATALOG_SETTINGS:
+            answer_songs = lambda songs, s=s: answer(rec, {"songs": songs}, s)
+            results[name][f"max_per_artist={s['max_per_artist']}, mix={s['mix']}"] = catalog_scores(
+                cases, answer_songs, artist_of)
+        rec.close()
+        print(json.dumps({name: results[name]}), flush=True)
+    results["seconds"] = round(time.perf_counter() - began)
+    (Path(args.cases) / "scores.json").write_text(json.dumps(results, indent=2))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -196,8 +297,19 @@ def main():
     t.add_argument("--cases", required=True)
     t.add_argument("--lb-bundle", required=True)
     t.add_argument("--device", default="cpu")
+    cc = sub.add_parser("catalog-cases")
+    cc.add_argument("--store", required=True)
+    cc.add_argument("--out", required=True)
+    cc.add_argument("--cases", type=int, default=5000)
+    cc.add_argument("--seed", type=int, default=0)
+    cs = sub.add_parser("catalog-score")
+    cs.add_argument("--cases", required=True)
+    cs.add_argument("--pair", nargs=3, action="append", required=True, metavar=("NAME", "BUNDLE", "STORE"),
+                    help="a name, a bundle and the store its models were trained on (repeat per pair)")
+    cs.add_argument("--device", default="cpu")
     args = ap.parse_args()
-    {"cases": make_cases, "score": score_cases, "tune": tune}[args.mode](args)
+    {"cases": make_cases, "score": score_cases, "tune": tune, "catalog-cases": make_catalog_cases,
+     "catalog-score": score_catalogs}[args.mode](args)
 
 
 if __name__ == "__main__":
