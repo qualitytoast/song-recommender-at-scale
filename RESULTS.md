@@ -2007,3 +2007,79 @@ the N = 2 store (every next song in A's catalog) and, as a check, from the 1.5x 
 - B's retriever stopped earlier (4 epochs vs 6-6.75), each epoch 1.5x the listens. A vs B differ by 0.004-0.007
   on 5,000 paired cases: B ahead on both sets, the gap small.
 - Songs without a Spotify link in the top 10 (own answers, N = 2 cases): today 3.3%, A 4.0%, B 4.0%.
+
+**Both changes in one run: the stores** (2026-10-26, `recsys.lb_store --min-users 2` or `3` with
+`--target 99519642`, `MallocLargeCache=0`; `runs/listenbrainz/store_n2_1.5x`, `store_n3_1.5x` `.out` and `.json`).
+A lower N with 1.5x the listens, to get both the rarer songs and more listens to learn each song from. The model's
+size follows from the catalog: parameters = 129 x songs + 128 x (albums + artists) + ~0.2M (each song an input
+vector, an output vector and a bias; each album and artist an input and an output vector), which gives the three
+earlier runs' counts (235M today, 609M N = 2, 301M 1.5x listens).
+
+| Store | Songs | Listens | Cap per user | Sessions | Artists | Held-out listens in the catalog | Spotify link | Build | Peak memory | Size | Model |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| N = 2, 1.5x listens | 3,802,783 (3.22x) | 99.53M | 3,885 | 6,693,102 | 565,040 | 83.2% | 60.2% | 365 s | 13.9 GB | deleted | ~772M parameters |
+| N = 3, 1.5x listens | 2,464,939 (2.08x) | 99.53M | 4,260 | 6,802,156 | 347,342 | 80.2% | 70.8% | 388 s | 14.1 GB | 923 MB | 494M (printed: 493,810,340) |
+
+- N = 2 with 1.5x the listens would not fit: ~772M parameters at the ~25 bytes each the N = 2 run's 609M took on
+  the GPU is ~19.3 GB, over the 17.8 GiB (19.1 GB) the GPU may use. N = 3 was picked; the N = 2 store deleted.
+- With 1.5x the listens, N = 3 covers nearly as much of the held-out listening as N = 2 on the 66M listens (80.2%
+  vs 80.9%) with 82% of its songs.
+
+**The N = 3 + 1.5x listens run** (2026-10-26/27, one seed; `runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x`,
+`ranker_1m_lb_n3_1.5x_next10w`; `runs/queue.log`; configs `ab7ebb0`). `retriever_1m_lb` with only the store and
+the check interval changed (a quarter epoch: 14,910,229 of 59,640,918 training targets; the model knows 2,462,372
+songs), and `ranker_1m_lb_next10w` with only its retriever and the check interval changed (scaled to 14,834,156
+ranker cases); 4,096 search clusters kept (the run rules). Same memory settings as the N = 2 run's restart.
+
+- Out of GPU memory at first, under the cap: at check 9 (53 min in) validation averaged every song's artist-genre
+  vectors in one table (songs x 5 genres x 64 numbers: 2.94 GiB) on top of the 15.03 GiB held (cap 17.76 GiB).
+  Fixed with the same numbers (`e54e80c`): the average taken 262,144 songs at a time (`GENRE_CHUNK` in
+  `recsys/model.py`), and the last step's gradients freed before each check (`optimizer.zero_grad()` in
+  `recsys/train.py`, ~1.8 GiB; nothing reads them before the next step clears them). Song vectors checked
+  identical with and without chunks on the 1.5x-listens run's model (GPU and CPU), and by a new test. Restarted:
+  footprint flat at ~23.0 GB; check 0 0.1367 vs 0.1358 before, within run-to-run noise as at the N = 2 run's restart.
+- The ranker was stopped 4 min in, before its first output, at the user's request, and restarted 3.6 h later.
+
+| Retriever | Checks (best) | Training | Validation | Evaluation | Run |
+|---|---|---|---|---|---|
+| `retriever_1m_lb_n3_1.5x` | 37 (31: 8.0 epochs) | 158.0 min | 34.4 min | ~40 min | 232 min (+53 min out of memory) |
+
+| Ranker | Checks (best) | Training (validation included) | Shortlists | Evaluation | Run |
+|---|---|---|---|---|---|
+| `ranker_1m_lb_n3_1.5x_next10w` | 24 (18) | ~120 min | 51.0 min | ~3 min | 176 min (+4 min stopped) |
+
+| On its own store's held-out cases (200,000) | Retriever, exact | Retriever, IVF (as served) | + ranker | Ranker's gain | Shortlist holds the next song | Later |
+|---|---|---|---|---|---|---|
+| N = 3 + 1.5x listens | 0.2283 | 0.2118 | 0.2382 | +0.0264 (+12.5%) | 34.6% | 0.135 |
+
+- The retriever trained twice as long as the 1.5x-listens run's (best at 8.0 epochs vs 4.0; checks ~256 s vs
+  ~186 s of training), so the pair took 6.8 h vs 2.9 h. The shortlists took 51 min (25.8 min at 1.51M songs).
+- The run rules' measure across retrievers: its ranker adds +12.5%, between the N = 2 run's +13.8% and the
+  1.5x-listens run's +10.7%. IVF search loses more here (-7.2% vs exact; -5.9% to -6.3% in the other runs).
+- Export (16 bits, 3 per artist, no mixing; `MallocLargeCache=0`): 113 s, peak 22.9 GB, bundle 3.2 GB before
+  shards (`bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff`).
+
+**All four pairs on the same held-out listens** (2026-10-27, `scripts/lb_compare.py catalog-score`, 5,000 cases a
+set, 135 s a set; `runs/listenbrainz/compare_catalogs`, `compare_catalogs_100m`, `compare_catalogs_n3_1.5x`). A third
+case set from the new store (679,276 held-out sessions, 9,090,075 cases). The three earlier pairs, re-scored on the
+first two sets, gave exactly the same numbers.
+
+| Pair, next-song NDCG@10 (own answers) | N = 2 cases | 1.5x cases | N = 3 + 1.5x cases | Knows the next song (same order) |
+|---|---|---|---|---|
+| Today | 0.2155 | 0.2344 | 0.2208 | 90.7% / 96.6% / 91.4% |
+| The N = 2 run | 0.2268 (+5.2%) | 0.2389 (+1.9%) | 0.2259 (+2.3%) | 100% / 99.8% / 98.7% |
+| The 1.5x-listens run | 0.2305 (+7.0%) | **0.2455 (+4.7%)** | 0.2332 (+5.6%) | 93.9% / 100% / 94.6% |
+| **The N = 3 + 1.5x listens run** | **0.2323 (+7.8%)** | 0.2400 (+2.4%) | **0.2403 (+8.8%)** | 98.3% / 100% / 100% |
+
+- Site settings (3 per artist) keep the order: today 0.2082 / 0.2262 / 0.2122, N = 2 0.2190 / 0.2319 / 0.2177,
+  1.5x listens 0.2236 / 0.2364 / 0.2254, N = 3 + 1.5x 0.2254 / 0.2319 / 0.2320.
+- Against the N = 2 run, ahead on all three sets: +0.0055 (+2.4%) on the N = 2 store's cases, +0.0011 on the 1.5x
+  store's, +0.0144 (+6.4%) on its own. It knows 528,247 fewer songs (2,462,372 vs 2,990,619), yet 98.3% of the
+  next songs in the N = 2 store's cases.
+- Against the 1.5x-listens run: ahead on the N = 2 cases (+0.0018) and its own (+0.0071), behind on the 1.5x
+  store's (-0.0055). Each set favors the pair whose store it came from (every next song is in that catalog); the
+  N = 2 store's cases are the closest to everything played, and there the combined run leads by a small margin.
+  The 1.5x-listens run's top 10 holds a little more of what the session plays later (0.139 vs 0.134 there).
+- Costs against the 1.5x-listens run: 1.63x the songs, 494M parameters vs 301M, a 3.2 GB bundle vs 2.6 GB, export
+  peak 22.9 vs 19.2 GB, 6.8 h of training vs 2.9 h. Songs without a Spotify link in the top 10 (N = 2 cases):
+  4.3% vs 4.0%.

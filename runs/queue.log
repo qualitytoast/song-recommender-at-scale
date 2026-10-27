@@ -66,3 +66,17 @@
 2026-10-26 03:56:47 start ranker_1m_lb_1.5x_next10w
 2026-10-26 05:12:56 done ranker_1m_lb_1.5x_next10w in 76 min
 2026-10-26 05:12:56 queue finished
+2026-10-26 12:47:15 queue of 2: configs/retriever_1m_lb_n3_1.5x.toml configs/ranker_1m_lb_n3_1.5x_next10w.toml
+2026-10-26 12:47:16 start retriever_1m_lb_n3_1.5x
+2026-10-26 13:40:47 FAILED retriever_1m_lb_n3_1.5x after 53 min (see runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/run.out)
+2026-10-26 13:40:49 SKIPPED ranker_1m_lb_n3_1.5x_next10w: configs/retriever_1m_lb_n3_1.5x.toml failed in this queue (its checkpoint may be half-trained)
+2026-10-26 13:40:49 queue finished
+2026-10-26 14:12:14 queue of 2: configs/retriever_1m_lb_n3_1.5x.toml configs/ranker_1m_lb_n3_1.5x_next10w.toml
+2026-10-26 14:12:15 start retriever_1m_lb_n3_1.5x
+2026-10-26 18:04:49 done retriever_1m_lb_n3_1.5x in 232 min
+2026-10-26 18:04:51 start ranker_1m_lb_n3_1.5x_next10w
+2026-10-26 18:08:51 STOPPED ranker_1m_lb_n3_1.5x_next10w after 4 min at the user's request (before its first output); to be restarted
+2026-10-26 21:42:59 queue of 1: configs/ranker_1m_lb_n3_1.5x_next10w.toml
+2026-10-26 21:43:01 start ranker_1m_lb_n3_1.5x_next10w
+2026-10-27 00:39:34 done ranker_1m_lb_n3_1.5x_next10w in 176 min
+2026-10-27 00:39:34 queue finished
