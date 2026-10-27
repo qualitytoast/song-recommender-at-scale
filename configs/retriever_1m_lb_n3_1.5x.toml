@@ -1,4 +1,4 @@
-# Growing the catalog, run C (runs A and B combined): retriever_1m_lb on a lower bar for songs and 1.5x the
+# Growing the catalog, the N = 3 + 1.5x listens run: retriever_1m_lb on a lower bar for songs and 1.5x the
 # listens. The store (data/lb_store_n3_1.5x, recsys/lb_store.py --min-users 3 --target 99519642) holds 99.53M
 # listens (each user's 4,260 most recent) from 62,548 users active from 2025-10-15 to 2026-10-15, in sessions;
 # 2,464,939 songs (each played by at least 3 training users). Only the store, its genre file and the check
