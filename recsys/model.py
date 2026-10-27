@@ -15,6 +15,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+# output_vectors averages each song's genre vectors this many songs at a time: all at once it would hold a
+# (songs, genres per artist, embed_dim) table, 2.9 GiB at 2.5M songs (the run that ran out of GPU memory)
+GENRE_CHUNK = 1 << 18
+
 
 class SelfAttention(nn.Module):
     """Single-head attention: each song pulls in a weighted blend of the others."""
@@ -237,7 +241,8 @@ class SongRecommender(nn.Module):
         for name in self.feature_names:
             vectors = vectors + self.output_features[name](self.song_feature_ids(name))
         if self.output_genres is not None:
-            vectors = vectors + self.mean_vector(self.output_genres, self.song_genres)
+            vectors = vectors + torch.cat([self.mean_vector(self.output_genres, ids)
+                                           for ids in self.song_genres.split(GENRE_CHUNK)])
         return vectors, self.output.bias
 
     def _init_like_v1(self):

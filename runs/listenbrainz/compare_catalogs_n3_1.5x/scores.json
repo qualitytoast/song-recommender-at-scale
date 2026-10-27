@@ -1,0 +1,105 @@
+{
+  "case_store": "data/lb_store_n3_1.5x",
+  "counts": {
+    "held_out_sessions": 679276,
+    "cases": 9090075,
+    "sampled": 5000
+  },
+  "today": {
+    "bundle": "ranker_1m_lb_next10w-843e59aa82f6",
+    "store": "data/lb_store",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2208,
+      "next_hit@10": 0.259,
+      "later_p@10": 0.1351,
+      "artists": 4.6433,
+      "last_artist": 0.4773,
+      "no_spotify_link": 0.0351,
+      "answered": 0.9896,
+      "knows_the_next_song": 0.9142
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2122,
+      "next_hit@10": 0.2348,
+      "later_p@10": 0.0865,
+      "artists": 6.9753,
+      "last_artist": 0.2064,
+      "no_spotify_link": 0.047,
+      "answered": 0.9896,
+      "knows_the_next_song": 0.9142
+    }
+  },
+  "n2": {
+    "bundle": "ranker_1m_lb_n2_next10w-4ae5a2112e31",
+    "store": "data/lb_store_n2",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2259,
+      "next_hit@10": 0.263,
+      "later_p@10": 0.1331,
+      "artists": 4.813,
+      "last_artist": 0.4617,
+      "no_spotify_link": 0.042,
+      "answered": 0.999,
+      "knows_the_next_song": 0.9868
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2177,
+      "next_hit@10": 0.2398,
+      "later_p@10": 0.0863,
+      "artists": 7.0667,
+      "last_artist": 0.2031,
+      "no_spotify_link": 0.0502,
+      "answered": 0.999,
+      "knows_the_next_song": 0.9868
+    }
+  },
+  "1.5x": {
+    "bundle": "ranker_1m_lb_1.5x_next10w-c7bd8e5ba3f2",
+    "store": "data/lb_store_100m",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2332,
+      "next_hit@10": 0.2716,
+      "later_p@10": 0.1409,
+      "artists": 4.4045,
+      "last_artist": 0.4999,
+      "no_spotify_link": 0.0396,
+      "answered": 0.9938,
+      "knows_the_next_song": 0.9458
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2254,
+      "next_hit@10": 0.249,
+      "later_p@10": 0.0918,
+      "artists": 6.8529,
+      "last_artist": 0.2158,
+      "no_spotify_link": 0.0506,
+      "answered": 0.9938,
+      "knows_the_next_song": 0.9458
+    }
+  },
+  "n3_1.5x": {
+    "bundle": "ranker_1m_lb_n3_1.5x_next10w-84ec15359fff",
+    "store": "data/lb_store_n3_1.5x",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2403,
+      "next_hit@10": 0.278,
+      "later_p@10": 0.1366,
+      "artists": 4.7036,
+      "last_artist": 0.4709,
+      "no_spotify_link": 0.0447,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.232,
+      "next_hit@10": 0.2548,
+      "later_p@10": 0.0892,
+      "artists": 6.9992,
+      "last_artist": 0.205,
+      "no_spotify_link": 0.0541,
+      "answered": 1.0,
+      "knows_the_next_song": 1.0
+    }
+  },
+  "seconds": 136
+}

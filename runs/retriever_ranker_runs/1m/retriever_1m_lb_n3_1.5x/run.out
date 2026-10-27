@@ -1,0 +1,125 @@
+runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/seed1 | device mps | 2,462,372 songs | 8,011,136 train chunks (59,640,918 targets) | 20,000 val | 493,810,340 params
+W1026 12:48:07.780000 69634 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1806] [0/0] Not enough SMs to use max_autotune_gemm mode
+check   0 | epoch  0.25 | train loss 6.1596 | val loss 9.1374 | val NDCG@10 0.1358 | later 0.080 (first 2,000) | train 262.5s + val 50.4s  *best
+check   1 | epoch  0.50 | train loss 5.1890 | val loss 8.6967 | val NDCG@10 0.1718 | later 0.084 (first 2,000) | train 255.3s + val 50.1s  *best
+check   2 | epoch  0.75 | train loss 4.9264 | val loss 8.5195 | val NDCG@10 0.1854 | later 0.088 (first 2,000) | train 270.8s + val 51.2s  *best
+check   3 | epoch  1.00 | train loss 4.7772 | val loss 8.4207 | val NDCG@10 0.1933 | later 0.085 (first 2,000) | train 284.9s + val 55.8s  *best
+check   4 | epoch  1.25 | train loss 4.3547 | val loss 8.4101 | val NDCG@10 0.2029 | later 0.085 (first 2,000) | train 250.8s + val 53.6s  *best
+check   5 | epoch  1.50 | train loss 4.3355 | val loss 8.3784 | val NDCG@10 0.2082 | later 0.087 (first 2,000) | train 265.0s + val 59.5s  *best
+check   6 | epoch  1.75 | train loss 4.3226 | val loss 8.3066 | val NDCG@10 0.2128 | later 0.088 (first 2,000) | train 255.0s + val 56.3s  *best
+check   7 | epoch  2.00 | train loss 4.3047 | val loss 8.2954 | val NDCG@10 0.2127 | later 0.087 (first 2,000) | train 247.5s + val 57.0s
+check   8 | epoch  2.25 | train loss 3.9923 | val loss 8.3466 | val NDCG@10 0.2157 | later 0.082 (first 2,000) | train 256.7s + val 65.7s  *best
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/train.py", line 410, in <module>
+    train(args.config, seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/train.py", line 373, in train
+    stop = validate()
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/train.py", line 300, in validate
+    val = val_cases.scores(model)
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/train.py", line 145, in scores
+    ranks, losses, _ = self.rank(model, k=0)
+                       ~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/train.py", line 139, in rank
+    return rank_targets(model, self.X[rows], self.N[rows], self.T[rows], self.device, lengths=self.lengths[rows],
+                        k=k)
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/.venv/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/model.py", line 312, in rank_targets
+    vectors, bias = model.output_vectors()
+                    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/model.py", line 240, in output_vectors
+    vectors = vectors + self.mean_vector(self.output_genres, self.song_genres)
+                        ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/recsys/model.py", line 193, in mean_vector
+    return table(ids).sum(dim=-2) / real
+           ~~~~~^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/.venv/lib/python3.13/site-packages/torch/nn/modules/sparse.py", line 189, in forward
+    return F.embedding(
+           ~~~~~~~~~~~^
+        input,
+        ^^^^^^
+    ...<5 lines>...
+        self.sparse,
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/nathanhung/Projects/song-recommender-at-scale/.venv/lib/python3.13/site-packages/torch/nn/functional.py", line 2621, in embedding
+    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: MPS backend out of memory (MPS allocated: 15.03 GiB, other allocations: 458.72 MiB, max allowed: 17.76 GiB). Tried to allocate 2.94 GiB on shared pool. Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit for memory allocations (may cause system failure).
+--- 2026-10-26 14:12 ran out of GPU memory at check 9 (validation's genre average for every song at once, 2.94 GiB, on top of 15.03 GiB; cap 17.76 GiB). Fixed (genre average in chunks, gradients freed before checks; same numbers) and restarted from scratch.
+runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/seed1 | device mps | 2,462,372 songs | 8,011,136 train chunks (59,640,918 targets) | 20,000 val | 493,810,340 params
+W1026 14:13:05.123000 73511 .venv/lib/python3.13/site-packages/torch/_inductor/utils.py:1806] [0/0] Not enough SMs to use max_autotune_gemm mode
+check   0 | epoch  0.25 | train loss 6.1579 | val loss 9.1350 | val NDCG@10 0.1367 | later 0.080 (first 2,000) | train 251.8s + val 46.7s  *best
+check   1 | epoch  0.50 | train loss 5.1890 | val loss 8.7024 | val NDCG@10 0.1715 | later 0.085 (first 2,000) | train 252.4s + val 46.8s  *best
+check   2 | epoch  0.75 | train loss 4.9268 | val loss 8.5209 | val NDCG@10 0.1852 | later 0.087 (first 2,000) | train 252.6s + val 53.3s  *best
+check   3 | epoch  1.00 | train loss 4.7776 | val loss 8.4204 | val NDCG@10 0.1934 | later 0.086 (first 2,000) | train 271.5s + val 54.9s  *best
+check   4 | epoch  1.25 | train loss 4.3541 | val loss 8.4142 | val NDCG@10 0.2034 | later 0.085 (first 2,000) | train 263.6s + val 60.5s  *best
+check   5 | epoch  1.50 | train loss 4.3353 | val loss 8.3684 | val NDCG@10 0.2078 | later 0.089 (first 2,000) | train 274.3s + val 59.6s  *best
+check   6 | epoch  1.75 | train loss 4.3225 | val loss 8.3064 | val NDCG@10 0.2134 | later 0.089 (first 2,000) | train 269.2s + val 62.4s  *best
+check   7 | epoch  2.00 | train loss 4.3045 | val loss 8.2970 | val NDCG@10 0.2123 | later 0.087 (first 2,000) | train 273.8s + val 59.0s
+check   8 | epoch  2.25 | train loss 3.9913 | val loss 8.3432 | val NDCG@10 0.2161 | later 0.081 (first 2,000) | train 284.2s + val 62.6s  *best
+check   9 | epoch  2.50 | train loss 4.0226 | val loss 8.3439 | val NDCG@10 0.2164 | later 0.082 (first 2,000) | train 284.4s + val 61.0s  *best
+check  10 | epoch  2.75 | train loss 4.0378 | val loss 8.3317 | val NDCG@10 0.2183 | later 0.083 (first 2,000) | train 254.7s + val 51.1s  *best
+check  11 | epoch  3.00 | train loss 4.0497 | val loss 8.2915 | val NDCG@10 0.2205 | later 0.088 (first 2,000) | train 235.8s + val 52.0s  *best
+check  12 | epoch  3.25 | train loss 3.7835 | val loss 8.3803 | val NDCG@10 0.2219 | later 0.084 (first 2,000) | train 248.0s + val 54.7s  *best
+check  13 | epoch  3.50 | train loss 3.8285 | val loss 8.3564 | val NDCG@10 0.2237 | later 0.083 (first 2,000) | train 249.9s + val 56.0s  *best
+check  14 | epoch  3.75 | train loss 3.8556 | val loss 8.3645 | val NDCG@10 0.2237 | later 0.084 (first 2,000) | train 257.4s + val 56.2s  no improvement 1/5
+check  15 | epoch  4.00 | train loss 3.8818 | val loss 8.3500 | val NDCG@10 0.2246 | later 0.085 (first 2,000) | train 262.0s + val 58.1s  *best
+check  16 | epoch  4.25 | train loss 3.6439 | val loss 8.4466 | val NDCG@10 0.2238 | later 0.083 (first 2,000) | train 254.5s + val 55.1s  no improvement 1/5
+check  17 | epoch  4.50 | train loss 3.6905 | val loss 8.4223 | val NDCG@10 0.2255 | later 0.082 (first 2,000) | train 256.1s + val 62.5s  *best
+check  18 | epoch  4.75 | train loss 3.7271 | val loss 8.4129 | val NDCG@10 0.2245 | later 0.085 (first 2,000) | train 254.7s + val 53.1s  no improvement 1/5
+check  19 | epoch  5.00 | train loss 3.7506 | val loss 8.3976 | val NDCG@10 0.2248 | later 0.083 (first 2,000) | train 245.1s + val 50.7s  no improvement 2/5
+check  20 | epoch  5.25 | train loss 3.5389 | val loss 8.5034 | val NDCG@10 0.2255 | later 0.081 (first 2,000) | train 251.3s + val 55.4s  no improvement 3/5
+check  21 | epoch  5.50 | train loss 3.5870 | val loss 8.5034 | val NDCG@10 0.2242 | later 0.081 (first 2,000) | train 261.1s + val 64.2s  no improvement 4/5
+check  22 | epoch  5.75 | train loss 3.6227 | val loss 8.4756 | val NDCG@10 0.2259 | later 0.080 (first 2,000) | train 250.0s + val 54.3s  *best
+check  23 | epoch  6.00 | train loss 3.6534 | val loss 8.4593 | val NDCG@10 0.2255 | later 0.084 (first 2,000) | train 251.5s + val 60.9s  no improvement 1/5
+check  24 | epoch  6.25 | train loss 3.4534 | val loss 8.5671 | val NDCG@10 0.2260 | later 0.080 (first 2,000) | train 254.7s + val 56.2s  *best
+check  25 | epoch  6.50 | train loss 3.5079 | val loss 8.5548 | val NDCG@10 0.2250 | later 0.080 (first 2,000) | train 270.8s + val 62.0s  no improvement 1/5
+check  26 | epoch  6.75 | train loss 3.5433 | val loss 8.5252 | val NDCG@10 0.2247 | later 0.081 (first 2,000) | train 281.5s + val 59.2s  no improvement 2/5
+check  27 | epoch  7.00 | train loss 3.5698 | val loss 8.5231 | val NDCG@10 0.2263 | later 0.081 (first 2,000) | train 241.7s + val 51.8s  *best
+check  28 | epoch  7.25 | train loss 3.3876 | val loss 8.6360 | val NDCG@10 0.2251 | later 0.080 (first 2,000) | train 231.6s + val 51.0s  no improvement 1/5
+check  29 | epoch  7.50 | train loss 3.4363 | val loss 8.6054 | val NDCG@10 0.2261 | later 0.080 (first 2,000) | train 229.5s + val 50.7s  no improvement 2/5
+check  30 | epoch  7.75 | train loss 3.4763 | val loss 8.5966 | val NDCG@10 0.2261 | later 0.081 (first 2,000) | train 228.1s + val 50.4s  no improvement 3/5
+check  31 | epoch  8.00 | train loss 3.5056 | val loss 8.5754 | val NDCG@10 0.2281 | later 0.081 (first 2,000) | train 227.3s + val 49.3s  *best
+check  32 | epoch  8.25 | train loss 3.3328 | val loss 8.6795 | val NDCG@10 0.2253 | later 0.080 (first 2,000) | train 226.1s + val 50.1s  no improvement 1/5
+check  33 | epoch  8.50 | train loss 3.3847 | val loss 8.6678 | val NDCG@10 0.2256 | later 0.078 (first 2,000) | train 248.6s + val 59.7s  no improvement 2/5
+check  34 | epoch  8.75 | train loss 3.4166 | val loss 8.6308 | val NDCG@10 0.2266 | later 0.079 (first 2,000) | train 258.5s + val 63.0s  no improvement 3/5
+check  35 | epoch  9.00 | train loss 3.4459 | val loss 8.6177 | val NDCG@10 0.2276 | later 0.083 (first 2,000) | train 260.8s + val 54.4s  no improvement 4/5
+check  36 | epoch  9.25 | train loss 3.2795 | val loss 8.7322 | val NDCG@10 0.2250 | later 0.078 (first 2,000) | train 261.9s + val 54.2s  no improvement 5/5
+early stop at check 36
+best val NDCG@10 0.2281 at check 31 (8.00 epochs) | 192.4 min, of which validation 34.4 min | saved runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/seed1/best.pt
+
+runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/seed1/best.pt (check 31)
+                                     n   NDCG@10   hits@1   hits@5  hits@10  top 100  top 500 top 1000 top 2000 top 5000
+validation                      20,000    0.2281    0.191    0.246    0.271    0.380    0.484    0.538    0.590    0.666
+full held-out                  200,000    0.2283    0.191    0.246    0.271    0.381    0.485    0.536    0.590    0.663
+held-out, 10 songs              97,397    0.2168    0.174    0.237    0.266    0.387    0.502    0.558    0.614    0.689
+most-popular (full held-out)   200,000    0.0135    0.007    0.015    0.023    0.044    0.073    0.097    0.131    0.195
+
+NDCG@10 over the next songs; top 10       next 5    next 5 w     next 10   next 10 w    later@10  artists@10 last artist
+validation                                0.1466      0.1611      0.1346      0.1550      0.0971      6.0998      0.3348
+full held-out                             0.1463      0.1610      0.1340      0.1548      0.0952      6.0816      0.3364
+
+held-out by input length             n   NDCG@10  hits@10
+  1 song                        14,874    0.2133    0.247
+  2 songs                       15,007    0.2325    0.270
+  3 songs                       14,820    0.2361    0.274
+  4 songs                       12,806    0.2436    0.282
+  5 songs                       11,312    0.2511    0.288
+  6 songs                        9,841    0.2488    0.288
+  7 songs                        9,005    0.2488    0.287
+  8 songs                        7,812    0.2511    0.289
+  9 songs                        7,126    0.2497    0.289
+  10 songs                      97,397    0.2168    0.266
+
+most common next songs in training: SWIM (346749x), NORMAL (156325x), Come Over (142748x)
+model / most-popular NDCG@10: 17.0x

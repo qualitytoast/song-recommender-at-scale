@@ -1,11 +1,11 @@
 ---
 name: audit
-description: End-of-session bloat audit for song-recommender-at-scale on the Mac and the Oracle server - delete leftovers Claude made that aren't needed, list everything else and ask. Use when the user says they're logging off, ends the session, or asks for an audit or cleanup.
+description: Bloat audit for song-recommender-at-scale on the Mac and the Oracle server - delete leftovers Claude made that aren't needed, list everything else and ask. Use after every training run, and when the user says they're logging off or asks for an audit or cleanup.
 ---
 
-# End-of-session audit
+# Audit
 
-CLAUDE.md asks for this at the end of every session. Look first, then act. Delete only what Claude made (this
+CLAUDE.md asks for this after every training run. Look first, then act. Delete only what Claude made (this
 session or earlier ones) that isn't needed; ask before deleting anything else; leave alone anything that isn't
 from this project.
 

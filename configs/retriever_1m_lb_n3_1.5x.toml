@@ -1,0 +1,60 @@
+# Growing the catalog, the N = 3 + 1.5x listens run: retriever_1m_lb on a lower bar for songs and 1.5x the
+# listens. The store (data/lb_store_n3_1.5x, recsys/lb_store.py --min-users 3 --target 99519642) holds 99.53M
+# listens (each user's 4,260 most recent) from 62,548 users active from 2025-10-15 to 2026-10-15, in sessions;
+# 2,464,939 songs (each played by at least 3 training users). Only the store, its genre file and the check
+# interval (a quarter epoch) differ from retriever_1m_lb. The store splits users 80/10/10 (20% of training
+# users for the ranker), so the split settings below only describe it.
+
+data_seed = 42           # playlist split, same as every Phase 1 run
+train_seeds = [1]        # 1 seed per run from now on
+
+[data]
+folder = "data/lb_store_n3_1.5x"   # ListenBrainz sessions (recsys/lb_store.py), split by user in the store
+max_playlists = 10000000  # every session (6,802,156)
+min_playlist_len = 4   # the store's sessions all have 4+ songs
+min_freq = 1           # the store's catalog is final: songs at least 3 different training users played
+song_key = "track_uri"   # was "track_name": same-titled songs stay separate songs
+vocab_from = "train"     # was "all": held-out playlists don't decide which songs exist
+context_length = 10    # predict the 11th song from the previous 10
+input_length = 10      # the retriever reads the window's songs only
+test_split = 0.1       # the store's held-out users (10%): the store decides the split, by user
+validation = "separate_playlists"  # was "held_out_prefix": early stopping never sees held-out data
+val_split = 0.1          # the store's validation users (10%)
+genres_file = "data/lb_store_n3_1.5x/genres.jsonl"  # per ListenBrainz artist, from MusicBrainz (recsys/lb_store.py)
+val_max_windows = 20000  # a fixed sample of the validation windows
+test_max_windows = 200000  # a fixed sample of held-out cases
+windows = "any_length"   # sessions are short (median 9 songs): cases of 1 up to 10 songs
+ranker_split = 0.2       # the store's ranker users (20% of training users)
+val_size = 0             # was 3000; unused with separate_playlists
+
+[model]
+embed_dim = 64
+num_layers = 2
+dropout = 0.1          # after embeddings, after attention, after feed-forward
+scale_attention = true   # was false: divide attention scores by sqrt(embed_dim)
+init = "pytorch"         # was "v1": PyTorch's default starting weights
+features = ["artist", "album", "duration", "genre"]  # no playlist name: sessions have none
+
+[train]
+optimizer = "lazy_adamw"  # only the table rows a batch uses are updated
+lr = 2.8e-3           # was 2e-3: x sqrt(2) for 256-chunk batches
+weight_decay = 0.05    # lr * wd = 5e-5 shrink per step
+batch_size = 256       # was 128: half the steps per epoch
+epochs = 100           # a cap; early stopping ends the run
+eval_every_targets = 14910229  # a quarter of an epoch (59,640,918 part-A targets)
+min_checks = 10          # = 2.5 epochs at a quarter epoch per check
+patience = 5             # was 10 epochs; now counts validation checks
+augment_mask = 0.0      # training-window augmentation off
+augment_crop = 0
+augment_reorder = 0.0
+objective = "every_position"  # was "last_position": predict the next song at every position
+softmax = "sampled"       # was "full": each batch scores its true next songs + random songs
+sampled_negatives = 4096  # was 8192 (phase C2)
+negative_power = 0.75     # was 0 (uniform): draw by (target frequency)^0.75
+compile = true            # phase C1: forward pass and loss compiled
+target_songs = 1          # the next song only (recsys/config.py)
+target_decay = 1.0
+predict_steps = 1         # the usual head only (multi-token prediction off)
+predict_decay = 1.0
+predict_songs = 1          # each extra head: exactly the song that many steps ahead (unused with predict_steps = 1)
+predict_songs_decay = 1.0

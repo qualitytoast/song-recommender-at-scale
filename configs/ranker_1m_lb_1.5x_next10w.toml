@@ -1,4 +1,4 @@
-# Growing the catalog, run B: the run rules' baseline ranker for retriever_1m_lb_1.5x (the 1.5x-listens store):
+# Growing the catalog, the 1.5x-listens run: the run rules' baseline ranker for retriever_1m_lb_1.5x:
 # ranker_1m_lb_next10w with only its retriever and check interval changed (the interval scaled to the
 # number of cases). Its users are the store's ranker users (20% of training users).
 

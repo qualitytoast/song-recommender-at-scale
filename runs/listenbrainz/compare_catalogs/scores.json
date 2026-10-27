@@ -77,5 +77,29 @@
       "knows_the_next_song": 0.9386
     }
   },
-  "seconds": 99
+  "n3_1.5x": {
+    "bundle": "ranker_1m_lb_n3_1.5x_next10w-84ec15359fff",
+    "store": "data/lb_store_n3_1.5x",
+    "max_per_artist=0, mix=0.0": {
+      "next_ndcg@10": 0.2323,
+      "next_hit@10": 0.27,
+      "later_p@10": 0.1338,
+      "artists": 4.7683,
+      "last_artist": 0.4586,
+      "no_spotify_link": 0.0435,
+      "answered": 0.9978,
+      "knows_the_next_song": 0.9826
+    },
+    "max_per_artist=3, mix=0.0": {
+      "next_ndcg@10": 0.2254,
+      "next_hit@10": 0.2506,
+      "later_p@10": 0.087,
+      "artists": 7.0277,
+      "last_artist": 0.2012,
+      "no_spotify_link": 0.0542,
+      "answered": 0.9978,
+      "knows_the_next_song": 0.9826
+    }
+  },
+  "seconds": 135
 }

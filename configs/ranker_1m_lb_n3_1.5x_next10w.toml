@@ -1,0 +1,39 @@
+# Growing the catalog, the N = 3 + 1.5x listens run: the run rules' baseline ranker for
+# retriever_1m_lb_n3_1.5x (N = 3 and 1.5x the listens): ranker_1m_lb_next10w with only its retriever and check
+# interval changed (the interval scaled to the number of cases). Its users are the store's ranker users (20%
+# of training users).
+
+[ranker]
+retriever = "configs/retriever_1m_lb_n3_1.5x.toml"  # seed s uses runs/retriever_ranker_runs/1m/retriever_1m_lb_n3_1.5x/seed<s>/best.pt
+train_seeds = [1]          # 1 seed per run
+shortlist = 100            # step 2: rerank the retriever's top 100
+search = "ivf"             # FAISS IVF index, as at 200k (at 50k, exact and IVF gave the same NDCG@10: 0.1012 vs 0.1011)
+ivf_nlist = 4096           # clusters, as in ranker_1m_lb_next10w (~4 x sqrt(1,182,480 songs)); kept by the
+                           # run rules: 2,462,372 songs here
+ivf_nprobe = 128           # clusters searched per window: true song in the top 100 44.18% vs exact 44.30%
+                           # (64: 43.84%, 256: 44.28%; runs/search_benchmark/real_1m_k100.out)
+negatives = 31             # per training window: the true song + 31 sampled from its shortlist (the top 100)
+negatives_from = 100       # ... drawn from the whole shortlist
+optimizer = "lazy_adamw"   # only the table rows a batch uses are updated, as in the retriever
+lr = 2e-4                  # was 1e-4: x sqrt(4) for 256-window batches
+new_lr = 2e-4              # was 1e-4: as lr
+weight_decay = 0.05
+batch_size = 256           # was 64: a quarter of the steps per epoch
+epochs = 20                # maximum passes over the part-B cases with the true song in the top 100
+eval_every_examples = 1281671  # ~1/5 epoch: 43.2% (ranker_1m's rate) of the 14,834,156 part-B any-length cases, / 5
+min_checks = 5
+patience = 5
+val_windows = 20000        # every window of the retriever's 20,000-window validation sample
+train_windows = "in_shortlist"  # step 1: only windows whose true song is in the shortlist
+freeze_tables = false      # the copied per-ID tables train too
+features = ["overlap", "cooccurrence"]  # step 5c + log_after_last, log_after_context, context_with_pair
+correction_hidden = 64     # was 0: a small network that can combine its inputs
+exclude_input = true       # was false: songs in the retriever's input are left out of the shortlist
+val_set = "separate"       # was "retriever": validation windows outside the retriever's sample
+windows = "any_length"     # was "full": cases of 1 up to 10 songs
+target_songs = 10          # the next 10 songs, the song d steps ahead weighing 0.8^(d-1) (kept at 50k)
+target_decay = 0.8          # nearer songs weigh more
+predict_steps = 1          # the usual head only (multi-token prediction off)
+predict_decay = 1.0
+predict_songs = 1          # each extra head: exactly the song that many steps ahead (unused with predict_steps = 1)
+predict_songs_decay = 1.0
