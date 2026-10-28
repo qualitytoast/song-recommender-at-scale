@@ -47,13 +47,14 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Tested N = 2 on the same listens: 2.99M songs, +5.2% next-song NDCG@10 over today's pair on shared cases
 - [x] Tested 1.5x the listens at N = 5: 1.51M songs, +7.0% on the same cases (+4.7% on its own): the better one
 - [x] Tested N = 3 with 1.5x the listens: 2.46M songs, +7.8% on the same cases, ahead of N = 2 on all three case sets
+- [x] The site serves the N = 3 + 1.5x pair: 2.46M songs, the offline top 10 for 2,000 of 2,000, 51 s of downtime
 
 ## TODO Now
 
-Today: 1.18M songs, those played by at least 5 listeners (N) in the 66M-listen sample; the full year is on disk.
+Today: 2.46M songs, those played by at least 3 listeners (N) in a 99.5M-listen sample; the full year is on disk.
 
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
-- [ ] Store the co-occurrence counts more compactly (1.17 GB on the shards, 12 bytes a pair; ~6: one song ID, capped counts)
+- [ ] Store the co-occurrence counts more compactly (1.82 GB on the shards, 12 bytes a pair; ~6: one song ID, capped counts)
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
 - [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests
