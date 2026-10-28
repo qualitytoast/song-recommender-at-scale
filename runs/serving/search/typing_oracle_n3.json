@@ -1,0 +1,12 @@
+{
+  "songs": 200,
+  "requests": 4665,
+  "p50_ms": 12.96,
+  "p99_ms": 49.12,
+  "max_ms": 203.29,
+  "search": {
+    "answered": 4650,
+    "errors": 0,
+    "skipped": 0
+  }
+}
