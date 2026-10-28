@@ -2083,3 +2083,74 @@ first two sets, gave exactly the same numbers.
 - Costs against the 1.5x-listens run: 1.63x the songs, 494M parameters vs 301M, a 3.2 GB bundle vs 2.6 GB, export
   peak 22.9 vs 19.2 GB, 6.8 h of training vs 2.9 h. Songs without a Spotify link in the top 10 (N = 2 cases):
   4.3% vs 4.0%.
+
+**The site serves the N = 3 + 1.5x listens pair** (2026-10-27/28; `bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff`,
+2,462,372 songs, replacing `843e59aa82f6`'s 1,182,261; the owner's pick). No served code changed since the
+server's last image, so no rebuild.
+
+- Serving settings re-tuned on the new pair (`scripts/lb_compare.py tune` on the same 5,000 held-out cases as
+  on 2026-10-19, 1,389 with mixed artists; 242 s; `runs/listenbrainz/compare_n3_1.5x_tune/tune.json`). Every
+  setting within 0.001-0.004 of the old pair's. 3 per artist with no mixing kept: only no limit per artist
+  scores higher on both next song and later, by letting one artist fill about half the 10, which is why the cap
+  exists.
+
+| Per artist, mix | Next song NDCG@10 | Later | Artists | Last song's artist | Next song, mixed inputs | Old pair: next / later |
+|---|---|---|---|---|---|---|
+| No limit, 0 | 0.2404 | 0.1339 | 4.60 | 48% | 0.0278 | 0.2407 / 0.1353 |
+| No limit, 0.25 | 0.2343 | 0.1358 | 4.62 | 43% | 0.0250 | 0.2335 / 0.1366 |
+| 2, 0 | 0.2273 | 0.0730 | 7.79 | 15% | 0.0275 | 0.2268 / 0.0742 |
+| **3, 0 (kept)** | **0.2314** | **0.0879** | **6.96** | **21%** | **0.0276** | 0.2321 / 0.0895 |
+| 3, 0.25 | 0.2261 | 0.0893 | 6.89 | 19% | 0.0247 | 0.2248 / 0.0904 |
+
+- Shards (`recsys.shard_slices --shards 4`): 11.5 s; 615,593 songs and ~37.8M co-occurrence pairs a shard,
+  2.7 GiB in all (~680 MiB a shard, was ~400).
+- The owner's taste profile on the new pair (`runs/personal_n3_1.5x/`, totals only; 693 s, was 212 s): 92.6% of
+  the listens are in the catalog (49,116 by Spotify URI, 7,042 by artist + title; 7,816 catalog songs), was
+  91.2%. The same weeks hold a few more cases (tuning 1,037, test 1,432; were 1,031 and 1,406). The base's
+  typical rank-1-to-10 score gap is 1.6457 (was 1.7544), so the owner's beta 4 is 6.5828 score points (was
+  7.0176). The grid's best is again beta 4 (its edge) with no taste pull and no artist bonus.
+
+| Test weeks, against the base | Base | Skip penalty, beta 4 | 95% range of the change | Old pair: base -> beta 4 |
+|---|---|---|---|---|
+| 70/30 score | 1.00 | **1.65** | 1.47 - 1.95 | 1.00 -> 1.78 |
+| New finds per 100 | 1.97 | **4.05** | +1.62 to +2.57 | 1.96 -> 4.40 |
+| New songs in the 10 | 16.7% | 41.9% | +23.5 to +26.9 points | 16.5% -> 43.2% |
+| Next-song NDCG@10 | 0.0340 | 0.0242 | -0.016 to -0.004 | 0.0357 -> 0.0255 |
+| Next-song hit@10 | 0.056 | 0.040 | -0.026 to -0.006 | 0.062 -> 0.040 |
+| Different artists | 6.72 | 7.27 | +0.47 to +0.63 | 6.71 -> 7.28 |
+
+- The served profile: from all the plays, 11.2 MB (was 5.1: one skip rate per catalog song), the same key. On
+  the live site, the owner's last session as the request: 6 of the 10 changed with the profile; a held-out
+  listener's case: none changed (the penalty moves only songs the owner skips).
+- Checks (`runs/serving/lb_n3_16_cases/`: 2,000 cases, 200 of each length, 150 s; expected answers from one
+  process on the 16-bit bundle, 9 s). The Mac's Docker: 2,000 of 2,000 in order, total p50 8.4 / p99 14.4 ms;
+  front desk 1.07 GiB, shards 718-777 MiB, Meilisearch 3.8 GiB holding two indexes; its search index 118 s;
+  typing p50 3.7 / p99 11.8 ms (was 2.7 / 7.1; `runs/serving/search/typing_docker_n3.json`).
+
+| On the server | `843e59aa82f6` (1.18M songs) | `84ec15359fff` (2.46M songs) |
+|---|---|---|
+| Same top 10 as offline | 2,000 of 2,000 | 2,000 of 2,000 in order (NDCG@10 0.2693 both) |
+| Total, first check: p50 / p99 | 28.7 / 84.9 ms | 31.8 / 87.4 ms |
+| End to end: p50 / p99 | 32.0 / 91.5 ms | 35.1 / 97.7 ms |
+| Total, cache cleared, shards warm | 28.4 / 78.6 ms | 33.1 / 94.6 ms |
+| Song search per keystroke: p50 / p99 | 8.9 / 25.9 ms | 13.0 / 49.1 ms |
+| Front desk | 709 MB | 1,153 MB |
+| Each shard (`docker stats`) | 432-451 MB | 713-717 MiB |
+| Meilisearch | ~1.4-1.6 GB | 1.8 GiB |
+| Available of 11.9 GB | 8.2 GB | 6.1-6.3 GB |
+
+- Deploy: upload 281 s (3.0 GiB, 53 files, SHA-256 lists identical; was 158 s). A dry load of the front desk's
+  catalog on the server first (a one-off tools container, no health check, the old model still serving): 5.0 s
+  and 1.13 GB at most (the old bundle: 2.3 s, 0.65 GB), well inside the front desk's 60 s start-up allowance.
+  Search index 634 s before the switch (was 181 s: 2.1x the songs, 3.5x the time; Meilisearch 0.87 -> 4.2 GiB
+  holding both indexes); the new files pre-read in 60 s.
+- The switch (`.env` BUNDLE, `up -d` at 01:38:35 UTC on 10-28; a probe every ~1 s): **51 s of 503s** (last 200
+  at 01:38:36.4, 503s 01:38:37.4 to 01:39:28.2, 200 again from 01:39:29.2). nginx followed the front desk's new
+  address (the 10-24 fix). The shards loaded in 25.1, 25.8 and 8.6 s. Shard 3, its files still cached, was up
+  in 0.6 s, then, with the other three loading on the 2 cores, its health checks timed out (2 s, twice) and
+  autoheal restarted it at 01:38:54 (second start 14.7 s). The front desk waits for all four: it started at
+  01:39:11, ~8 s later than without the restart, and was healthy at 01:39:28. Possible fixes, not made: a
+  longer shard health timeout, or starting the shards one after another.
+- After the checks, the old search index deleted with one call (0.5 s, no fallback search): Meilisearch's
+  database 5.97 -> 4.11 GB on disk (1.70 GB in use), memory 1.98 -> 1.81 GiB. The old bundle stays on the
+  server for a day for a rollback (1.8 GB); server disk 17 GB used of 45.
