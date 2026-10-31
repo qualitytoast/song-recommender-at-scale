@@ -2196,3 +2196,33 @@ the flat table on the Mac: the slices are cut from it, and the one-process recom
 | Total: p50 / p99 | 8.4 / 14.4 ms | 8.6 / 12.3 ms |
 | Shards' candidate round: p50 / p99 | 1.48 / 2.94 ms | 1.53 / 2.76 ms |
 | Each shard (`docker stats`) | 718-777 MiB | 473-474 MiB |
+
+**On the server** (2026-10-31, `runs/serving/lb_n3_16_cases/check_oracle_compact_pairs.json`; shards' files
+1.7 GiB; before: the 2026-10-28 check on the same bundle):
+
+| On the server | Before | After |
+|---|---|---|
+| Same top 10 as offline | 2,000 of 2,000 | 2,000 of 2,000 in order (NDCG@10 0.2693 both) |
+| Total: p50 / p99 | 31.8 / 87.4 ms | 35.2 / 84.2 ms |
+| End to end: p50 / p99 | 35.1 / 97.7 ms | 38.8 / 99.4 ms |
+| Shards' candidate round: p50 / p99 | 7.9 / 32.1 ms | 9.7 / 34.4 ms |
+| Shards' search round: p50 / p99 | 9.3 / 31.9 ms | 10.6 / 30.0 ms |
+| Each shard (`docker stats`) | 713-717 MiB | 484-500 MiB |
+| All containers | ~5.7 GB | ~4.7 GB |
+| Available of 11.9 GB | 6.24 GB | 7.14 GB |
+| A shard's load | 8.6-25.8 s | 1.9-4.7 s |
+| 503s at the switch | 51 s | **22 s** |
+
+- Deploy: the 20 new files uploaded next to the old ones in the live shard folders, 70 s (796 MB, SHA-256 lists
+  identical), with the old code still serving; image built in 2 min 57 s; shard files pre-read in 31 s. The
+  version is unchanged, so no new search index. `up -d` at 21:57:42 UTC (a probe every ~1.3 s from the Mac): last
+  200 at 21:57:42, 503s 21:57:44 to 21:58:05, 200 again from 21:58:06. No container restarted (the shard that
+  autoheal restarted at the last switch doesn't recur with these load times).
+- Lookup alone, on the server's cores, old and new in turns on shard 0's real files: one request's 138 keys
+  48 -> 114 us (p99 157 -> 236), a 16-request batch's 2,018 keys 446 -> 1,312 us (p99 664 -> 1,698). About 3x
+  the Mac's added time, and 0.2% of a request. It doesn't explain the +3.4 ms at p50: the search round, which
+  never reads the pairs, rose about as much as the candidate round, and this check ran seconds after the restart.
+- Not measured: the fair comparison, a repeat with the cache cleared and the shards warm, to set against the old
+  33.1 / 94.6 ms. Clearing Redis was refused by this session's permissions, and the 2,000 answers stay cached
+  for an hour.
+- The old `pair_keys.npy` and `pair_counts.npy` stay on the server for a rollback (1.82 GB; disk 18 GB used of 45).

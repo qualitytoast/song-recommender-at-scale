@@ -5,7 +5,7 @@ To see where the project stands, check `git log` and `RESULTS.md`.
 ## How to work
 
 - After each step that works, add and commit w/ a short, but clear commit message.
-- Use subagents when they'd speed things up: independent pieces of work (e.g. two separate parts of a change, or reading/reviewing a large part of the code) can go to subagents in parallel. Training and evaluation runs share the Mac's one GPU and its memory, so run those one at a time, queued back to back, not in parallel.
+- Use subagents to speed things up without losing quality. Training and evaluation runs share the Mac's one GPU and its memory, so run those one at a time, queued back to back, not in parallel.
 - When a task needs to be broken up, for example for clarification, break it up as part A, B, C, D, e.t.c. Don't label anything inside those parts with letters (subtasks, runs, options): state each plainly by what it is, e.g. "the N = 3 + 1.5x listens run", not "run C".
 - Every plan starts with a TLDR: 3–6 lines covering what changes, why, the main steps, and any risk, downtime or drawbacks. Put the full plan below it.
 - Avoid making new branches, worktrees or copies of the repo unless they're really needed.

@@ -156,7 +156,7 @@ co-occurrence counts and the serving defaults. One process (`recsys/serve.py`, F
 ~1.5 ms on the CPU, with the same top 10 as the offline evaluation for 2,000 of 2,000 held-out requests.
 
 **The catalog split across processes** (`recsys/shard.py`, `recsys/frontdesk.py`). Each shard holds a quarter
-of every per-song table (~0.7 GB) and an IVF index built on the full index's cluster centres, so merged top
+of every per-song table (~0.45 GB) and an IVF index built on the full index's cluster centres, so merged top
 lists equal the full index's. A request takes three rounds: the input songs' rows, the search on every shard
 (merged by score, then song ID), the 100 candidates' rows. Messages are protobuf (arrays as raw bytes, never
 pickle) and carry the bundle version, so a front desk can never mix two models. At 1, 2 and 4 shards, natively
@@ -226,7 +226,7 @@ of the gain +1.6 to +2.6).
 
 Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores, 12 GB, Always Free; quota
 rules make Oracle refuse anything beyond the free allowance, and a budget emails on any spend), running the
-whole Compose system (~5.7 GB; song vectors stored at 16 bits). `docker-compose.oracle.yml` adds Caddy for
+whole Compose system (~4.7 GB; song vectors stored at 16 bits). `docker-compose.oracle.yml` adds Caddy for
 HTTPS (Let's Encrypt, renewed by itself). Each visitor may ask for 5 recommendations and 20 searches a second.
 On the server, 2,000 of 2,000 held-out requests gave the offline top 10 in order (p50 35 ms, p99 87 ms); a
 model switch is a restart on the new bundle, ~10-50 s of "busy".
