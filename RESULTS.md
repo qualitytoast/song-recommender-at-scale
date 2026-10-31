@@ -2154,3 +2154,45 @@ server's last image, so no rebuild.
 - After the checks, the old search index deleted with one call (0.5 s, no fallback search): Meilisearch's
   database 5.97 -> 4.11 GB on disk (1.70 GB in use), memory 1.98 -> 1.81 GiB. The old bundle stays on the
   server for a day for a rollback (1.8 GB); server disk 17 GB used of 45.
+
+# Growing the catalog: a smaller co-occurrence table
+
+**A shard's pairs in 5.26 bytes each, not 12** (2026-10-31, `recsys/pair_table.py`). The co-occurrence counts
+were the shards' biggest table, about two-thirds of each: 151,288,186 pairs at an 8-byte key
+(`a * songs + b`) and a 4-byte count, one long sorted list. Their counts on the served bundle: 85.4% are 1,
+19,447 are above 255 (0.013%), 24 are above 65,535, and the largest is 262,470.
+
+- The planned 2-byte cap (`ROADMAP.md`: ~6 bytes) was dropped. 22 of the 24 pairs above 65,535 are between two
+  different songs, so requests can reach them, and a lowered count is no longer what the ranker trained on.
+- Built instead: each earlier song is stored once, as a contents list saying where its pairs begin, so a pair
+  needs only its later song (4 bytes); a count takes 1 byte, and 255 means "see the side table", which holds the
+  exact count of the 19,581 pairs that reach 255. Smaller than the cap, and every count stays exact.
+
+| Across the 4 shards | Before | After |
+|---|---|---|
+| Keys, or later songs | 1,210 MB | 605 MB |
+| Counts | 605 MB | 151 MB |
+| Contents lists | | 39 MB |
+| Side table | | 0.24 MB |
+| **Pair table** | **1,815 MB** (12 bytes a pair) | **796 MB** (5.26 bytes a pair) |
+| All shard files | 2.7 GiB | 1.7 GiB |
+
+Only the shards changed: the same keys arrive and the same counts leave, so the front desk, the messages between
+them, the bundle and its version (`84ec15359fff`), training and the search index are untouched. The bundle keeps
+the flat table on the Mac: the slices are cut from it, and the one-process recommender uses it.
+
+- Cutting the slices: 12.9 s (was 11.5 s).
+- Every pair (83 s, one-off script): on all 4 shards, all 151,288,186 stored pairs, 4M keys in request order and
+  151.3M shifted keys (146.8M of them pairs that don't exist) gave what the flat table gives, and the rows
+  rebuild its keys exactly.
+- Lookup alone, on real shard 0 with the check cases on the Mac: one request's ~140 keys 5 -> 23 us, a batch of
+  16 requests' ~2,000 keys 58 -> 225 us. A hand-written binary search over all the keys at once took 39 and
+  151 us; numpy's `searchsorted`, called once per earlier song, is less code to explain.
+- The whole system in the Mac's Docker (`runs/serving/lb_n3_16_cases/check_docker_compact_pairs.json`): 2,000 of
+  2,000 in order, NDCG@10 0.2693 both, 21 s. The added lookup time doesn't show:
+
+| The Mac's Docker | Before | After |
+|---|---|---|
+| Total: p50 / p99 | 8.4 / 14.4 ms | 8.6 / 12.3 ms |
+| Shards' candidate round: p50 / p99 | 1.48 / 2.94 ms | 1.53 / 2.76 ms |
+| Each shard (`docker stats`) | 718-777 MiB | 473-474 MiB |

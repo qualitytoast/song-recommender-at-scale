@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from recsys.frontdesk import ShardMismatch, ShardedRecommender, ShardsUnavailable, merge_top
+from recsys.pair_table import PairTable, save_pairs
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender
 from recsys.wire import pack, unpack
@@ -71,6 +72,30 @@ def test_merging_keeps_the_best_and_breaks_ties_by_song_id():
                             [np.array([[5.0, 1.0, -3e38]]), np.array([[5.0, 4.0, 0.5]])], 4)
     np.testing.assert_array_equal(ids, [[2, 7, 9, 3]])
     np.testing.assert_array_equal(scores, [[5.0, 5.0, 4.0, 1.0]])
+
+
+def test_the_pair_table_keeps_every_count_exact(tmp_path):
+    songs = 10
+    pairs = {(0, 3): 1, (0, 8): 254, (2, 1): 255, (2, 5): 300, (2, 9): 262_470, (9, 0): 7, (9, 9): 256}
+    keys = np.array([a * songs + b for a, b in pairs], dtype=np.int64)
+    save_pairs(tmp_path, keys, np.array(list(pairs.values()), dtype=np.int32), songs)
+    table = PairTable(tmp_path, songs)
+    assert len(table) == 7
+    assert table.small.dtype == np.uint8 and table.later.dtype == np.int32
+    assert len(table.big_keys) == 4  # only the counts a byte can't hold are kept twice
+    shuffled = np.random.RandomState(0).permutation(keys)
+    np.testing.assert_array_equal(table.lookup(shuffled), [pairs[(k // songs, k % songs)] for k in shuffled])
+    never = [(0, 4), (0, 9), (2, 0), (2, 6), (9, 5), (1, 3), (5, 5)]  # between, past and before a song's rows; no rows
+    keys = np.array([a * songs + b for a, b in never], dtype=np.int64)
+    np.testing.assert_array_equal(table.lookup(keys), np.zeros(len(keys)))
+    assert table.lookup(np.zeros(0, dtype=np.int64)).shape == (0,)
+
+
+def test_an_empty_pair_table_finds_nothing(tmp_path):
+    save_pairs(tmp_path, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int32), 10)
+    table = PairTable(tmp_path, 10)
+    assert len(table) == 0
+    np.testing.assert_array_equal(table.lookup(np.array([0, 99], dtype=np.int64)), [0, 0])
 
 
 @pytest.mark.parametrize("n", [1, 2, 3])
