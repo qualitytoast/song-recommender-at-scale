@@ -12,7 +12,7 @@ Writes <bundle>/shards-N/shard-<i>/:
                              (at 16 bits if the bundle's vectors are: settings.json vector_bits)
   retriever_song_inputs.npy, ranker_song_inputs.npy, song_artist.npy, song_album.npy, song_genres.npy
                              the bundle's per-song rows for its songs, in ids.npy's order
-  pair_keys.npy, pair_counts.npy   the appeared-together pairs (a, b) whose later song b it holds
+  pair_*.npy                 the appeared-together pairs (a, b) whose later song b it holds (recsys/pair_table.py)
 Imports numpy and FAISS only (never PyTorch: they can't share a process, see recsys/ann.py).
 """
 import argparse
@@ -24,6 +24,7 @@ import faiss
 import numpy as np
 
 from recsys.ann import ivf_index
+from recsys.pair_table import save_pairs
 
 PER_SONG = ("retriever_song_inputs", "ranker_song_inputs", "song_artist", "song_album", "song_genres")
 
@@ -72,8 +73,7 @@ def write_slices(bundle, shards):
         for name, array in rows.items():
             np.save(folder / f"{name}.npy", np.asarray(array[ids]))
         mine = later % shards == i  # still sorted: a subset of sorted keys
-        np.save(folder / "pair_keys.npy", keys[mine])
-        np.save(folder / "pair_counts.npy", counts[mine])
+        save_pairs(folder, keys[mine], counts[mine], songs)
         faiss.write_index(shard_index(centres, vectors[ids], ids, settings["ivf_nprobe"],
                                       "fp16" if settings.get("vector_bits") == 16 else None),
                           str(folder / "search_index.faiss"))

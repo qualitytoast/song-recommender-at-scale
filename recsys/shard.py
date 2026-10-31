@@ -19,6 +19,7 @@ import grpc
 import numpy as np
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
+from recsys.pair_table import PairTable
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.wire import pack, unpack
 
@@ -31,7 +32,7 @@ class Shard(shard_pb2_grpc.ShardServicer):
         self.info = json.loads((folder / "info.json").read_text())
         self.ids = np.load(folder / "ids.npy")
         self.rows = {name: np.load(folder / f"{name}.npy") for name in PER_SONG}
-        self.keys, self.counts = np.load(folder / "pair_keys.npy"), np.load(folder / "pair_counts.npy")
+        self.pairs = PairTable(folder, self.info["catalog"])
         self.index = faiss.read_index(str(folder / "search_index.faiss"))
 
     def check(self, request, context):
@@ -68,11 +69,7 @@ class Shard(shard_pb2_grpc.ShardServicer):
 
     def Counts(self, request, context):
         self.check(request, context)
-        keys = unpack(request.keys)
-        at = np.minimum(np.searchsorted(self.keys, keys), max(len(self.keys) - 1, 0))
-        found = (self.keys[at] == keys) if len(self.keys) else np.zeros(len(keys), dtype=bool)
-        counts = np.where(found, self.counts[at] if len(self.keys) else 0, 0).astype(np.int32)
-        return shard_pb2.CountsReply(counts=pack(counts))
+        return shard_pb2.CountsReply(counts=pack(self.pairs.lookup(unpack(request.keys))))
 
 
 def serve(folder, port, host="0.0.0.0", workers=8):
@@ -90,7 +87,7 @@ def serve(folder, port, host="0.0.0.0", workers=8):
     health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     i = shard.info
     print(f"shard {i['index']}/{i['shards']} of version {i['version']}: {i['songs']:,} songs, "
-          f"{len(shard.keys):,} pairs, on {host}:{port} after {time.perf_counter() - start:.1f}s", flush=True)
+          f"{len(shard.pairs):,} pairs, on {host}:{port} after {time.perf_counter() - start:.1f}s", flush=True)
     return server
 
 
