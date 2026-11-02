@@ -55,22 +55,17 @@ the one before it ([RESULTS.md](RESULTS.md)).
 Today: 2.46M songs, those played by at least 3 listeners (N) in a 99.5M-listen sample; the full year is on disk.
 
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
-- [ ] Daily updates from ListenBrainz's incremental dumps: pair counts, popularity and new songs, no full rebuild
-- [ ] Daily version switches: all 4 shards change together, no request mixes versions, rollback after a bad update
+- [ ] Daily ListenBrainz updates to counts and songs, no full rebuild: all 4 shards switch at once, a bad update can be undone
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
 - [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests
-- [ ] Personalization in the browser: ONNX retriever, song rows fetched in blocks; the server gets only a 64-number vector
-- [ ] Ranker for browser personalization: pair lookups reveal the input songs, so measure what each alternative gives up
-- [ ] Online logging of impressions, plays and skips (Spotify's iFrame API): next-song NDCG and new finds disagree
-- [ ] Interleaving: merge two models' lists and count whose songs get played; needs far fewer users than an A/B test
-- [ ] Off-policy evaluation: add a little randomness to serving, log the probabilities, score new models on old logs
+- [ ] Personalization in the browser, so the server never sees a visitor's songs; measure what's lost without the ranker's pair lookups
+- [ ] Compare models on real listening: log what's shown, played and skipped, and mix two models' songs to see whose get played
+- [ ] Test new models on old logs, not live: add a little randomness to what's served and log each song's chance of being shown
 - [ ] Distillation: a retriever trained to agree with the ranker, once a personalized model is finished
 - [ ] The playlist-fit (next-10) ranker on the 1M MPD retriever
 - [ ] Faster retriever training (on hold): a decaying learning rate, fewer validation checks
 - [ ] A bigger transformer if size helps, then mixture of experts
 - [ ] Songs the model doesn't know: their artist and album from Spotify's API, or a shared "unknown song" vector
-- [ ] MusicBrainz recording IDs for the catalog, AcousticBrainz's key (the store keeps none; 7% of listens carry one)
-- [ ] Vectors for songs outside the catalog: map AcousticBrainz audio features to song vectors, scored on known songs
-- [ ] C++ shard hot path with SIMD: 16-bit dot products with no 32-bit decode, IVF scan, top-k merge (FAISS's job today)
-- [ ] Hedged requests across the 4-shard fan-out (84 ms p99 on 2 cores), using a second copy of each shard
+- [ ] Predict vectors for songs outside the catalog from AcousticBrainz audio data (needs recording IDs), tested on known songs
+- [ ] Speed up the slowest 1% of requests (84+ ms): C++ search in place of FAISS, backup requests to a second copy of each shard
