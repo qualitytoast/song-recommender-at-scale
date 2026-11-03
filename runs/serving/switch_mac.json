@@ -1,0 +1,76 @@
+{
+  "bundle": "84ec15359fff",
+  "update": "1f940a8dcc2d",
+  "threads": 8,
+  "seconds": 106.9,
+  "requests": 41824,
+  "answers": {
+    "84ec15359fff": 33154,
+    "1f940a8dcc2d": 8670
+  },
+  "errors": 0,
+  "partial": 0,
+  "statuses": [
+    "ok"
+  ],
+  "versions_seen": [
+    "1f940a8dcc2d",
+    "84ec15359fff"
+  ],
+  "cases_with_two_answers_from_one_version": 0,
+  "answers_differing_between_versions": 771,
+  "old_version_answers_after_flip_s": 0.929875458125025,
+  "old_version_answers_after_undo_s": 0.9119556252844632,
+  "latency_ms": {
+    "all": {
+      "p50": 19.2,
+      "p99": 41.5
+    },
+    "within 2 s of prepare": {
+      "p50": 19.4,
+      "p99": 72.1
+    },
+    "within 2 s of flip": {
+      "p50": 19.3,
+      "p99": 40.6
+    },
+    "within 2 s of undo": {
+      "p50": 19.0,
+      "p99": 37.8
+    },
+    "within 2 s of finish": {
+      "p50": 20.6,
+      "p99": 92.5
+    }
+  },
+  "steps": {
+    "standby ready (s)": 3.7,
+    "flip seen by /health (s)": 1.0,
+    "undo seen by /health (s)": 1.0,
+    "standby let go (s)": 1.1
+  },
+  "marks_s": {
+    "prepare": 20.0,
+    "flip": 43.7,
+    "undo": 64.8,
+    "finish": 85.8
+  },
+  "health_after": {
+    "status": "ok",
+    "version": "84ec15359fff",
+    "switch": {
+      "live": ".",
+      "standby": null,
+      "retiring": [
+        "1f940a8dcc2d"
+      ],
+      "failed": {},
+      "last_error": null
+    },
+    "answers": {
+      "total": 33154,
+      "partial": 0,
+      "cached": 0
+    }
+  }
+}

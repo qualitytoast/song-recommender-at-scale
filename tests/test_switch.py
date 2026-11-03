@@ -317,3 +317,53 @@ def alive(port):
         return health(port)["status"] == "ok"
     except (urllib.error.URLError, OSError):
         return False
+
+
+class FakeRecommender:
+    """Stands in for a front desk's recommender: its version, and the versions the shards hold (shared)."""
+
+    def __init__(self, version, held):
+        self.version, self.held, self.closed = version, held, False
+
+    def shards_hold(self, version):
+        return version in self.held
+
+    def close(self):
+        self.closed = True
+
+
+def test_the_switcher_keeps_going_past_a_bad_folder_and_waits_for_every_shard(tmp_path):
+    from types import SimpleNamespace
+
+    from recsys.serve import Switcher
+    for folder, version in ((tmp_path, "base"), (tmp_path / "updates" / "x", "x"), (tmp_path / "updates" / "y", "y")):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "manifest.json").write_text(json.dumps({"version": version}))
+    held = {"base", "x"}
+    app = SimpleNamespace(state=SimpleNamespace())
+    path = tmp_path / "switch.json"
+    built = []
+    build = lambda update, share: built.append(FakeRecommender(version_of(update or tmp_path), held)) or built[-1]
+    switcher = Switcher(app, tmp_path, path, build, grace=0.0)
+    base = app.state.recommender
+    assert base.version == "base" and app.state.standby is None
+    switch.prepare(path, "updates/x")
+    switcher.step(switch.read(path))
+    assert app.state.standby.version == "x" and app.state.recommender is base
+    held.discard("x")  # a shard restarted: it loads the standby only after the live one
+    switch.flip(path)
+    with pytest.raises(RuntimeError, match="not switching to updates/x yet"):
+        switcher.step(switch.read(path))
+    assert app.state.recommender is base  # still the old one: no request goes to a shard without x
+    held.add("x")
+    switcher.step(switch.read(path))
+    assert app.state.recommender.version == "x" and app.state.standby is base
+    switch.prepare(path, "updates/typo")  # no such folder: logged, and the rest of the step still happens
+    with pytest.raises(RuntimeError, match="couldn't build updates/typo"):
+        switcher.step(switch.read(path))
+    assert app.state.standby is None and base.closed  # the old version let go and closed (grace 0)
+    assert "updates/typo" in switcher.report()["failed"]
+    held.add("y")
+    switch.prepare(path, "updates/y")
+    switcher.step(switch.read(path))
+    assert app.state.standby.version == "y" and not app.state.recommender.closed

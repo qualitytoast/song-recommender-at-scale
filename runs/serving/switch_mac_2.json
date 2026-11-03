@@ -1,0 +1,430 @@
+{
+  "bundle": "84ec15359fff",
+  "update": "1f940a8dcc2d",
+  "threads": 8,
+  "seconds": 106.7,
+  "requests": 44016,
+  "answers": {
+    "84ec15359fff": 35187,
+    "1f940a8dcc2d": 8823
+  },
+  "errors": 6,
+  "partial": 442,
+  "statuses": [
+    "error 503",
+    "ok",
+    "partial"
+  ],
+  "versions_seen": [
+    "1f940a8dcc2d",
+    "84ec15359fff"
+  ],
+  "cases_with_two_answers_from_one_version": 439,
+  "answers_differing_between_versions": 1053,
+  "old_version_answers_after_flip_s": 0.8625273331999779,
+  "old_version_answers_after_undo_s": 0.8600127920508385,
+  "latency_ms": {
+    "all": {
+      "p50": 18.7,
+      "p99": 32.2
+    },
+    "within 2 s of prepare": {
+      "p50": 19.0,
+      "p99": 46.3
+    },
+    "within 2 s of flip": {
+      "p50": 18.7,
+      "p99": 26.0
+    },
+    "within 2 s of undo": {
+      "p50": 18.5,
+      "p99": 26.8
+    },
+    "within 2 s of finish": {
+      "p50": 18.8,
+      "p99": 27.4
+    }
+  },
+  "problems": [
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.25,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.58,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.6,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.62,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.64,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.66,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.68,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    },
+    {
+      "t": 0.68,
+      "status": "partial",
+      "missing_shards": [
+        3
+      ]
+    }
+  ],
+  "steps": {
+    "standby ready (s)": 3.5,
+    "flip seen by /health (s)": 1.0,
+    "undo seen by /health (s)": 1.0,
+    "standby let go (s)": 1.0
+  },
+  "marks_s": {
+    "prepare": 20.0,
+    "flip": 43.6,
+    "undo": 64.6,
+    "finish": 85.6
+  },
+  "health_after": {
+    "status": "ok",
+    "version": "84ec15359fff",
+    "switch": {
+      "live": ".",
+      "standby": null,
+      "retiring": [
+        "1f940a8dcc2d"
+      ],
+      "failed": {},
+      "last_error": null
+    },
+    "answers": {
+      "total": 69487,
+      "partial": 442,
+      "cached": 0
+    }
+  }
+}

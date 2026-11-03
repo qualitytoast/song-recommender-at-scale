@@ -112,8 +112,9 @@ def build_index(bundle, url, key=None, drop_others=False, report=print):
 class SongSearch:
     """The menu's search for one bundle (see the module docstring): search() returns song IDs, best first, or
     None when Meilisearch can't answer (the caller falls back). version: the bundle's own (an update of it,
-    recsys/updates.py, keeps the bundle's index, with its added songs added); songs: how many this version has.
-    IDs past that are left out: songs an index already has for a newer version than the one being served."""
+    recsys/updates.py, keeps the bundle's index: its added songs are found once they're added to that index);
+    songs: how many this version has. IDs past that are left out: songs an index already has for a newer version
+    than the one being served."""
 
     def __init__(self, url, version, songs, key=None, timeout=0.25, cooldown=1.0):
         self.url, self.index, self.songs, self.key = url.rstrip("/"), index_name(version), songs, key

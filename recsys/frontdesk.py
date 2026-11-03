@@ -121,7 +121,11 @@ class ShardedRecommender(Catalog):
                    ("grpc.max_reconnect_backoff_ms", 1000)]
         self.channels = [grpc.insecure_channel(shard_target(a), options=options) for a in self.addresses]
         self.stubs = [shard_pb2_grpc.ShardStub(c) for c in self.channels]
-        self.check_shards(startup_wait)
+        try:
+            self.check_shards(startup_wait)
+        except Exception:
+            self.close()
+            raise
 
     def check_shards(self, wait):
         """Wait up to `wait` seconds for every shard, then make sure each holds this version, as the right shard."""
@@ -133,7 +137,8 @@ class ShardedRecommender(Catalog):
                 if e.code() != grpc.StatusCode.FAILED_PRECONDITION:
                     raise
                 raise ShardMismatch(f"{self.addresses[i]}: {e.details()}") from None
-            problems = [f"shard {info.index} of {info.shards}, not {i} of {n}" if (info.index, info.shards) != (i, n) else "",
+            problems = [f"version {info.version}, not {self.version}" if info.version != self.version else "",
+                        f"shard {info.index} of {info.shards}, not {i} of {n}" if (info.index, info.shards) != (i, n) else "",
                         f"a catalog of {info.catalog:,} songs, not {self.settings['songs']:,}"
                         if info.catalog != self.settings["songs"] else ""]
             if any(problems):
@@ -164,14 +169,13 @@ class ShardedRecommender(Catalog):
         return states
 
     def shards_hold(self, version):
-        """Whether every shard holds version now (a front desk builds a recommender for a version only then)."""
+        """Whether every shard holds version now (a front desk builds a recommender for a version, and switches to
+        it, only then). A shard given as several copies is asked once, so one copy answers for all of them."""
         pending = [stub.Info.future(shard_pb2.InfoRequest(version=version), timeout=self.deadline) for stub in self.stubs]
         try:
-            for p in pending:
-                p.result()
+            return all(p.result().version == version for p in pending)
         except grpc.RpcError:
             return False
-        return True
 
     def call_all(self, calls):
         """Send every (shard, method, request) at once; the replies, with None for each call that failed

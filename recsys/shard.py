@@ -31,6 +31,9 @@ from recsys.wire import pack, unpack
 
 PER_SONG = ("retriever_song_inputs", "ranker_song_inputs", "song_artist", "song_album", "song_genres")
 RETRY_S = 60.0  # a version that failed to load is tried again this much later
+# A version the switch file stops naming is still held this long: front desks read the file once a second, so one
+# can still be sending it for a moment after a flip and a finish written right after it.
+KEEP_S = 5.0
 
 
 class Slice:
@@ -55,6 +58,7 @@ class Shard(shard_pb2_grpc.ShardServicer):
         # reads one consistent state without a lock
         self.state = (None, {}, {})
         self.failed = {}  # folder -> when to try loading it again
+        self.unnamed = {}  # folder -> since when the switch file hasn't named it (dropped KEEP_S later)
         live = switch.read(self.switch)["live"] if self.switch else switch.BASE
         self.sync({"live": live, "standby": None}, strict=True)  # the standby (if any) loads after startup
 
@@ -87,7 +91,10 @@ class Shard(shard_pb2_grpc.ShardServicer):
                      f"songs, {len(loaded.pairs):,} pairs, in {time.perf_counter() - start:.1f}s")
         if state["live"] in held:
             live = state["live"]
-        keep = set(switch.wanted(state)) | {live}  # the live one stays until its replacement is loaded
+        now, named = time.monotonic(), set(switch.wanted(state))
+        self.unnamed = {f: self.unnamed.get(f, now) for f in held if f not in named}
+        # the live one stays until its replacement is loaded, any other KEEP_S after the file stops naming it
+        keep = named | {live} | {f for f, since in self.unnamed.items() if now - since < KEEP_S}
         for folder in [f for f in held if f not in keep]:
             self.log(f"shard: dropped version {held[folder].info['version']} ({folder})")
         held = {f: s for f, s in held.items() if f in keep}

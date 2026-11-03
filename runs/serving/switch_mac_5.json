@@ -1,0 +1,432 @@
+{
+  "bundle": "84ec15359fff",
+  "update": "1f940a8dcc2d",
+  "threads": 8,
+  "seconds": 106.0,
+  "requests": 42537,
+  "answers": {
+    "84ec15359fff": 33879,
+    "1f940a8dcc2d": 8649
+  },
+  "errors": 9,
+  "partial": 413,
+  "statuses": [
+    "error 503",
+    "ok",
+    "partial"
+  ],
+  "versions_seen": [
+    "1f940a8dcc2d",
+    "84ec15359fff"
+  ],
+  "cases_with_two_answers_from_one_version": 407,
+  "answers_differing_between_versions": 1035,
+  "old_version_answers_after_flip_s": 0.8498935410752892,
+  "old_version_answers_after_undo_s": 0.8358323336578906,
+  "latency_ms": {
+    "all": {
+      "p50": 19.1,
+      "p99": 31.7
+    },
+    "within 2 s of prepare": {
+      "p50": 19.6,
+      "p99": 103.6
+    },
+    "within 2 s of flip": {
+      "p50": 18.9,
+      "p99": 27.9
+    },
+    "within 2 s of undo": {
+      "p50": 19.1,
+      "p99": 27.9
+    },
+    "within 2 s of finish": {
+      "p50": 19.0,
+      "p99": 26.5
+    }
+  },
+  "problems_before_prepare": 422,
+  "problems_from_prepare_on": 0,
+  "problems": [
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.07,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.8,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.83,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.85,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.85,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.85,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.86,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.85,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.86,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.86,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.86,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.88,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.88,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.87,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.9,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.89,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.9,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.9,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    },
+    {
+      "t": 0.92,
+      "status": "partial",
+      "missing_shards": [
+        2
+      ]
+    }
+  ],
+  "steps": {
+    "standby ready (s)": 2.8,
+    "flip seen by /health (s)": 1.0,
+    "undo seen by /health (s)": 1.0,
+    "standby let go (s)": 1.0
+  },
+  "marks_s": {
+    "prepare": 20.0,
+    "flip": 42.8,
+    "undo": 63.9,
+    "finish": 84.9
+  },
+  "health_after": {
+    "status": "ok",
+    "version": "84ec15359fff",
+    "switch": {
+      "live": ".",
+      "standby": null,
+      "retiring": [
+        "1f940a8dcc2d"
+      ],
+      "failed": {},
+      "last_error": null
+    },
+    "answers": {
+      "total": 170817,
+      "partial": 855,
+      "cached": 0
+    }
+  }
+}

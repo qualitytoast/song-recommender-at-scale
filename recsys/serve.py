@@ -99,21 +99,28 @@ class Switcher:
     def step(self, state):
         live = self.app.state.recommender
         now = time.monotonic()
+        problems = []  # raised at the end, so one bad folder doesn't stop the rest of the step
         for folder in switch.wanted(state):
             if folder in self.built or now < self.failed.get(folder, 0.0):
                 continue
             update = self.update_of(folder)
-            if not live.shards_hold(version_of(update or self.bundle)):
-                continue  # the shards are still loading it
             try:
+                if not live.shards_hold(version_of(update or self.bundle)):
+                    continue  # the shards are still loading it
                 self.built[folder] = self.build(update, live)
-            except Exception:
+            except Exception as e:  # tried again `retry` seconds later
                 self.failed[folder] = now + self.retry
-                raise
+                problems.append(f"couldn't build {folder}: {type(e).__name__}: {e}")
+                continue
             switch.say(f"front desk: version {self.built[folder].version} ({folder}) ready")
-        if state["live"] in self.built and self.built[state["live"]] is not live:
-            self.app.state.recommender = self.built[state["live"]]  # the switch: every new request uses this one
-            switch.say(f"front desk: now serving version {self.app.state.recommender.version} ({state['live']})")
+        target = self.built.get(state["live"])
+        if target is not None and target is not live:
+            # checked again at the switch, not only when built: a shard restarted since then loads it later
+            if target.shards_hold(target.version):
+                self.app.state.recommender = target  # the switch: every new request uses this one
+                switch.say(f"front desk: now serving version {target.version} ({state['live']})")
+            else:
+                problems.append(f"not switching to {state['live']} yet: a shard doesn't hold it")
         self.app.state.standby = self.built.get(state["standby"]) if state["standby"] else None
         current = self.app.state.recommender
         for folder in [f for f, r in self.built.items() if f not in switch.wanted(state) and r is not current]:
@@ -122,6 +129,8 @@ class Switcher:
             rec.close()
             switch.say(f"front desk: closed version {rec.version}")
         self.retiring = [r for r in self.retiring if r[0] > now]
+        if problems:
+            raise RuntimeError("front desk: " + "; ".join(problems))
 
     def recommenders(self):
         return list(self.built.values()) + [rec for _, rec in self.retiring]
@@ -162,13 +171,18 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
                 rec.batcher = Batcher(rec.recommend_batch, batch, batch_wait_ms)
         else:
             rec = Recommender(bundle, device)
-        rec.cache = app.state.cache
-        if search_url:
-            from recsys.song_search import SongSearch
-            rec.song_search = SongSearch(search_url, rec.base_version, len(rec.uris), os.environ.get("MEILI_MASTER_KEY"))
-        if profiles:
-            rec.load_profiles(profiles)
-        rec.admission = admission
+        try:
+            rec.cache = app.state.cache
+            if search_url:
+                from recsys.song_search import SongSearch
+                rec.song_search = SongSearch(search_url, rec.base_version, len(rec.uris),
+                                             os.environ.get("MEILI_MASTER_KEY"))
+            if profiles:
+                rec.load_profiles(profiles)
+            rec.admission = admission
+        except Exception:
+            rec.close()  # its connections and batching thread, or a failed build tried again leaks them
+            raise
         return rec
 
     @asynccontextmanager
