@@ -21,6 +21,9 @@ each with song_keys.json (every song's key), so cases can be matched to songs:
   new_songs_artist, new_songs_artist_norm   the same with the plain or the lengthened artist average (daily.standins)
   both                    new songs and every pair
   new_songs_5, new_songs_10, new_songs_week the other replays, as new_songs
+  both_artist_norm, both_artist_norm_5      new songs (3 or 5 listeners) with the lengthened artist average, every pair
+With --variants, build makes only those (the cases are kept, if there) and score scores only those, both adding to
+the reports already there.
 Cases: next-song cases (scripts/lb_compare.py build_catalog_cases) from sessions played after --until, in dumps after
 the last one a replay used, by listeners the model never trained on (the store's held-out users, or users not in it).
 Each song is its song key, so a next song a variant doesn't know is a miss for it.
@@ -57,7 +60,8 @@ VARIANTS = {"today": (None, None, None), "old_pairs": ("no new songs", "all", No
             "new_songs": ("3", "new", "standin"), "new_songs_artist": ("3", "new", "artist"),
             "new_songs_artist_norm": ("3", "new", "artist_norm"), "both": ("3", "all", "standin"),
             "new_songs_5": ("5", "new", "standin"), "new_songs_10": ("10", "new", "standin"),
-            "new_songs_week": ("3, a week late", "new", "standin")}  # name: (replay, pairs added, stand-in mode)
+            "new_songs_week": ("3, a week late", "new", "standin"), "both_artist_norm": ("3", "all", "artist_norm"),
+            "both_artist_norm_5": ("5", "all", "artist_norm")}  # name: (replay, pairs added, stand-in mode)
 
 
 def log(message):
@@ -158,9 +162,17 @@ def build(args):
     base = Path(args.bundle)
     served0 = Served(base, bundle_keys(base, load_store(args.store)))
     log(f"today's catalog: {len(served0):,} songs")
-    results, report = {}, {"until": args.until, "dumps": len(files), "used": used, "skipped": skipped,
-                           "gaps": [[iso(a), iso(b)] for a, b in gaps], "replays": {}, "variants": {}}
+    cases_dir = Path(args.cases_out)
+    variants = args.variants or list(VARIANTS)
+    report = {"until": args.until, "dumps": len(files), "used": used, "skipped": skipped,
+              "gaps": [[iso(a), iso(b)] for a, b in gaps], "replays": {}, "variants": {}}
+    if args.variants and (cases_dir / "build.json").exists():  # adding variants to an earlier build's report
+        report = {**json.loads((cases_dir / "build.json").read_text()), **{k: report[k] for k in ("used", "skipped")}}
+    needed = {VARIANTS[v][0] for v in variants} | {"3"}  # "3": where the cases start
+    results = {}
     for label, (days_early, min_users, max_new) in REPLAYS.items():
+        if label not in needed:
+            continue
         t = time.perf_counter()
         end = until - days_early * DAY
         served, update, seen = served0.copy(), Update(), Seen()
@@ -180,13 +192,19 @@ def build(args):
                                   sorted(added, key=lambda s: -s.listeners)[:40]]
     tables = {name: np.load(base / f"{name}.npy", mmap_mode="r") for name in TABLES}
     out = Path(args.out)
-    for variant, (replay, pairs, mode) in VARIANTS.items():
+    for variant in variants:
+        replay, pairs, mode = VARIANTS[variant]
         t = time.perf_counter()
         served, update = results[replay] if replay else (served0, Update())
         songs = write_variant(base, out / variant, served, update, pairs, mode, tables)
         report["variants"][variant] = {"replay": replay, "pairs": pairs, "standin": mode, "songs": songs,
                                        "seconds": round(time.perf_counter() - t)}
         log(f"variant {variant}: {songs:,} songs ({time.perf_counter() - t:.0f} s)")
+    if args.variants and (cases_dir / "cases.json").exists():
+        report["seconds_added_variants"] = round(time.perf_counter() - began)
+        (cases_dir / "build.json").write_text(json.dumps(report, indent=2))
+        log(f"build of {variants} done in {report['seconds_added_variants']} s (the cases kept)")
+        return
     # the cases: sessions played after until, in dumps after every replay's, by listeners the model never trained on
     last = max(windows[d["dump"]][1] for d in results["3"][1].dumps)
     later = [n for n in used if windows[n][1] > last + 1]
@@ -202,7 +220,6 @@ def build(args):
     counts.update({"dumps": later, "listeners": int(len(np.unique(users[unseen]))), "listens": int(len(codes)),
                    "listens_of_todays_songs": round(float(known[codes].mean()), 4)})
     report["cases"] = counts
-    cases_dir = Path(args.cases_out)
     cases_dir.mkdir(parents=True, exist_ok=True)
     (cases_dir / "cases.json").write_text(json.dumps({"until": args.until, "seed": args.seed, "counts": counts,
                                                       "cases": cases}))
@@ -235,11 +252,14 @@ def score(args):
     began = time.perf_counter()
     cases_dir, replay = Path(args.cases_out), Path(args.out)
     data = json.loads((cases_dir / "cases.json").read_text())
-    names = [v for v in VARIANTS if (replay / v).is_dir()]
+    names = args.variants or [v for v in VARIANTS if (replay / v).is_dir()]
     today_keys = set(json.loads((replay / "today" / "song_keys.json").read_text()))
     base_songs = len(today_keys)
     results = {"until": data["until"], "counts": data["counts"], "variants": {}}
     per_case = {}
+    if args.variants:  # adding to the scores already there (today's among them: the differences need it)
+        results = json.loads((cases_dir / "scores.json").read_text())
+        per_case = dict(np.load(cases_dir / "per_case.npz"))
     for name in names:
         t = time.perf_counter()
         folder = replay / name
@@ -268,10 +288,11 @@ def score(args):
         out["seconds"] = round(time.perf_counter() - t)
         results["variants"][name] = out
         log(f"{name}: {json.dumps(out)}")
-    results["seconds"] = round(time.perf_counter() - began)
+    seconds = round(time.perf_counter() - began)
+    results["seconds_added_variants" if args.variants else "seconds"] = seconds
     (cases_dir / "scores.json").write_text(json.dumps(results, indent=2))
     np.savez(cases_dir / "per_case.npz", **per_case)
-    log(f"score done in {results['seconds']} s")
+    log(f"score done in {seconds} s")
 
 
 def iso(seconds):
@@ -285,6 +306,7 @@ def main():
         p = sub.add_parser(name)
         p.add_argument("--out", default="data/lb_daily/replay", help="the variants' bundles")
         p.add_argument("--cases-out", default="runs/listenbrainz/daily_replay", help="cases, report and scores")
+        p.add_argument("--variants", nargs="+", choices=list(VARIANTS), help="only these (default: all)")
     b = sub.choices["build"]
     b.add_argument("--bundle", required=True, help="the served bundle (all its files, as exported)")
     b.add_argument("--store", required=True, help="the store it was trained on")

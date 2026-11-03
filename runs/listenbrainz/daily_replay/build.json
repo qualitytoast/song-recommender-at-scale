@@ -327,7 +327,7 @@
       "pairs": 23293095,
       "pairs_with_a_new_song": 528475,
       "listens": 9191860,
-      "seconds": 28,
+      "seconds": 26,
       "per_dump": [
         {
           "dump": "listenbrainz-dump-2731-20261019-000003-incremental",
@@ -610,7 +610,7 @@
       "pairs": 23174261,
       "pairs_with_a_new_song": 377740,
       "listens": 9147321,
-      "seconds": 29,
+      "seconds": 27,
       "per_dump": [
         {
           "dump": "listenbrainz-dump-2731-20261019-000003-incremental",
@@ -1329,6 +1329,20 @@
       "standin": "standin",
       "songs": 2466575,
       "seconds": 13
+    },
+    "both_artist_norm": {
+      "replay": "3",
+      "pairs": "all",
+      "standin": "artist_norm",
+      "songs": 2480290,
+      "seconds": 24
+    },
+    "both_artist_norm_5": {
+      "replay": "5",
+      "pairs": "all",
+      "standin": "artist_norm",
+      "songs": 2469237,
+      "seconds": 17
     }
   },
   "new_songs_sample": [
@@ -1590,5 +1604,6 @@
     "listens": 868036,
     "listens_of_todays_songs": 0.757
   },
-  "seconds": 320
+  "seconds": 320,
+  "seconds_added_variants": 103
 }

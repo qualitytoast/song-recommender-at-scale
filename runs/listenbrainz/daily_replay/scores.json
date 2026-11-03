@@ -370,7 +370,90 @@
         ]
       },
       "seconds": 122
+    },
+    "both_artist_norm": {
+      "songs": 2480290,
+      "knows_the_next_song": 0.7864,
+      "max_per_artist=0, mix=0.0": {
+        "next_ndcg@10": 0.1689,
+        "next_hit@10": 0.1988,
+        "later_p@10": 0.133,
+        "answered": 0.9267,
+        "top_10s_with_a_new_song": 0.0876,
+        "ndcg@10_next_is_todays_song": 0.2163,
+        "ndcg@10_next_is_a_new_song": 0.1637,
+        "cases_next_is_a_new_song": 453,
+        "ndcg@10_minus_today": [
+          0.00306,
+          0.00049
+        ],
+        "ndcg@10_minus_today_next_is_todays_song": [
+          -0.00085,
+          0.00034
+        ]
+      },
+      "max_per_artist=3, mix=0.0": {
+        "next_ndcg@10": 0.1627,
+        "next_hit@10": 0.1812,
+        "later_p@10": 0.089,
+        "answered": 0.9267,
+        "top_10s_with_a_new_song": 0.0816,
+        "ndcg@10_next_is_todays_song": 0.2084,
+        "ndcg@10_next_is_a_new_song": 0.1555,
+        "cases_next_is_a_new_song": 453,
+        "ndcg@10_minus_today": [
+          0.00308,
+          0.0005
+        ],
+        "ndcg@10_minus_today_next_is_todays_song": [
+          -0.00058,
+          0.00038
+        ]
+      },
+      "seconds": 124
+    },
+    "both_artist_norm_5": {
+      "songs": 2469237,
+      "knows_the_next_song": 0.7819,
+      "max_per_artist=0, mix=0.0": {
+        "next_ndcg@10": 0.1688,
+        "next_hit@10": 0.1989,
+        "later_p@10": 0.1337,
+        "answered": 0.9241,
+        "top_10s_with_a_new_song": 0.0566,
+        "ndcg@10_next_is_todays_song": 0.2166,
+        "ndcg@10_next_is_a_new_song": 0.1858,
+        "cases_next_is_a_new_song": 362,
+        "ndcg@10_minus_today": [
+          0.00295,
+          0.00046
+        ],
+        "ndcg@10_minus_today_next_is_todays_song": [
+          -0.00054,
+          0.00032
+        ]
+      },
+      "max_per_artist=3, mix=0.0": {
+        "next_ndcg@10": 0.1626,
+        "next_hit@10": 0.1812,
+        "later_p@10": 0.089,
+        "answered": 0.9241,
+        "top_10s_with_a_new_song": 0.0556,
+        "ndcg@10_next_is_todays_song": 0.2087,
+        "ndcg@10_next_is_a_new_song": 0.1755,
+        "cases_next_is_a_new_song": 362,
+        "ndcg@10_minus_today": [
+          0.00295,
+          0.00047
+        ],
+        "ndcg@10_minus_today_next_is_todays_song": [
+          -0.00029,
+          0.00036
+        ]
+      },
+      "seconds": 125
     }
   },
-  "seconds": 1111
+  "seconds": 1111,
+  "seconds_added_variants": 249
 }

@@ -2226,3 +2226,108 @@ the flat table on the Mac: the slices are cut from it, and the one-process recom
   33.1 / 94.6 ms. Clearing Redis was refused by this session's permissions, and the 2,000 answers stay cached
   for an hour.
 - The old `pair_keys.npy` and `pair_counts.npy` stay on the server for a rollback (1.82 GB; disk 18 GB used of 45).
+
+# Daily updates: new songs and counts without retraining
+
+**Is a daily update worth it? A replay of real dumps** (2026-11-02, `scripts/daily_replay.py`, `recsys/daily.py`;
+`runs/listenbrainz/daily_replay/`: `replay.out`, `build.json`, `scores.json`). The served pair learned from listening
+up to 2026-10-15. ListenBrainz also publishes each day's newly submitted listens as a small dump. This replays 11 of
+them (submitted Oct 18 to 28) onto the served pair, with no retraining, and scores the result on what people played
+after it (Oct 29 to Nov 2), which no version of the model has seen.
+
+What a daily dump holds (30 dumps, 4.1 GB, downloaded 4 at a time in 36 min; the server keeps about 15 days):
+- One real dump a day (147-352 MB, ~5M listens) and a nearly empty one seconds later. Each dump's archive starts
+  with its window of submission times (`START_TIMESTAMP`, `END_TIMESTAMP`), and each window starts where the last
+  one ended.
+- On Oct 19 two dumps covered the same window, so each window is used once (`recsys.daily.chain`).
+- The nearly empty dumps can end a fraction of a second before they start: 2753 runs from 00:00:03.43 to 00:00:03.27,
+  and the next day's dump starts at 00:00:03.27. The first build ordered dumps by their end and skipped 7 of the 16
+  real dumps as repeats. Its results are discarded (the log keeps them, marked). Dumps are now followed by their
+  start (`e5f1429`), and all 16 are used, with no gaps.
+- Only 24-32% of a dump was played within 30 days of it. The rest is history imported from elsewhere (Last.fm), and
+  isn't counted.
+- The two oldest dumps (Oct 17 and 18) expired between planning and downloading. Oct 18's window survived as its
+  second dump, 2731.
+
+Per real day after the store's rules (noise filter, then sessions): 1.29-1.51M fresh listens, 738-883k of them in
+catalog sessions, from 19.7-22.6k listeners. That's 2.2-2.7M distinct pairs a day, and 22.9M over the 11 days on top
+of the table's 151M. The most-played song's share of a day peaked at 2.4%.
+
+**New songs.** A song outside the catalog joins once enough different listeners played it within 30 days, if the
+catalog has its artist and its Spotify track isn't a catalog song's already, most listeners first, at most 2,000 a
+dump. The model never saw it, so it gets made-up vectors from the bundle's finished ones (both models' inputs and
+its search vector). Three ways to make them (`recsys.daily.standins`):
+- plain artist average: the average of the artist's songs;
+- lengthened artist average: the same, scaled up to their average length;
+- stand-in: half the artist's songs (weighted by listens), half the songs played next to it (its pairs, weighted
+  by count), lengthened.
+
+| Listeners needed | 3 | 5 | 10 |
+|---|---|---|---|
+| Songs added in 11 days | 17,918 (the 2,000 cap reached daily from Oct 23) | 6,865 | 2,314 |
+| Their pairs | 528,475 | 377,740 | |
+
+The first ones to join were real new releases: 8 songs of Fontaines D.C.'s new album (120-168 listeners each),
+Justice, The Avalanches, ILLIT. A new Queens of the Stone Age album took off during the test days, after the last
+replayed dump, so no variant has it.
+
+**Cases.** 20,000 next-song cases sampled from 826,780 in 41,256 sessions played after Oct 29 by 6,208 listeners
+the model never trained on (the store's held-out users, or users not in it). Each song is its song key, so a next
+song a variant doesn't know is a miss. Today's catalog holds 75.7% of these listens. Scored with the one-process
+recommender on its own answers (no artist limit, no mix) and on the site's settings (3 per artist, no mix).
+"Old-song cases" are those whose next song is one of today's songs. Differences are paired, per case, ± one
+standard error.
+
+| Variant | Knows the next song | NDCG@10 own | change | NDCG@10 site | change | Change on old-song cases (site) | Top 10s with a new song (site) |
+|---|---|---|---|---|---|---|---|
+| Today | 76.4% | 0.1659 | | 0.1597 | | | |
+| Old pairs counted on, no new songs | 76.4% | 0.1662 | +0.0003 ± 0.0002 | 0.1601 | +0.0005 ± 0.0002 | +0.0006 ± 0.0003 | |
+| New songs (3), plain artist average | 78.6% | 0.1661 | +0.0002 ± 0.0002 | 0.1598 | +0.0002 ± 0.0002 | -0.0001 ± 0.0003 | 0.1% |
+| New songs (3), lengthened artist average | 78.6% | 0.1687 | +0.0028 ± 0.0005 | 0.1622 | +0.0026 ± 0.0005 | -0.0013 ± 0.0003 | 8.5% |
+| New songs (3), stand-in | 78.6% | 0.1688 | +0.0029 ± 0.0005 | 0.1623 | +0.0026 ± 0.0005 | -0.0026 ± 0.0004 | 47.3% |
+| New songs (5), stand-in | 78.2% | 0.1693 | +0.0034 ± 0.0005 | 0.1626 | +0.0029 ± 0.0005 | -0.0020 ± 0.0003 | 28.8% |
+| New songs (10), stand-in | 77.5% | 0.1685 | +0.0026 ± 0.0004 | 0.1617 | +0.0021 ± 0.0004 | -0.0013 ± 0.0002 | 21.6% |
+| New songs (3), stand-in, a week late | 77.2% | 0.1671 | +0.0012 ± 0.0003 | 0.1606 | +0.0010 ± 0.0003 | -0.0010 ± 0.0002 | 20.0% |
+| New songs (3), stand-in, and old pairs | 78.6% | 0.1691 | +0.0032 ± 0.0005 | 0.1628 | +0.0031 ± 0.0006 | -0.0019 ± 0.0004 | 46.5% |
+| **New songs (3), lengthened artist average, and old pairs** | 78.6% | 0.1689 | +0.0031 ± 0.0005 | 0.1627 | +0.0031 ± 0.0005 | -0.0006 ± 0.0004 | 8.2% |
+| **New songs (5), lengthened artist average, and old pairs** | 78.2% | 0.1688 | +0.0030 ± 0.0005 | 0.1626 | +0.0030 ± 0.0005 | -0.0003 ± 0.0004 | 5.6% |
+
+Variants against each other (own / site):
+
+| | Difference |
+|---|---|
+| Old pairs, with new songs (lengthened average at 3, with vs without) | +0.0003 ± 0.0002 / +0.0005 ± 0.0002 |
+| Stand-in minus lengthened artist average (3, no old pairs) | +0.0001 ± 0.0004 / +0.0001 ± 0.0004 |
+| 5 minus 3 listeners (lengthened average, old pairs) | -0.0001 ± 0.0002 / -0.0001 ± 0.0002 |
+| 5 minus 10 listeners (stand-in) | +0.0008 ± 0.0003 / +0.0009 ± 0.0003 |
+| Daily minus a week late (stand-in, 3) | +0.0017 ± 0.0005 / +0.0017 ± 0.0005 |
+
+What was learned:
+- New songs carry the gain: +1.8% next-song NDCG@10 on listening the model never saw, 11 days after its data ended,
+  with no training. Their next songs went from unknown to found: NDCG@10 0.16-0.30 on the 226-453 cases whose next
+  song is a new one, about what old songs get on theirs (0.217).
+- The plain artist average does nothing: averaging shortens vectors (median length 0.77 of the artist's songs' for
+  search vectors, 0.62 for input vectors), and a short vector's scores rarely reach the shortlist (new songs in
+  0.1% of top 10s).
+- The stand-in gains no more than the lengthened artist average and puts a new song in nearly half of all top 10s,
+  while only 2.3% of next songs are new ones, so it pushes out old songs twice as much. Its bias, averaged from
+  popular neighbours, is higher than 71% of real songs' (median +0.009 vs -0.057); the lengthened artist average's
+  is higher than 56% (-0.040).
+- Counting old pairs on adds a little (+0.2-0.3%), every time it's compared.
+- A week's delay loses more than half the gain.
+
+Decisions (the plan's rules):
+- **New songs ship:** the share of next songs known rises (76.4% to 78.2%), and old-song cases lose 0.0003, under
+  the 0.003 limit.
+- **Lengthened artist average:** the same gain as the stand-in, a third of the harm on old-song cases, and simpler
+  (no neighbours).
+- **5 listeners:** ties 3, with 38% as many songs (less memory) and the least harm.
+- **Count old pairs on:** +0.0005 ± 0.0002 on the site's settings (2.5 standard errors) and +0.0003 ± 0.0002 on its own
+  answers (1.8), the same both ways it was measured. Costs 1.6M new pairs a day (17.6M in the 11 days; the other
+  5.3M of the 22.9M were already in the table), ~8.4 MB a day of shard memory.
+- **Daily, not weekly.**
+- The 11 days moved the ranker's counts by +14% (9.0M listens on the table's 64M) without hurting it.
+
+Time: download 36 min; first build 243 s (discarded); build 320 s (extracts of 16 real dumps 6-8 s each, 5 replays
+12-31 s each, 9 variants 2-24 s each); scoring 1,111 s (9 variants, ~123 s each: 2 settings x 20,000 cases); 2 more
+variants 103 s to build and 251 s to score. All on the Mac's CPU; no GPU.
