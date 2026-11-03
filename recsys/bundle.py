@@ -19,9 +19,9 @@ def file_fingerprint(path, block=1 << 24):
 
 
 def write_manifest(folder):
-    """manifest.json for every other file in folder; returns the version."""
+    """manifest.json for every other file in folder (not the folders in it); returns the version."""
     files = {p.name: {"sha256": file_fingerprint(p), "bytes": p.stat().st_size}
-             for p in sorted(folder.iterdir()) if p.name != "manifest.json"}
+             for p in sorted(folder.iterdir()) if p.name != "manifest.json" and p.is_file()}
     version = hashlib.sha256("".join(f"{n} {f['sha256']}\n" for n, f in files.items()).encode()).hexdigest()[:12]
     (folder / "manifest.json").write_text(json.dumps({"version": version, "files": files}, indent=2))
     return version

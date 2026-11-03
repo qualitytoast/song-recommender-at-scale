@@ -68,12 +68,21 @@ def blend(h, taste, w):
     return ((1 - w) * h + w * np.broadcast_to(taste, h.shape)).astype(h.dtype)
 
 
+def known(values, at):
+    """values[at], 0 where at is past values' end: a song or artist added after the profile was built
+    (recsys/updates.py) has no history with the listener."""
+    out = np.zeros(len(at), dtype=values.dtype)
+    inside = at < len(values)
+    out[inside] = values[at[inside]]
+    return out
+
+
 def adjust(profile, ids, scores, song_artist):
     """A ranked list (ids, scores: best first) with the profile's artist bonus and skip penalty, re-sorted
     (ties keep their order)."""
     if not (profile.alpha or profile.beta):
         return ids, scores
-    scores = (scores + profile.alpha * profile.artist_affinity[song_artist[ids]]
-              - profile.beta * profile.skip_rate[ids]).astype(scores.dtype)
+    scores = (scores + profile.alpha * known(profile.artist_affinity, song_artist[ids])
+              - profile.beta * known(profile.skip_rate, ids)).astype(scores.dtype)
     order = np.argsort(-scores, kind="stable")
     return ids[order], scores[order]

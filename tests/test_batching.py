@@ -3,11 +3,11 @@ import threading
 import numpy as np
 import pytest
 
+from recsys.admission import Overloaded
 from recsys.batching import Batcher
 from recsys.frontdesk import ShardedRecommender, ShardsUnavailable
 from recsys.recommender import Recommender
-from serving_helpers import write_tiny_bundle
-from test_sharding import shard_servers, slices
+from serving_helpers import shard_servers, slices, write_tiny_bundle
 
 REQUESTS = [([7], "road trip"), ([7, 21], "gym"), ([3, 17, 9], ""), ([1, 2, 3, 4, 5], "chill mix"), ([5, 5, 8], "trip"),
             ([30], "")]
@@ -75,3 +75,18 @@ def test_in_a_batch_a_dead_shard_only_fails_the_requests_it_holds_every_song_of(
     ids, _, _, notes = results[1]
     assert notes == {"partial": True, "missing_shards": [1]} and len(ids) >= 10 and not (ids % 3 == 1).any()
 
+
+
+def test_a_closed_batcher_answers_whats_queued_then_ends_its_thread():
+    seen = []
+    batcher = Batcher(lambda batch: seen.extend(batch) or [r * 2 for r in batch], max_batch=4, wait_ms=50)
+    answers = []
+    threads = [threading.Thread(target=lambda r=r: answers.append(batcher.submit(r))) for r in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    batcher.close()
+    assert sorted(answers) == [0, 2, 4] and not batcher.thread.is_alive()
+    with pytest.raises(Overloaded, match="replaced"):
+        batcher.submit(5)  # a request after the switch is turned away, not left waiting forever

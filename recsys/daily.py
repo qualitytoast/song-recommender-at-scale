@@ -30,7 +30,7 @@ from recsys.lb_extract import MARKER, extract, load_extract
 from recsys.lb_sessions import by_user_and_time, sessions
 from recsys.lb_store import merged_counts, mode_per_song, noise
 from recsys.listenbrainz import clean_text, dump_window
-from recsys.pair_table import pair_counts
+from recsys.pair_table import AB, pair_counts, with_pairs  # noqa: F401  (with_pairs: also used from here)
 
 DAY = 86_400
 FRESH_DAYS = 30   # listens played longer ago than this before their dump's end are imported history, not counted
@@ -38,7 +38,6 @@ NEW_DAYS = 30     # a new song's listeners are counted over this many days
 MIN_USERS = 3     # different listeners a song needs to join (the catalog's own bar: N = 3)
 MAX_NEW = 2000    # songs added per dump at most
 TOLERANCE = 1.0   # seconds a dump's window may start before the last one's end (clock rounding)
-AB = 1 << 32      # an update's pair keys are a * AB + b: they don't depend on the catalog's size
 
 
 def chain(windows, after=None):
@@ -289,21 +288,6 @@ def _valid(songs, values):
     values = np.asarray(values, dtype=np.int64)
     keep = values >= 0
     return songs[keep], values[keep]
-
-
-def with_pairs(keys, counts, songs, pairs, pair_counts_, new_songs):
-    """A pair table (keys a * songs + b, sorted and distinct; counts) with an update's pairs (keys a * AB + b, sorted
-    and distinct; counts) added, as keys a * new_songs + b for the catalog grown to new_songs songs: the counts of a
-    pair in both are summed. Returns (keys, counts as int64)."""
-    if new_songs != songs:
-        keys = keys // songs * new_songs + keys % songs  # ordered by a, then b: still sorted
-    more = pairs // AB * new_songs + pairs % AB
-    at = np.searchsorted(keys, more)
-    old = at < len(keys)
-    old[old] = keys[at[old]] == more[old]
-    counts = counts.astype(np.int64)
-    counts[at[old]] += pair_counts_[old]
-    return np.insert(keys, at[~old], more[~old]), np.insert(counts, at[~old], pair_counts_[~old])
 
 
 def involving_new(pairs, base):

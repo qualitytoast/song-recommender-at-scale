@@ -1,4 +1,11 @@
-"""A tiny serving bundle for the serving and sharding tests."""
+"""A tiny serving bundle for the serving and sharding tests, and shard server processes for it."""
+import signal
+import socket
+import subprocess
+import sys
+from contextlib import contextmanager
+from pathlib import Path
+
 import numpy as np
 import torch
 
@@ -7,6 +14,7 @@ from recsys.model import SongRecommender
 from recsys.rank_features import pair_counts
 from recsys.ranker import CandidateRanker
 
+ROOT = Path(__file__).resolve().parents[1]
 V, CPU = 40, torch.device("cpu")
 SETTINGS = {"shortlist": 15, "exclude_input": True, "ivf_nlist": 2, "ivf_nprobe": 2,  # every cluster: exact
             "features": ["overlap", "cooccurrence"], "correction_hidden": 4, "windows": "any_length", "sources": {}}
@@ -55,3 +63,41 @@ def write_tiny_bundle(root, names=True, settings=None, albums=None):
                         [f"spotify:track:{i}" for i in range(V)], TRACKS,
                         ARTISTS, WORDS if names else [], pairs, PLAYLISTS, CPU, albums)
     return path, retriever, ranker, pairs
+
+
+def free_ports(n):
+    """n distinct free ports (all held open while choosing, so none is handed out twice)."""
+    sockets = [socket.socket() for _ in range(n)]
+    for s in sockets:
+        s.bind(("127.0.0.1", 0))
+    ports = [s.getsockname()[1] for s in sockets]
+    for s in sockets:
+        s.close()
+    return ports
+
+
+def slices(bundle, n):
+    """Cut the bundle into n shard slices (in its own process: FAISS and PyTorch can't share one)."""
+    subprocess.run([sys.executable, "-m", "recsys.shard_slices", "--bundle", str(bundle), "--shards", str(n)],
+                   cwd=ROOT, check=True, capture_output=True)
+    return [Path(bundle) / f"shards-{n}" / f"shard-{i}" for i in range(n)]
+
+
+@contextmanager
+def shard_servers(folders, with_processes=False, switch_file=None, log=subprocess.DEVNULL):
+    """A shard server process per slice folder (following switch_file, if given); yields their addresses (and
+    processes)."""
+    procs, addresses = [], []
+    for folder, port in zip(folders, free_ports(len(folders))):
+        procs.append(subprocess.Popen([sys.executable, "-m", "recsys.shard", "--slice", str(folder), "--port", str(port),
+                                       "--host", "127.0.0.1", *(["--switch", str(switch_file)] if switch_file else [])],
+                                      cwd=ROOT, stdout=log, stderr=log))
+        addresses.append(f"127.0.0.1:{port}")
+    try:
+        yield (addresses, procs) if with_processes else addresses
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.send_signal(signal.SIGCONT)
+                p.terminate()
+            p.wait(timeout=30)

@@ -16,6 +16,7 @@ import numpy as np
 
 BIG = 255  # the largest number a byte holds; only 0.013% of the served pairs reach it
 PAIR_WINDOW = 5   # a pair (a, b): song b comes 1 to 5 songs after song a in a playlist
+AB = 1 << 32      # an update's pair keys are a * AB + b: they don't depend on the catalog's size
 
 
 def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
@@ -31,6 +32,21 @@ def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
     return np.unique(np.concatenate(keys), return_counts=True)
 
 
+def with_pairs(keys, counts, songs, pairs, pair_counts_, new_songs):
+    """A pair table (keys a * songs + b, sorted and distinct; counts) with an update's pairs (keys a * AB + b, sorted
+    and distinct; counts) added, as keys a * new_songs + b for the catalog grown to new_songs songs: the counts of a
+    pair in both are summed. Returns (keys, counts as int64)."""
+    if new_songs != songs:
+        keys = keys // songs * new_songs + keys % songs  # ordered by a, then b: still sorted
+    more = pairs // AB * new_songs + pairs % AB
+    at = np.searchsorted(keys, more)
+    old = at < len(keys)
+    old[old] = keys[at[old]] == more[old]
+    counts = counts.astype(np.int64)
+    counts[at[old]] += pair_counts_[old]
+    return np.insert(keys, at[~old], more[~old]), np.insert(counts, at[~old], pair_counts_[~old])
+
+
 def save_pairs(folder, keys, counts, songs):
     """Write the table to folder. keys: sorted a * songs + b, as from rank_features.pair_counts (a subset
     of them too); counts: their counts."""
@@ -41,6 +57,20 @@ def save_pairs(folder, keys, counts, songs):
     np.save(folder / "pair_small.npy", np.minimum(counts, BIG).astype(np.uint8))
     np.save(folder / "pair_big_keys.npy", keys[big])
     np.save(folder / "pair_big_counts.npy", counts[big].astype(np.int32))
+
+
+def read_pairs(folder):
+    """The table in folder back as (keys a * songs + b, sorted; int64 counts), songs being the catalog it was
+    saved for (one less than pair_starts' length): what save_pairs was given."""
+    folder = Path(folder)
+    starts = np.load(folder / "pair_starts.npy")
+    later = np.load(folder / "pair_later.npy").astype(np.int64)
+    songs = len(starts) - 1
+    keys = np.repeat(np.arange(songs, dtype=np.int64), np.diff(starts)) * songs + later
+    counts = np.load(folder / "pair_small.npy").astype(np.int64)
+    big_keys = np.load(folder / "pair_big_keys.npy")
+    counts[np.searchsorted(keys, big_keys)] = np.load(folder / "pair_big_counts.npy")
+    return keys, counts
 
 
 class PairTable:

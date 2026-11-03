@@ -110,8 +110,10 @@ def build_index(bundle, url, key=None, drop_others=False, report=print):
 
 
 class SongSearch:
-    """The menu's search for one bundle version (see the module docstring): search() returns song IDs, best
-    first, or None when Meilisearch can't answer (the caller falls back)."""
+    """The menu's search for one bundle (see the module docstring): search() returns song IDs, best first, or
+    None when Meilisearch can't answer (the caller falls back). version: the bundle's own (an update of it,
+    recsys/updates.py, keeps the bundle's index, with its added songs added); songs: how many this version has.
+    IDs past that are left out: songs an index already has for a newer version than the one being served."""
 
     def __init__(self, url, version, songs, key=None, timeout=0.25, cooldown=1.0):
         self.url, self.index, self.songs, self.key = url.rstrip("/"), index_name(version), songs, key
@@ -128,8 +130,9 @@ class SongSearch:
             answer = call("POST", f"{self.url}/indexes/{self.index}/search",
                           {"q": query, "limit": limit, "attributesToRetrieve": ["id"]}, self.key, self.timeout)
             ids = [int(hit["id"]) for hit in answer["hits"]]
-            if any(not 0 <= j < self.songs for j in ids):
-                raise ValueError("a song ID outside this bundle")
+            if any(j < 0 for j in ids):
+                raise ValueError("a negative song ID")
+            ids = [j for j in ids if j < self.songs]
         except (OSError, ValueError, KeyError, TypeError) as e:  # urllib's errors and timeouts are OSErrors
             self.stats["errors"] += 1
             self.last_error = f"{type(e).__name__}: {e}"

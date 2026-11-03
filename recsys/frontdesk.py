@@ -94,10 +94,12 @@ def merge_top(id_parts, score_parts, k):
 
 
 class ShardedRecommender(Catalog):
-    def __init__(self, bundle, shards, device="cpu", deadline=2.0, startup_wait=120.0, cooldown=1.0):
+    def __init__(self, bundle, shards, device="cpu", deadline=2.0, startup_wait=120.0, cooldown=1.0, update=None,
+                 share=None):
         """shards: the shard servers' addresses ("host:port"), shard i's at position i; deadline: seconds
-        each call to a shard may take; cooldown: seconds a shard that missed a call is skipped."""
-        super().__init__(bundle, device)
+        each call to a shard may take; cooldown: seconds a shard that missed a call is skipped; update, share:
+        the version of the bundle to serve and a Catalog to share names with (recommender.Catalog)."""
+        super().__init__(bundle, device, update, share)
         s = self.settings
         blank = np.zeros((1, s["embed_dim"]), dtype=np.float32)
         self.retriever = serving_retriever(s, blank)
@@ -122,34 +124,54 @@ class ShardedRecommender(Catalog):
         self.check_shards(startup_wait)
 
     def check_shards(self, wait):
-        """Wait up to `wait` seconds for every shard, then make sure each is the right one."""
+        """Wait up to `wait` seconds for every shard, then make sure each holds this version, as the right shard."""
         n = len(self.stubs)
         for i, stub in enumerate(self.stubs):
-            info = stub.Info(shard_pb2.InfoRequest(), timeout=wait, wait_for_ready=True)
-            problems = [f"version {info.version}, not {self.version}" if info.version != self.version else "",
-                        f"shard {info.index} of {info.shards}, not {i} of {n}" if (info.index, info.shards) != (i, n) else "",
+            try:
+                info = stub.Info(shard_pb2.InfoRequest(version=self.version), timeout=wait, wait_for_ready=True)
+            except grpc.RpcError as e:
+                if e.code() != grpc.StatusCode.FAILED_PRECONDITION:
+                    raise
+                raise ShardMismatch(f"{self.addresses[i]}: {e.details()}") from None
+            problems = [f"shard {info.index} of {info.shards}, not {i} of {n}" if (info.index, info.shards) != (i, n) else "",
                         f"a catalog of {info.catalog:,} songs, not {self.settings['songs']:,}"
                         if info.catalog != self.settings["songs"] else ""]
             if any(problems):
                 raise ShardMismatch(f"{self.addresses[i]} serves " + "; ".join(p for p in problems if p))
 
     def close(self):
+        if self.batcher is not None:
+            self.batcher.close()
         for channel in self.channels:
             channel.close()
 
     def shard_states(self):
-        """Each shard's answer to Info within the deadline: [{index, address, up}]."""
-        pending = [stub.Info.future(shard_pb2.InfoRequest(), timeout=self.deadline) for stub in self.stubs]
+        """Each shard's answer to Info about this version within the deadline: [{index, address, up}]; a shard
+        that answers but doesn't hold this version is down too (it refuses every call), with why."""
+        pending = [stub.Info.future(shard_pb2.InfoRequest(version=self.version), timeout=self.deadline)
+                   for stub in self.stubs]
         states, now = [], time.monotonic()
         for i, p in enumerate(pending):
+            state = {"index": i, "address": self.addresses[i], "up": True,
+                     "skipped_for_s": round(max(0.0, self.skip_until[i] - now), 2)}
             try:
                 p.result()
-                up = True
-            except grpc.RpcError:
-                up = False
-            states.append({"index": i, "address": self.addresses[i], "up": up,
-                           "skipped_for_s": round(max(0.0, self.skip_until[i] - now), 2)})
+            except grpc.RpcError as e:
+                state["up"] = False
+                if e.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                    state["refuses"] = e.details()
+            states.append(state)
         return states
+
+    def shards_hold(self, version):
+        """Whether every shard holds version now (a front desk builds a recommender for a version only then)."""
+        pending = [stub.Info.future(shard_pb2.InfoRequest(version=version), timeout=self.deadline) for stub in self.stubs]
+        try:
+            for p in pending:
+                p.result()
+        except grpc.RpcError:
+            return False
+        return True
 
     def call_all(self, calls):
         """Send every (shard, method, request) at once; the replies, with None for each call that failed
