@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from recsys.lb_extract import MARKER, extract, load_extract
+from recsys.lb_extract import MARKER, extract, load_extract, open_source
 from recsys.lb_sessions import by_user_and_time, sessions
 from recsys.lb_store import merged_counts, mode_per_song, noise
 from recsys.listenbrainz import clean_text, dump_window
@@ -60,8 +60,9 @@ def chain(windows, after=None):
     return used, skipped, gaps
 
 
-def read_window(path):
-    with open(path, "rb") as f:
+def read_window(source):
+    """A dump's window (start, end), from the start of its file (a local path, or a URL: only that much is read)."""
+    with open_source(str(source)) as f:
         return dump_window(f)
 
 
@@ -124,6 +125,22 @@ class Seen:
         at = np.minimum(np.searchsorted(h, hashes), len(h) - 1)
         return np.where(h[at] == hashes, n[at], 0)
 
+    def save(self, path):
+        """Write the days still within NEW_DAYS of the last one (the rest can't count again) to path (.npz)."""
+        last = max((end for end, _ in self.days), default=0.0)
+        days = [(end, p) for end, p in self.days if end > last - NEW_DAYS * DAY]
+        np.savez(path, ends=np.array([end for end, _ in days], dtype=np.float64),
+                 sizes=np.array([len(p) for _, p in days], dtype=np.int64),
+                 pairs=np.concatenate([p for _, p in days]) if days else np.zeros((0, 2), dtype=np.int64))
+
+    @staticmethod
+    def load(path):
+        seen = Seen()
+        with np.load(path) as f:
+            for end, part in zip(f["ends"].tolist(), np.split(f["pairs"], np.cumsum(f["sizes"])[:-1])):
+                seen.days.append((end, part))
+        return seen
+
 
 @dataclass
 class NewSong:
@@ -139,14 +156,16 @@ class NewSong:
 
 class Served:
     """The served songs as an update sees them, by song ID: the bundle's (base) and the ones updates added. keys:
-    every song's key (recsys.listenbrainz.song_key); the rest from the bundle's files (recsys/export.py)."""
+    every song's key (recsys.listenbrainz.song_key); the rest from the bundle's files (recsys/export.py), the
+    per-song album and genre IDs from `files` if given (the server's bundle has them in its shard slices only)."""
 
-    def __init__(self, bundle, keys):
+    def __init__(self, bundle, keys, files=None):
         bundle = Path(bundle)
+        files = Path(files) if files else bundle
         songs = json.loads((bundle / "songs.json").read_text())
         self.uris, self.tracks, self.artist_names = list(songs["uris"]), list(songs["tracks"]), songs["artist_names"]
-        self.artist, self.album = np.load(bundle / "song_artist.npy"), np.load(bundle / "song_album.npy")
-        self.genres, self.listens = np.load(bundle / "song_genres.npy"), np.load(bundle / "song_playlists.npy")
+        self.artist, self.album = np.load(bundle / "song_artist.npy"), np.load(files / "song_album.npy")
+        self.genres, self.listens = np.load(files / "song_genres.npy"), np.load(bundle / "song_playlists.npy")
         self.album_names = json.loads((bundle / "song_albums.json").read_text())
         self.base = len(self.uris)
         if len(keys) != self.base:
@@ -176,12 +195,15 @@ class Served:
         """Each key's song ID, -1 for songs not served."""
         return np.array([self.id_of.get(k, -1) for k in keys], dtype=np.int64)
 
-    def album_id(self, artist, name):
-        """The artist's album of that name (cleaned, as the store matches albums), or a new album ID."""
+    def _album_map(self):
         if self._albums is None:
             self._albums = {(a, clean_text(n)): b for a, n, b in zip(self.artist.tolist(), self.album_names,
                                                                    self.album.tolist())}
             self._next_album = int(self.album.max()) + 1
+
+    def album_id(self, artist, name):
+        """The artist's album of that name (cleaned, as the store matches albums), or a new album ID."""
+        self._album_map()
         key = (artist, clean_text(name))
         if key not in self._albums:
             self._albums[key] = self._next_album
@@ -192,14 +214,35 @@ class Served:
         artist = self.artist_of[key.split("|", 1)[0]]
         uri = f"spotify:track:{spotify_id}" if spotify_id else f"listenbrainz:track:{key}"
         song = NewSong(key, track, album, uri, artist, self.album_id(artist, album), int(listeners), joined)
-        self.id_of[key] = len(self.keys)
-        self.keys.append(key)
-        self.uris.append(uri)
-        self.tracks.append(track)
-        if spotify_id:
-            self.spotify.add(spotify_id)
-        self.added.append(song)
+        self._append(song)
         return song
+
+    def _append(self, song):
+        self.id_of[song.key] = len(self.keys)
+        self.keys.append(song.key)
+        self.uris.append(song.uri)
+        self.tracks.append(song.track)
+        if song.uri.startswith("spotify:track:"):
+            self.spotify.add(song.uri.rsplit(":", 1)[1])
+        self.added.append(song)
+
+    def fields(self, start=0):
+        """The songs added from added[start] on, one list per field (recsys/updates.py's added_songs.json)."""
+        songs = self.added[start:]
+        return {"uris": [s.uri for s in songs], "tracks": [s.track for s in songs],
+                "artist": [int(s.artist) for s in songs], "albums": [s.album for s in songs],
+                "keys": [s.key for s in songs], "album_ids": [int(s.album_id) for s in songs],
+                "listeners": [int(s.listeners) for s in songs], "joined": [float(s.joined) for s in songs]}
+
+    def restore(self, fields):
+        """Add back the songs an update added (its added_songs.json), with the IDs and album IDs they had."""
+        for key, track, album, uri, artist, album_id, listeners, joined in zip(
+                fields["keys"], fields["tracks"], fields["albums"], fields["uris"], fields["artist"],
+                fields["album_ids"], fields["listeners"], fields["joined"]):
+            self._album_map()
+            self._albums[(artist, clean_text(album))] = album_id
+            self._next_album = max(self._next_album, album_id + 1)
+            self._append(NewSong(key, track, album, uri, artist, album_id, listeners, joined))
 
     def song_artist(self):
         return np.concatenate([self.artist, np.array([s.artist for s in self.added], dtype=self.artist.dtype)])
@@ -213,6 +256,105 @@ class Served:
         first = dict(zip(artists.tolist(), at.tolist()))
         rows = [self.genres[first[s.artist]] for s in self.added]
         return np.concatenate([self.genres, np.array(rows, dtype=self.genres.dtype).reshape(-1, self.genres.shape[1])])
+
+
+class HashedMap:
+    """A dict from strings (or what text() makes a string) to ints held as sorted 64-bit hashes (key_hash) and their
+    values, with a dict for what's set later: millions of keys in tens of MB instead of as Python strings."""
+
+    def __init__(self, hashes, values, text=lambda key: key):
+        order = np.argsort(hashes, kind="stable")
+        self.hashes, self.values, self.text, self.more = np.asarray(hashes)[order], np.asarray(values)[order], text, {}
+        if (np.diff(self.hashes) == 0).any():
+            raise ValueError("two keys with the same hash")
+
+    def find(self, keys):
+        """Each key's value, -1 if it has none (the ones set later first)."""
+        hashes = np.array([key_hash(self.text(k)) for k in keys], dtype=np.int64)
+        at = np.minimum(np.searchsorted(self.hashes, hashes), max(len(self.hashes) - 1, 0))
+        out = np.where(self.hashes[at] == hashes, self.values[at], -1) if len(self.hashes) else np.full(len(keys), -1)
+        return np.array([self.more.get(k, v) for k, v in zip(keys, out.tolist())], dtype=np.int64)
+
+    def get(self, key, default=None):
+        value = int(self.find([key])[0])
+        return default if value < 0 else value
+
+    def __contains__(self, key):
+        return self.get(key) is not None
+
+    def __getitem__(self, key):
+        value = self.get(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def __setitem__(self, key, value):
+        self.more[key] = value
+
+    def add(self, key):  # used as a set
+        self.more[key] = 0
+
+
+def album_text(key):
+    return f"{key[0]}\x00{key[1]}"  # (artist ID, cleaned album name)
+
+
+def lean_files(bundle, keys, out, files=None):
+    """What LeanServed reads, made from the bundle and every song's key (once, where there's memory to spare):
+    lookups.npz (the keys', Spotify track IDs' and (artist, album)s' hashes, the albums' IDs), artist_of.json,
+    artist_names.json, song_album.npy and song_genres.npy."""
+    full, out = Served(bundle, keys, files), Path(out)
+    np.save(out / "song_album.npy", full.album)
+    np.save(out / "song_genres.npy", full.genres)
+    full._album_map()
+    albums = list(full._albums.items())
+    np.savez(out / "lookups.npz", key_hashes=np.array([key_hash(k) for k in full.keys], dtype=np.int64),
+             spotify_hashes=np.array([key_hash(s) for s in sorted(full.spotify)], dtype=np.int64),
+             album_hashes=np.array([key_hash(album_text(k)) for k, _ in albums], dtype=np.int64),
+             album_ids=np.array([v for _, v in albums], dtype=np.int64))
+    (out / "artist_of.json").write_text(json.dumps(full.artist_of, ensure_ascii=False))
+    (out / "artist_names.json").write_text(json.dumps(full.artist_names, ensure_ascii=False))
+
+
+class LeanServed(Served):
+    """Served for a small server: song keys, Spotify IDs and albums are found by their hashes (HashedMap, from
+    lean_files) instead of held as millions of Python strings (~2 GB less for 2.5M songs). Only the added songs'
+    keys, URIs and names are kept as text."""
+
+    def __init__(self, bundle, files):
+        bundle, files = Path(bundle), Path(files)
+        self.artist, self.listens = np.load(bundle / "song_artist.npy"), np.load(bundle / "song_playlists.npy")
+        self.album, self.genres = np.load(files / "song_album.npy"), np.load(files / "song_genres.npy")
+        self.artist_names = json.loads((files / "artist_names.json").read_text())
+        self.artist_of = json.loads((files / "artist_of.json").read_text())
+        self.base = len(self.artist)
+        with np.load(files / "lookups.npz") as f:
+            self.id_of = HashedMap(f["key_hashes"], np.arange(self.base, dtype=np.int64))
+            self.spotify = HashedMap(f["spotify_hashes"], np.zeros(len(f["spotify_hashes"]), dtype=np.int64))
+            self._albums = HashedMap(f["album_hashes"], f["album_ids"], text=album_text)
+        self._next_album = int(self.album.max()) + 1
+        self.keys, self.uris, self.tracks, self.added = [], [], [], []  # the added songs' only
+
+    def __len__(self):
+        return self.base + len(self.added)
+
+    def copy(self):
+        raise NotImplementedError("LeanServed is built once per update")
+
+    def ids(self, keys):
+        return self.id_of.find(list(keys))
+
+    def _album_map(self):
+        pass  # made from lookups.npz
+
+    def _append(self, song):
+        self.id_of[song.key] = len(self)
+        self.keys.append(song.key)
+        self.uris.append(song.uri)
+        self.tracks.append(song.track)
+        if song.uri.startswith("spotify:track:"):
+            self.spotify.add(song.uri.rsplit(":", 1)[1])
+        self.added.append(song)
 
 
 class Update:
@@ -298,8 +440,8 @@ def involving_new(pairs, base):
 STANDIN_MODES = ("artist", "artist_norm", "standin")
 
 
-def standins(served, update, tables, mode="standin", search="search_vectors"):
-    """Stand-in rows for the songs updates added, for each of the bundle's per-song vector tables (tables: {name:
+def standins(served, update, tables, mode="standin", search="search_vectors", start=0):
+    """Stand-in rows for the songs updates added (from served.added[start] on), for each of the bundle's per-song vector tables (tables: {name:
     (base songs, d) array}; in tables[search] the last column is the song's bias, averaged but never lengthened).
     mode:
       "artist"       the plain average of the artist's songs
@@ -309,7 +451,7 @@ def standins(served, update, tables, mode="standin", search="search_vectors"):
                      alone if the artist has fewer than 3 songs, the artist alone if there are no neighbours
     Averaging shortens vectors (to ~0.77 of their length for the search vectors, ~0.62 for the input vectors, on the
     served pair), and a short vector rarely scores high enough to be shortlisted: hence the lengthening.
-    Returns {name: (added songs, d) float32}."""
+    Returns {name: (songs, d) float32}, a row per song from added[start] on."""
     if mode not in STANDIN_MODES:
         raise ValueError(f"unknown stand-in mode {mode!r}; known: {STANDIN_MODES}")
     base, added = served.base, served.added
@@ -322,13 +464,13 @@ def standins(served, update, tables, mode="standin", search="search_vectors"):
     times = np.concatenate([update.counts[pick[0]], update.counts[pick[1]]]).astype(np.float64)
     by_new = np.argsort(new, kind="stable")
     new, other, times = new[by_new], other[by_new], times[by_new]
-    out = {name: np.zeros((len(added), t.shape[1]), dtype=np.float32) for name, t in tables.items()}
-    for i, song in enumerate(added):
+    out = {name: np.zeros((len(added) - start, t.shape[1]), dtype=np.float32) for name, t in tables.items()}
+    for i, song in enumerate(added[start:], start):
         art = order[bounds[song.artist]:bounds[song.artist + 1]]
         lo, hi = np.searchsorted(new, [base + i, base + i + 1])
         ids, w = source_weights(mode, art, served.listens[art].astype(np.float64), other[lo:hi], times[lo:hi])
         for name, table in tables.items():
-            out[name][i] = blend(np.asarray(table[ids], dtype=np.float32), w, name == search, mode != "artist")
+            out[name][i - start] = blend(np.asarray(table[ids], dtype=np.float32), w, name == search, mode != "artist")
     return out
 
 

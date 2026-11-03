@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from recsys.frontdesk import ShardMismatch, ShardedRecommender, ShardsUnavailable, merge_top
-from recsys.pair_table import AB, PairTable, read_pairs, save_pairs, with_pairs
+from recsys.pair_table import AB, PairTable, grow, read_pairs, save_pairs, with_pairs
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender
 from recsys.wire import pack, unpack
@@ -65,6 +65,28 @@ def test_a_pair_table_reads_back_and_regrows_for_a_bigger_catalog(tmp_path):
     every = {**pairs, **added, (2, 9): 262_475}
     asked = np.array([a * 12 + b for a, b in every], dtype=np.int64)
     np.testing.assert_array_equal(table.lookup(asked), list(every.values()))
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_growing_a_pair_table_in_place_writes_what_rebuilding_it_does(tmp_path, seed):
+    rng = np.random.default_rng(seed)
+    before, songs = 50, 57
+    keys = np.unique(rng.integers(0, before, 900) * before + rng.integers(0, before, 900))
+    counts = np.where(rng.random(len(keys)) < 0.1, rng.integers(250, 400, len(keys)), rng.integers(1, 9, len(keys)))
+    (tmp_path / "old").mkdir()
+    save_pairs(tmp_path / "old", keys, counts, before)
+    a, b = rng.integers(0, songs, 400), rng.integers(0, songs, 400)  # old pairs and new ones, some with new songs
+    a[:60], b[:60] = keys[:60] // before, keys[:60] % before  # some old pairs counted on, a few of them past 255
+    more = np.unique(a * AB + b)
+    more_counts = np.where(rng.random(len(more)) < 0.05, 300, rng.integers(1, 6, len(more)))
+    for name in ("rebuilt", "grown"):
+        (tmp_path / name).mkdir()
+    save_pairs(tmp_path / "rebuilt", *with_pairs(keys, counts, before, more, more_counts, songs), songs)
+    grow(tmp_path / "old", tmp_path / "grown", before, songs, more // AB, more % AB, more_counts)
+    for f in ("pair_starts", "pair_later", "pair_small", "pair_big_keys", "pair_big_counts"):
+        rebuilt, grown = np.load(tmp_path / "rebuilt" / f"{f}.npy"), np.load(tmp_path / "grown" / f"{f}.npy")
+        assert rebuilt.dtype == grown.dtype, f
+        np.testing.assert_array_equal(grown, rebuilt, err_msg=f)
 
 
 def test_an_empty_pair_table_finds_nothing(tmp_path):

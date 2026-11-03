@@ -178,3 +178,24 @@ def test_standins_average_lengthen_and_fall_back_to_neighbours(tmp_path):
     # song 7: artist C has one song, so its neighbour (song 1) alone
     assert np.allclose(got["inputs"][1], i32[1], atol=1e-5)
     assert isinstance(served.added[0], NewSong)
+
+
+def test_the_lean_served_songs_add_what_the_full_ones_do(day, tmp_path):
+    from recsys.daily import LeanServed, lean_files
+    served, ext, window = day
+    keys = list(served.keys)
+    lean_files(served_folder := ext.folder.parent / "bundle", keys, tmp_path)
+    lean = LeanServed(served_folder, tmp_path)
+    assert len(lean) == len(served) and lean.ids(keys[::-1] + ["nope"]).tolist() == list(range(len(keys)))[::-1] + [-1]
+    full_update, lean_update = Update(), Update()
+    full_report = apply_dump(served, full_update, Seen(), ext, window, "d")
+    lean_report = apply_dump(lean, lean_update, Seen(), ext, window, "d")
+    assert lean_report == full_report
+    assert lean.fields() == served.fields() and lean.song_album().tolist() == served.song_album().tolist()
+    np.testing.assert_array_equal(lean_update.pairs, full_update.pairs)
+    np.testing.assert_array_equal(lean_update.listens, full_update.listens)
+    again = LeanServed(served_folder, tmp_path)  # built back from what the update keeps
+    again.restore(lean.fields())
+    assert again.fields() == lean.fields() and again.ids(["artist b|song 11"]).tolist() == [6]
+    assert again.album_id(1, "New Album") == lean.album_id(1, "New Album") == 4  # B11's new album, not a new one again
+    assert again.album_id(1, "Another") == 5 and "B" * 22 in again.spotify

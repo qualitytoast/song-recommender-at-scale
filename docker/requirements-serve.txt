@@ -1,6 +1,8 @@
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
+certifi==2026.7.22
+charset-normalizer==3.5.2
 click==8.5.0
 faiss-cpu==1.15.1
 fastapi==0.143.0
@@ -19,10 +21,13 @@ protobuf==7.36.2
 pydantic==2.14.0
 pydantic_core==2.50.0
 redis==8.1.0
+requests==2.34.2
 setuptools==84.0.0
 starlette==1.7.0
 sympy==1.14.0
 torch==2.14.1
 typing-inspection==0.4.4
 typing_extensions==4.16.0
+urllib3==2.8.0
 uvicorn==0.54.0
+zstandard==0.25.0

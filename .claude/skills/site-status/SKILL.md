@@ -18,6 +18,11 @@ Change nothing: no restarts, no deletes, no edits. Never print `.env`'s Meilisea
      `docker inspect -f '{{.RestartCount}}'` for any that restarted.
    - `free -m` (available memory; the stack uses ~4.3 GB of 7.7), `df -h /`, `uptime` (load on 2 cores).
    - `grep ^BUNDLE ~/song-recommender-at-scale/.env` (only that line), and `git log --oneline -1` there.
-3. **Report** in a few lines: up or not, the model version, search and cache health, memory, disk and load.
+   - The daily update (recsys/daily_job.py), read-only: `systemctl list-timers songrec-daily.timer` (next and last
+     run), `journalctl -u songrec-daily -n 30 --no-pager` (the last run's log), and in the bundle `.env` names:
+     `cat <bundle>/switch.json` (live and standby folders) and
+     `python3 -c "import json; s=json.load(open('<bundle>/daily/state.json')); print(s['paused'], s['paused_why'], s['runs'][-3:])"`.
+3. **Report** in a few lines: up or not, the model version (and which update is live), search and cache health,
+   memory, disk and load, the last daily run's result and whether the job is paused.
    Flag anything degraded, unhealthy, restarting, under ~1 GB of memory available or under ~5 GB of disk.
    Suggest a fix, but don't apply it.

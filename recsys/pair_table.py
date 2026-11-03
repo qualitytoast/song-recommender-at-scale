@@ -59,6 +59,48 @@ def save_pairs(folder, keys, counts, songs):
     np.save(folder / "pair_big_counts.npy", counts[big].astype(np.int32))
 
 
+def grow(src, out, songs_before, songs, add_a, add_b, add_counts):
+    """Write to out the table in src grown from songs_before to songs songs, with add_counts added to the pairs
+    (add_a, add_b) (sorted by a, then b, and distinct): what save_pairs writes for with_pairs' result, made in the
+    compact form itself, about 13 bytes a pair at most instead of every key at 8 bytes several times over."""
+    src = Path(src)
+    starts, later = np.load(src / "pair_starts.npy").astype(np.int64), np.load(src / "pair_later.npy")
+    small = np.load(src / "pair_small.npy")
+    big_keys, big_counts = np.load(src / "pair_big_keys.npy"), np.load(src / "pair_big_counts.npy")
+    add_a, add_b = np.asarray(add_a, dtype=np.int64), np.asarray(add_b, dtype=np.int64)
+    add_counts = np.asarray(add_counts, dtype=np.int64)
+    add = add_a * songs + add_b
+    keys = np.repeat(np.arange(songs_before, dtype=np.int64), np.diff(starts))  # every old key, in place: one array
+    keys *= songs
+    keys += later
+    at = np.searchsorted(keys, add)  # where each added pair is, or goes, among the old ones
+    old = at < len(keys)
+    old[old] = keys[at[old]] == add[old]
+    del keys
+    big_keys = big_keys // songs_before * songs + big_keys % songs_before  # the side table keyed for the new size
+    total = small[at[old]].astype(np.int64)
+    was_big = total == BIG
+    total[was_big] = big_counts[np.searchsorted(big_keys, add[old][was_big])]
+    total += add_counts[old]
+    small = small.copy()
+    small[at[old]] = np.minimum(total, BIG)
+    new = ~old
+    later = np.insert(later, at[new], add_b[new].astype(later.dtype))
+    small = np.insert(small, at[new], np.minimum(add_counts[new], BIG).astype(np.uint8))
+    grown = np.concatenate([starts, np.full(songs - songs_before, starts[-1])])
+    grown[1:] += np.cumsum(np.bincount(add_a[new], minlength=songs))
+    keep = ~np.isin(big_keys, add[old])  # big ones no update touched
+    keys_big = np.concatenate([big_keys[keep], add[old][total >= BIG], add[new][add_counts[new] >= BIG]])
+    counts_big = np.concatenate([big_counts[keep], total[total >= BIG], add_counts[new][add_counts[new] >= BIG]])
+    order = np.argsort(keys_big)
+    out = Path(out)
+    np.save(out / "pair_starts.npy", grown.astype(np.int32))
+    np.save(out / "pair_later.npy", later)
+    np.save(out / "pair_small.npy", small)
+    np.save(out / "pair_big_keys.npy", keys_big[order])
+    np.save(out / "pair_big_counts.npy", counts_big[order].astype(np.int32))
+
+
 def read_pairs(folder):
     """The table in folder back as (keys a * songs + b, sorted; int64 counts), songs being the catalog it was
     saved for (one less than pair_starts' length): what save_pairs was given."""

@@ -27,6 +27,7 @@ import itertools
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -107,6 +108,22 @@ def build_index(bundle, url, key=None, drop_others=False, report=print):
                 wait(url, key, call("DELETE", f"{url}/indexes/{other}", key=key))
                 report(f"deleted {other}")
     return name
+
+
+def add_songs(url, key, version, songs):
+    """Add songs to the bundle's index songs-<version> (an update's, recsys/updates.py: seconds, not the whole
+    index again); a song whose ID is there already is replaced (after an undo, a later update can give its ID to
+    another song). songs: documents as documents() gives them. Refuses if the index isn't there: Meilisearch would
+    make a new one without SETTINGS. Returns how many were sent."""
+    url, name = url.rstrip("/"), index_name(version)
+    try:
+        call("GET", f"{url}/indexes/{name}", key=key)
+    except urllib.error.HTTPError as e:
+        raise LookupError(f"Meilisearch has no index {name}: build it first (search-index)") from e
+    for start in range(0, len(songs), BATCH):
+        lines = "\n".join(json.dumps(d, ensure_ascii=False) for d in songs[start:start + BATCH]).encode()
+        wait(url, key, call("POST", f"{url}/indexes/{name}/documents", lines, key=key, timeout=60.0, ndjson=True))
+    return len(songs)
 
 
 class SongSearch:
