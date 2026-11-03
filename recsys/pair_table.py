@@ -7,13 +7,28 @@ a's pairs sit next to each other, so a contents list says where they begin.
   pair_small.npy                         (pairs,) uint8: each pair's count, BIG if it's BIG or more
   pair_big_keys.npy, pair_big_counts.npy the exact count of each of those few pairs, sorted by key a * songs + b
 
-Every count stays exact: the ranker reads them, so they must equal what it trained on. Imports numpy only.
+Every count stays exact: the ranker reads them, so they must equal what it trained on. pair_counts counts them
+(recsys/rank_features.py, recsys/export.py and recsys/daily.py use it). Imports numpy only.
 """
 from pathlib import Path
 
 import numpy as np
 
 BIG = 255  # the largest number a byte holds; only 0.013% of the served pairs reach it
+PAIR_WINDOW = 5   # a pair (a, b): song b comes 1 to 5 songs after song a in a playlist
+
+
+def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
+    """(keys, counts), keys sorted: key a * vocab_size + b; counts[i] is how often song b comes
+    1 to `window` songs after song a in the same playlist. songs: playlists concatenated (vocab
+    IDs, -1 = outside the vocab, never counted); offsets: where each starts, plus the end."""
+    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    keys = []
+    for d in range(1, window + 1):
+        a, b = songs[:-d], songs[d:]
+        ok = (a >= 0) & (b >= 0) & (playlist[:-d] == playlist[d:])
+        keys.append(a[ok] * vocab_size + b[ok])
+    return np.unique(np.concatenate(keys), return_counts=True)
 
 
 def save_pairs(folder, keys, counts, songs):

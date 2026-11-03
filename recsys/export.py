@@ -24,7 +24,7 @@ change in the answers (scripts/quantize_check.py).
                                  how many listens it has (settings.json popularity: "playlists" or "listens";
                                  the find-songs menu's order and count)
   songs_by_track.npy, songs_by_artist.npy, name_keys.json   song IDs sorted by track / artist name and the
-                                 names as compared (recommender.name_key), for finding songs as the user types
+                                 names as compared (bundle.name_key), for finding songs as the user types
   song_albums.json               each song's album name, for the search index (recsys/song_search.py)
   name_words.json                the playlist-name words (word i has ID i + 1)
   manifest.json                  every file's SHA-256 and size, and the version
@@ -32,7 +32,6 @@ The version is the first 12 hex digits of a SHA-256 over the files' own SHA-256s
 file gives a new version, and the same pair always exports to the same version.
 """
 import argparse
-import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -40,11 +39,12 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from recsys.bundle import file_fingerprint, name_index, write_manifest  # noqa: F401  (write_manifest: also used from here)
 from recsys.data import concat_playlists
 from recsys.mpd_store import load_store
 from recsys.rank_features import GROUPS, pair_counts
-from recsys.ranker import CandidateRanker, check_vocab, file_fingerprint, load_ranker_config, load_retriever
-from recsys.recommender import MAX_PER_ARTIST, MIX, SERVED_GROUPS, name_key, shared_state
+from recsys.ranker import CandidateRanker, check_vocab, load_ranker_config, load_retriever
+from recsys.recommender import MAX_PER_ARTIST, MIX, SERVED_GROUPS, shared_state
 from recsys.search import SearchWorker, song_vectors
 from recsys.train import pick_device, run_dir_for
 
@@ -56,26 +56,6 @@ def song_inputs(model, device, batch=65536):
     songs = model.song_embedding.num_embeddings
     return torch.cat([model.embed_songs(torch.arange(i, min(i + batch, songs), device=device)).float().cpu()
                       for i in range(0, songs, batch)]).numpy()
-
-
-def write_manifest(folder):
-    """manifest.json for every other file in folder; returns the version."""
-    files = {p.name: {"sha256": file_fingerprint(p), "bytes": p.stat().st_size}
-             for p in sorted(folder.iterdir()) if p.name != "manifest.json"}
-    version = hashlib.sha256("".join(f"{n} {f['sha256']}\n" for n, f in files.items()).encode()).hexdigest()[:12]
-    (folder / "manifest.json").write_text(json.dumps({"version": version, "files": files}, indent=2))
-    return version
-
-
-def name_index(tracks, artist_names, song_artist, song_playlists):
-    """(songs_by_track, songs_by_artist, name_keys): song IDs sorted by track name key and by artist
-    name key, each in the most playlists first among equal names, and the keys themselves."""
-    track_keys = [name_key(t) for t in tracks]
-    artist_keys = [name_key(a) for a in artist_names]
-    by_track = sorted(range(len(tracks)), key=lambda j: (track_keys[j], -song_playlists[j], j))
-    by_artist = sorted(range(len(tracks)), key=lambda j: (artist_keys[song_artist[j]], -song_playlists[j], j))
-    return (np.array(by_track, dtype=np.int32), np.array(by_artist, dtype=np.int32),
-            {"tracks": track_keys, "artists": artist_keys})
 
 
 def playlist_counts(cfg, vocab, listens=False):

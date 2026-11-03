@@ -9,7 +9,9 @@ month, <dump name>/listens/<year>/<month>.listens, with one JSON listen per line
                                           "artist_names": [...], "recording_mbid": "...", "artist_mbids": [...]}}}
 
 listen_files streams an archive from any file object (a local file, or a download as it arrives): it is
-decompressed and unbundled piece by piece and never unpacked to disk.
+decompressed and unbundled piece by piece and never unpacked to disk. A daily ("incremental") dump holds the listens
+submitted in one window, which its START_TIMESTAMP and END_TIMESTAMP files give (dump_window); its month files are
+by submission month, so they hold listens played at any time.
 
 One song = its cleaned-up artist + title (song_key): lowercase, accents and punctuation removed, featured
 artists and version notes ("- Remastered 2011", "(Radio Edit)") dropped, so a single, its album version and its
@@ -21,6 +23,7 @@ import json
 import re
 import tarfile
 import unicodedata
+from datetime import datetime
 from typing import NamedTuple
 
 import numpy as np
@@ -70,6 +73,24 @@ def listen_files(fileobj):
             month = member.isfile() and month_of(member.name)
             if month:
                 yield month[0], month[1], tar.extractfile(member)
+
+
+def dump_window(fileobj):
+    """(start, end) of a daily dump, as Unix seconds: the window of submission times its listens come from, read
+    from its START_TIMESTAMP and END_TIMESTAMP files ("2026-10-18 00:00:03.293870+00:00"), which come before the
+    listens, so only the archive's first few kilobytes are read."""
+    reader = zstandard.ZstdDecompressor(max_window_size=2 ** 31).stream_reader(fileobj, read_size=1 << 16)
+    found = {}
+    with tarfile.open(fileobj=reader, mode="r|") as tar:
+        for member in tar:
+            name = member.name.rsplit("/", 1)[-1]
+            if member.isfile() and name in ("START_TIMESTAMP", "END_TIMESTAMP"):
+                found[name] = datetime.fromisoformat(tar.extractfile(member).read().decode().strip()).timestamp()
+            if len(found) == 2 or month_of(member.name):
+                break
+    if len(found) < 2:
+        raise ValueError("not a daily dump: no START_TIMESTAMP and END_TIMESTAMP before its listens")
+    return found["START_TIMESTAMP"], found["END_TIMESTAMP"]
 
 
 def spotify_track_id(info):

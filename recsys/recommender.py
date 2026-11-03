@@ -20,7 +20,6 @@ import bisect
 import json
 import threading
 import time
-import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +27,7 @@ import torch
 from torch import nn
 
 from recsys.admission import Overloaded  # noqa: F401  (raised through compute)
+from recsys.bundle import name_key
 from recsys.data import encode_names
 from recsys.model import SongRecommender
 from recsys.rank_features import CandidateFeatures
@@ -49,13 +49,6 @@ MAX_PER_ARTIST = 2
 # that the held-out playlists went on to contain (scripts/playlist_eval.py).
 MIX = 0.5
 LAST = "\U0010ffff"  # sorts after every character: keys starting with p lie in [p, p + LAST)
-
-
-def name_key(text):
-    """How song and artist names are compared: accents removed, case folded, spaces collapsed
-    ("Beyoncé  Knowles" -> "beyonce knowles")."""
-    text = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
-    return " ".join(text.casefold().split())
 
 
 def splits(key):

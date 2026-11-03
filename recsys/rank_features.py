@@ -32,6 +32,8 @@ predict into its inputs.
 import numpy as np
 import torch
 
+from recsys.pair_table import PAIR_WINDOW, pair_counts  # noqa: F401  (also used from here)
+
 GROUPS = {
     "retriever_score": ["score_gap", "log_rank"],
     "popularity": ["log_popularity"],
@@ -43,22 +45,8 @@ GROUPS = {
     "song_length": ["length_gap"],
     "playlist_length": ["log_playlist_len"],
 }
-PAIR_WINDOW = 5   # a pair (a, b): song b comes 1 to 5 songs after song a in a playlist
 HISTORY = 100     # history inputs look at up to this many of the playlist's most recent songs
 NEIGHBOURS = 50   # neighbour inputs look at this many of the most alike part-A playlists
-
-
-def pair_counts(songs, offsets, vocab_size, window=PAIR_WINDOW):
-    """(keys, counts), keys sorted: key a * vocab_size + b; counts[i] is how often song b comes
-    1 to `window` songs after song a in the same playlist. songs: playlists concatenated (vocab
-    IDs, -1 = outside the vocab, never counted); offsets: where each starts, plus the end."""
-    playlist = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
-    keys = []
-    for d in range(1, window + 1):
-        a, b = songs[:-d], songs[d:]
-        ok = (a >= 0) & (b >= 0) & (playlist[:-d] == playlist[d:])
-        keys.append(a[ok] * vocab_size + b[ok])
-    return np.unique(np.concatenate(keys), return_counts=True)
 
 
 def playlist_vectors(songs, offsets, vectors):

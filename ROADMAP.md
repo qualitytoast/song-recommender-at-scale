@@ -49,6 +49,7 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Tested N = 3 with 1.5x the listens: 2.46M songs, +7.8% on the same cases, ahead of N = 2 on all three case sets
 - [x] The site serves the N = 3 + 1.5x pair: 2.46M songs, the offline top 10 for 2,000 of 2,000, 51 s of downtime
 - [x] Co-occurrence counts at 5.26 bytes a pair, not 12: 1.82 -> 0.80 GB on the shards, ~0.9 GB freed, every count exact
+- [x] Replayed 11 days of real daily dumps, no retraining: new songs and their counts give +1.8% NDCG@10 on new listening
 
 ## TODO Now
 
