@@ -20,6 +20,7 @@ import bisect
 import json
 import threading
 import time
+from collections import ChainMap
 from pathlib import Path
 
 import numpy as np
@@ -149,34 +150,66 @@ class Stopwatch:
         self.last = now
 
 
+class BaseNames:
+    """A base bundle's song names and lookups, parsed once per process (seconds for millions of songs) and
+    shared by every Catalog of the bundle and its updates: an update only appends songs."""
+
+    def __init__(self, path):
+        songs = json.loads((path / "songs.json").read_text())
+        keys = json.loads((path / "name_keys.json").read_text())
+        self.path = path.resolve()
+        self.uris, self.tracks, self.artist_names = songs["uris"], songs["tracks"], songs["artist_names"]
+        self.track_keys, self.artist_keys = keys["tracks"], keys["artists"]  # per song, per artist
+        self.song_artist = np.load(path / "song_artist.npy")
+        self.artists = [self.artist_names[a] for a in self.song_artist.tolist()]
+        self.song_id = {uri: i for i, uri in enumerate(self.uris)}
+        words = json.loads((path / "name_words.json").read_text())
+        self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
+
+
+def version_of(folder):
+    return json.loads((Path(folder) / "manifest.json").read_text())["version"]
+
+
 class Catalog:
     """What every recommender front end needs besides the models: the bundle's settings and version,
     the song lookups (URI <-> ID, track and artist names), finding songs by name, the playlist-name
-    words, and turning a request into a response (recommend). Subclasses answer recommend_ids."""
+    words, and turning a request into a response (recommend). Subclasses answer recommend_ids.
+    With update (a folder of recsys/updates.py), the catalog is that version of the bundle: the base's songs
+    and the ones added since, with its own counts and version; base_version stays the bundle's (taste profiles
+    and the song search index are the base's). share: a Catalog of the same bundle whose parsed names to reuse."""
 
-    def __init__(self, bundle, device="cpu"):
-        self.path = Path(bundle)
+    def __init__(self, bundle, device="cpu", update=None, share=None):
+        self.path = Path(bundle)  # the base bundle: the models' shared layers, names, words and profiles
+        self.update = Path(update) if update else None
+        here = self.update or self.path  # this version's own files
         self.device = torch.device(device)
-        self.settings = json.loads((self.path / "settings.json").read_text())
-        self.version = json.loads((self.path / "manifest.json").read_text())["version"]
+        self.settings = json.loads((here / "settings.json").read_text())
+        self.version, self.base_version = version_of(here), version_of(self.path)
         # a request's artist limit and mix unless it sets them: the bundle's own, if it has them
         self.max_per_artist = self.settings.get("max_per_artist", MAX_PER_ARTIST)
         self.mix = self.settings.get("mix", MIX)
-        songs = json.loads((self.path / "songs.json").read_text())
-        self.uris, self.tracks = songs["uris"], songs["tracks"]
-        self.song_artist = self.load("song_artist")
-        self.artists = [songs["artist_names"][a] for a in self.song_artist]
-        self.song_id = {uri: i for i, uri in enumerate(self.uris)}
+        names = share.names if share is not None and share.names.path == self.path.resolve() else BaseNames(self.path)
+        self.names = names
+        track_keys = names.track_keys
+        self.uris, self.tracks, self.song_artist = names.uris, names.tracks, names.song_artist
+        self.artists, self.song_id, self.word_id = names.artists, names.song_id, names.word_id
+        if self.update:  # the songs added since the base, after the base's own (IDs only ever append)
+            added = json.loads((self.update / "added_songs.json").read_text())
+            self.uris, self.tracks = names.uris + added["uris"], names.tracks + added["tracks"]
+            self.song_artist = np.concatenate([names.song_artist, np.asarray(added["artist"], names.song_artist.dtype)])
+            self.artists = names.artists + [names.artist_names[a] for a in added["artist"]]
+            self.song_id = ChainMap({uri: len(names.uris) + i for i, uri in enumerate(added["uris"])}, names.song_id)
+            track_keys = track_keys + [name_key(t) for t in added["tracks"]]
+        if len(self.uris) != self.settings["songs"]:
+            raise ValueError(f"{here}: {len(self.uris):,} songs named, settings say {self.settings['songs']:,}")
         # Finding songs by name: song IDs sorted by track name key and by artist name key (each
         # most-played first among equal names), with the keys in that order for binary search.
-        self.playlists = self.load("song_playlists")
+        self.playlists = np.load(here / "song_playlists.npy")
         self.popularity = self.settings.get("popularity", "playlists")  # what self.playlists counts
-        keys = json.loads((self.path / "name_keys.json").read_text())
-        self.by_track, self.by_artist = self.load("songs_by_track"), self.load("songs_by_artist")
-        self.track_keys = [keys["tracks"][i] for i in self.by_track]
-        self.artist_keys = [keys["artists"][self.song_artist[i]] for i in self.by_artist]
-        words = json.loads((self.path / "name_words.json").read_text())
-        self.word_id = {w: i + 1 for i, w in enumerate(words)}  # 0 is padding, as in training
+        self.by_track, self.by_artist = np.load(here / "songs_by_track.npy"), np.load(here / "songs_by_artist.npy")
+        self.track_keys = [track_keys[i] for i in self.by_track.tolist()]
+        self.artist_keys = [names.artist_keys[a] for a in self.song_artist[self.by_artist].tolist()]
         self.lock = threading.Lock()
         self.cache = None  # a recsys.cache.Cache shared by every front desk, if set
         self.song_search = None  # a recsys.song_search.SongSearch (typo-tolerant), if set: the menu asks it first
@@ -192,11 +225,12 @@ class Catalog:
         pass
 
     def load_profiles(self, folder):
-        """Load the taste profiles in folder (*.npz, recsys.taste) built for this bundle version; returns how many
-        are loaded. One built for another version is skipped: its song and artist IDs don't fit this bundle."""
+        """Load the taste profiles in folder (*.npz, recsys.taste) built for this bundle (its base version: an
+        update only appends songs, so they still fit); returns how many are loaded. One built for another bundle
+        is skipped: its song and artist IDs don't fit this one."""
         for path in sorted(Path(folder).glob("*.npz")):
             profile = load_profile(path)
-            if profile.bundle == self.version:
+            if profile.bundle == self.base_version:
                 self.profiles[profile.key] = profile
         return len(self.profiles)
 

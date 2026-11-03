@@ -18,24 +18,45 @@ class Batcher:
         self.queue = queue.Queue()
         self.sizes = []  # every batch's size, for reports
         self.dropped = 0  # requests that waited past their deadline: never computed
-        threading.Thread(target=self._loop, daemon=True).start()
+        self.closed, self.lock = False, threading.Lock()
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.thread.start()
 
     def submit(self, request, deadline=None):
         """The request's result (waits for its batch); raises the request's own error, if it had one, or
-        Overloaded if it couldn't start by `deadline` (time.monotonic())."""
+        Overloaded if it couldn't start by `deadline` (time.monotonic()) or the batcher is closed."""
         future = Future()
-        self.queue.put((request, future, deadline))
+        with self.lock:
+            if self.closed:
+                raise Overloaded("busy: this version was just replaced; try again")
+            self.queue.put((request, future, deadline))
         return future.result()
 
+    def close(self):
+        """End the thread once what's queued is answered (else it, and the recommender it runs, live forever: a
+        front desk that switches versions, recsys/switch.py, closes the old version's batcher)."""
+        with self.lock:
+            self.closed = True
+            self.queue.put(None)  # after everything queued so far: those are still answered
+        self.thread.join()
+
     def _loop(self):
-        while True:
-            batch = [self.queue.get()]
+        closing = False
+        while not closing:
+            first = self.queue.get()
+            if first is None:
+                break
+            batch = [first]
             deadline = time.monotonic() + self.wait
             while len(batch) < self.max_batch and (left := deadline - time.monotonic()) > 0:
                 try:
-                    batch.append(self.queue.get(timeout=left))
+                    item = self.queue.get(timeout=left)
                 except queue.Empty:
                     break
+                if item is None:
+                    closing = True
+                    break
+                batch.append(item)
             now = time.monotonic()
             stale = [(r, f) for r, f, d in batch if d is not None and now > d]  # waited too long: dropped
             batch = [(r, f) for r, f, d in batch if d is None or now <= d]

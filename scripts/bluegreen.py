@@ -48,7 +48,8 @@ def new_release(bundle):
     and version, and 4 shard slices."""
     staging = bundle.parent / f".{bundle.name}-release"
     shutil.rmtree(staging, ignore_errors=True)
-    shutil.copytree(bundle, staging, copy_function=os.link, ignore=shutil.ignore_patterns("shards-*", "manifest.json"))
+    shutil.copytree(bundle, staging, copy_function=os.link,  # not its updates: a new bundle starts with none
+                    ignore=shutil.ignore_patterns("shards-*", "manifest.json", "updates", "switch.json"))
     settings = json.loads((staging / "settings.json").read_text())
     (staging / "settings.json").unlink()  # a new file, not the hard-linked original
     (staging / "settings.json").write_text(json.dumps({**settings, "release": time.strftime("%Y-%m-%d %H:%M:%S")},

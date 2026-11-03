@@ -71,9 +71,14 @@ def test_a_search_returns_song_ids_from_its_bundles_index(meili):
     assert body == {"q": "night drive", "limit": 5, "attributesToRetrieve": ["id"]}
 
 
+def test_songs_past_the_served_versions_are_left_out(meili):
+    meili.hits = [3, V, 0, V + 5]  # an index that already has an update's songs, while the version before it is served
+    assert SongSearch(meili.url, "abc123", songs=V).search("night", 5) == [3, 0]
+
+
 @pytest.mark.parametrize("mode", ["slow", "error", "nonsense", "bad id"])
 def test_a_search_that_cant_answer_gives_none_then_rests(meili, mode):
-    meili.mode, meili.hits = ("ok", [V]) if mode == "bad id" else (mode, [1])
+    meili.mode, meili.hits = ("ok", [-1]) if mode == "bad id" else (mode, [1])
     search = SongSearch(meili.url, "abc123", songs=V, timeout=0.1, cooldown=60)
     assert search.search("night", 5) is None
     assert search.search("night", 5) is None  # skipped: no second request while resting

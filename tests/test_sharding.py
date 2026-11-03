@@ -1,62 +1,20 @@
 import json
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
-from pathlib import Path
 
 import grpc
 import numpy as np
 import pytest
 
 from recsys.frontdesk import ShardMismatch, ShardedRecommender, ShardsUnavailable, merge_top
-from recsys.pair_table import PairTable, save_pairs
+from recsys.pair_table import AB, PairTable, read_pairs, save_pairs, with_pairs
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender
 from recsys.wire import pack, unpack
-from serving_helpers import write_tiny_bundle
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def free_ports(n):
-    """n distinct free ports (all held open while choosing, so none is handed out twice)."""
-    sockets = [socket.socket() for _ in range(n)]
-    for s in sockets:
-        s.bind(("127.0.0.1", 0))
-    ports = [s.getsockname()[1] for s in sockets]
-    for s in sockets:
-        s.close()
-    return ports
-
-
-def slices(bundle, n):
-    """Cut the bundle into n shard slices (in its own process: FAISS and PyTorch can't share one)."""
-    subprocess.run([sys.executable, "-m", "recsys.shard_slices", "--bundle", str(bundle), "--shards", str(n)],
-                   cwd=ROOT, check=True, capture_output=True)
-    return [Path(bundle) / f"shards-{n}" / f"shard-{i}" for i in range(n)]
-
-
-@contextmanager
-def shard_servers(folders, with_processes=False):
-    """A shard server process per slice folder; yields their addresses (and processes)."""
-    procs, addresses = [], []
-    for folder, port in zip(folders, free_ports(len(folders))):
-        procs.append(subprocess.Popen([sys.executable, "-m", "recsys.shard", "--slice", str(folder), "--port", str(port),
-                                       "--host", "127.0.0.1"], cwd=ROOT, stdout=subprocess.DEVNULL,
-                                      stderr=subprocess.DEVNULL))
-        addresses.append(f"127.0.0.1:{port}")
-    try:
-        yield (addresses, procs) if with_processes else addresses
-    finally:
-        for p in procs:
-            if p.poll() is None:
-                p.send_signal(signal.SIGCONT)
-                p.terminate()
-            p.wait(timeout=30)
+from serving_helpers import ROOT, shard_servers, slices, write_tiny_bundle
 
 
 @pytest.fixture(scope="module")
@@ -89,6 +47,24 @@ def test_the_pair_table_keeps_every_count_exact(tmp_path):
     keys = np.array([a * songs + b for a, b in never], dtype=np.int64)
     np.testing.assert_array_equal(table.lookup(keys), np.zeros(len(keys)))
     assert table.lookup(np.zeros(0, dtype=np.int64)).shape == (0,)
+
+
+def test_a_pair_table_reads_back_and_regrows_for_a_bigger_catalog(tmp_path):
+    songs = 10
+    pairs = {(0, 3): 1, (0, 8): 254, (2, 1): 255, (2, 9): 262_470, (9, 0): 7, (9, 9): 300}
+    keys = np.array([a * songs + b for a, b in pairs], dtype=np.int64)
+    save_pairs(tmp_path, keys, np.array(list(pairs.values()), dtype=np.int32), songs)
+    back, counts = read_pairs(tmp_path)
+    np.testing.assert_array_equal(back, keys)
+    np.testing.assert_array_equal(counts, list(pairs.values()))  # the big ones exact too
+    added = {(2, 9): 5, (3, 11): 2, (11, 0): 4}  # one old pair counted on, two with a new song (ID 11 of 12)
+    more = np.array(sorted(a * AB + b for a, b in added), dtype=np.int64)
+    grown, total = with_pairs(back, counts, songs, more, np.array([added[(k // AB, k % AB)] for k in more]), 12)
+    save_pairs(tmp_path, grown, total, 12)  # the side table of big counts keyed for 12 songs too
+    table = PairTable(tmp_path, 12)
+    every = {**pairs, **added, (2, 9): 262_475}
+    asked = np.array([a * 12 + b for a, b in every], dtype=np.int64)
+    np.testing.assert_array_equal(table.lookup(asked), list(every.values()))
 
 
 def test_an_empty_pair_table_finds_nothing(tmp_path):

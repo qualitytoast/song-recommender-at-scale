@@ -2338,3 +2338,57 @@ artist average and old pairs, on the site's settings: +0.0031 ± 0.0005 NDCG@10 
 of cases (78.2% at 5), old-song cases -0.0006 ± 0.0004 (-0.0003 at 5), a new song in 8.2% of top 10s (5.6% at 5);
 3 minus 5 listeners +0.0001 ± 0.0002. It adds 2.6x as many songs (17,918 vs 6,865 in 11 days), and the 2,000-a-dump
 cap was reached every day from Oct 23.
+
+**Switching versions without a restart** (2026-11-03; `recsys/switch.py`, `recsys/updates.py`, `recsys/shard.py`,
+`recsys/serve.py`; drills `scripts/switch_check.py`, `runs/serving/switch_mac*.json`). An update is a new version
+in a folder of the bundle (`updates/<date>-<version>/`: complete shard slices for the grown catalog, the added
+songs, counts, its own version). The base bundle never changes. `<bundle>/switch.json` (`{"live", "standby"}`) is
+the only pointer, and the shards and front desk read it every second. A switch has two steps, so the 4 shards
+change at once. Prepare names the new folder as standby: every shard loads it next to the live version, and the
+front desk builds a second recommender once every shard holds it. Flip swaps live and standby, and the front desk
+swaps one reference: a new request uses the new version on every shard, and one already running finishes on the
+old. Undo is another flip. Finish drops the old version (the shards keep it 5 s more, for a front desk a poll
+behind). Each request carries its version, so a shard missing it refuses rather than mixes. With no switch file,
+the system serves the bundle as before.
+
+An update is written by extending its parent's slices, since that's all the server has. Each new song's rows are
+appended, its search vector added to the shard's index, and the pair table read back, re-keyed for the bigger
+catalog, with the update's counts added. Song IDs only append, so song j is still on shard j % 4. Taste profiles and
+the song search index stay the base's (an ID past the served version's songs is left out of a search). Tested
+against the one-process recommender on the same catalog written whole: the same answers, scores to 1e-5 (pytest,
+tests/test_switch.py).
+
+Local drills on Docker (the Mac, 10 CPUs, 11.7 GiB): the served bundle 84ec with a test update of 2,000 new songs,
+copies of the most played ones (`python -m recsys.updates fake`, a day's cap of new songs), no answer cache so every
+answer is computed, 8 threads of steady traffic, 20 s on each step:
+
+| | Result |
+|---|---|
+| Drills, all 5 steps each (2 versions, prepare, flip, undo, finish) | 5 on the final code, 213,598 requests |
+| Failed or partial answers from the first step on | 0 in all 5 |
+| A case answered two ways by one version (a mixed answer would be) | 0 |
+| Cases the two versions answer differently | 771 (the update's songs show up) |
+| Standby ready after prepare (front desk) | 2.6-4.9 s (each shard loads its slice in 0.6-1.7 s, files cached) |
+| Old version still answering after a flip or undo | up to 0.84-0.93 s (the once-a-second read) |
+| p99 latency overall / within 2 s of prepare / of a flip / of finish | 32-42 / 72-104 / 28-47 / 25-93 ms (p50 ~19 ms) |
+| Memory holding two versions | shards 919-941 MiB each (472-502 with one), front desk 1.44 GiB (1.07-1.25): +1.9 GB in all |
+| Front desk after 4 more switch cycles | 1.26-1.41 GiB: no growth |
+| An update with no new songs | the same top 10 in order for 2,000 of 2,000 cases (NDCG@10 0.2693, as the base) |
+| Writing an update (Mac) | 10 s for 2,000 songs, 9 s for none; 1.7 GB on disk; peak memory 4.2-4.8 GB |
+
+What was learned:
+- 2 of the 5 drills had about a second of partial answers (448 and 422, a few of them 503s) right as traffic started
+  after 35 s idle, 20 s before any step. It isn't the switch: steady traffic with idle gaps and no switching did the
+  same (1 of 8 rounds, 368). A first call after idle can miss a shard's 0.25 s deadline, and the front desk's circuit breaker then
+  skips that shard for a second. Seen only on the Mac so far.
+- On the code before the review fixes, one burst came 2 s after a finish (121 partial). The shards then dropped the
+  old version at once; they now keep it 5 s, and no burst has come after a step since.
+- An independent review found no way for a request to mix versions. It found 5 gaps, fixed here with tests: a flip
+  checked the shards only when the standby was built (a shard restarted since would refuse it), a mistyped standby
+  folder stalled the front desk's switching, a failed build leaked its connections, and two smaller ones. Left as is:
+  readiness is asked of one copy of a shard run as several (the site runs one of each).
+- Two things for the daily job: a 4.8 GB peak to write an update is too much next to the serving stack (7.2 GB free on
+  the server), and the update's new songs still have to be added to the song search index.
+- Not deployed yet: the deploy (one restart, ~22-51 s) waits for permission to write on the server.
+
+Time: tests 62 s; writing the two test updates 19 s; each drill ~110 s.

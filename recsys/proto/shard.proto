@@ -11,13 +11,18 @@ message Array {
   repeated int64 shape = 3;
 }
 
-message InfoRequest {}
+// A shard can hold two versions at once (recsys/switch.py): the reply describes the one asked for, or the
+// live one if none is named. A version it doesn't hold is refused (FAILED_PRECONDITION), like any request.
+message InfoRequest {
+  string version = 1;
+}
 message InfoReply {
-  string version = 1;      // the bundle version this shard loaded
+  string version = 1;      // the bundle version described
   int32 index = 2;         // which shard it is: it holds the songs with id % shards == index
   int32 shards = 3;        // how many shards the catalog is split into
   int64 songs = 4;         // songs held here
   int64 catalog = 5;       // songs in the whole catalog
+  repeated string versions = 6;  // every version this shard holds, live first
 }
 
 // The top k songs of this shard for each query vector [h, 1], best first, as global song IDs.
