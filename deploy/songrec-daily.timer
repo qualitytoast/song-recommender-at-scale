@@ -1,0 +1,11 @@
+# Starts songrec-daily.service every day at 09:00 UTC: ListenBrainz writes each day's dump just after midnight UTC.
+# Persistent: a run missed while the server was off happens when it's back.
+[Unit]
+Description=Song recommender: the daily update at 09:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

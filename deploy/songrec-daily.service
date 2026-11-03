@@ -1,0 +1,16 @@
+# The daily ListenBrainz update (recsys/daily_job.py), started by songrec-daily.timer. On the server:
+#   sudo cp deploy/songrec-daily.service deploy/songrec-daily.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now songrec-daily.timer
+# Its log: journalctl -u songrec-daily (the job prints every step). The job itself skips a run while paused
+# (after an undo or a switch back): `docker compose ... run --rm daily python -m recsys.daily_job resume --bundle /bundle`.
+[Unit]
+Description=Song recommender: the daily ListenBrainz update
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/song-recommender-at-scale
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.oracle.yml run --rm daily
+TimeoutStartSec=2h

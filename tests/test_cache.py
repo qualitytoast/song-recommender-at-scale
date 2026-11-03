@@ -52,6 +52,19 @@ def test_repeated_requests_come_from_the_cache_keyed_by_version(rec):
         rec.cache = None
 
 
+def test_a_fresh_answer_is_computed_despite_the_cache_and_not_stored(rec):
+    fake = FakeRedis()
+    rec.cache = Cache(None, client=fake)
+    try:
+        assert rec.recommend(["spotify:track:6"], fresh=True)["cached"] is False and not fake.store
+        first = rec.recommend(["spotify:track:6"])
+        fresh = rec.recommend(["spotify:track:6"], fresh=True)  # the daily job's checks: the real path, timed
+        assert fresh["cached"] is False and fresh["recommendations"] == first["recommendations"]
+        assert rec.recommend(["spotify:track:6"])["cached"] is True
+    finally:
+        rec.cache = None
+
+
 def test_a_partial_answer_is_not_cached(rec, monkeypatch):
     fake = FakeRedis()
     rec.cache = Cache(None, client=fake)

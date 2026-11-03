@@ -379,7 +379,8 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
 # --- switch ----------------------------------------------------------------------------------------------------------
 
 class FrontDesk:
-    """A front desk reached directly (not through nginx, which removes the standby header)."""
+    """A front desk reached directly (not through nginx, which removes the standby header). Every answer it asks
+    for is computed (X-Recsys-Fresh), not taken from the cache: the checks must reach the shards and time them."""
 
     def __init__(self, url, timeout=10.0):
         self.url, self.timeout = url.rstrip("/"), timeout
@@ -391,7 +392,7 @@ class FrontDesk:
     def recommend(self, songs, standby=False):
         """(HTTP status, the answer or None, milliseconds)."""
         request = urllib.request.Request(f"{self.url}/recommend", data=json.dumps({"songs": songs}).encode(),
-                                         headers={"content-type": "application/json",
+                                         headers={"content-type": "application/json", "X-Recsys-Fresh": "1",
                                                   **({"X-Recsys-Standby": "1"} if standby else {})})
         start = time.perf_counter()
         try:
