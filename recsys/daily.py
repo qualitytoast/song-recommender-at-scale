@@ -15,8 +15,8 @@ first:
      each song's listens, and how often each song came 1 to 5 songs after another (rank_features.pair_counts)
 
 A new song gets the next song ID, so every ID keeps its meaning (and its shard, ID % shards). The models never saw
-it: it gets stand-in vectors made from the bundle's finished ones (standins). Imports numpy only (and FAISS, through
-recsys.lb_extract's callers, never PyTorch: the two can't share a process, see recsys/ann.py).
+it: it gets stand-in vectors made from the bundle's finished ones (standins). Imports numpy only, never PyTorch, so a
+process with FAISS can use it (the two can't share a process, see recsys/ann.py).
 """
 import hashlib
 import json
@@ -30,7 +30,7 @@ from recsys.lb_extract import MARKER, extract, load_extract
 from recsys.lb_sessions import by_user_and_time, sessions
 from recsys.lb_store import merged_counts, mode_per_song, noise
 from recsys.listenbrainz import clean_text, dump_window
-from recsys.rank_features import pair_counts
+from recsys.pair_table import pair_counts
 
 DAY = 86_400
 FRESH_DAYS = 30   # listens played longer ago than this before their dump's end are imported history, not counted
