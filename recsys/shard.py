@@ -97,12 +97,9 @@ class Shard(shard_pb2_grpc.ShardServicer):
         keep = named | {live} | {f for f, since in self.unnamed.items() if now - since < KEEP_S}
         for folder in [f for f in held if f not in keep]:
             self.log(f"shard: dropped version {held[folder].info['version']} ({folder})")
-        dropped = len(held) > len(keep & set(held))
         held = {f: s for f, s in held.items() if f in keep}
         order = [live] + [f for f in held if f != live]
         self.state = (live, held, {held[f].info["version"]: held[f] for f in order})
-        if dropped:
-            switch.give_back()
 
     def versions(self):
         return list(self.state[2])  # live first

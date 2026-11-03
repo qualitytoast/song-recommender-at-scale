@@ -41,7 +41,6 @@ recsys.frontdesk.ShardedRecommender (per-song data in the shard servers), loaded
 which FastAPI runs in worker threads; the Recommender answers one request at a time.
 """
 import argparse
-import gc
 import os
 import time
 from contextlib import asynccontextmanager
@@ -127,15 +126,10 @@ class Switcher:
         current = self.app.state.recommender
         for folder in [f for f, r in self.built.items() if f not in switch.wanted(state) and r is not current]:
             self.retiring.append((now + self.grace, self.built.pop(folder)))
-        closing = [r for r in self.retiring if r[0] <= now]
-        self.retiring = [r for r in self.retiring if r[0] > now]
-        for when, rec in closing:
+        for when, rec in [r for r in self.retiring if r[0] <= now]:
             rec.close()
             switch.say(f"front desk: closed version {rec.version}")
-        if closing:
-            del rec, closing
-            gc.collect()
-            switch.give_back()
+        self.retiring = [r for r in self.retiring if r[0] > now]
         if problems:
             raise RuntimeError("front desk: " + "; ".join(problems))
 
