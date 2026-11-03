@@ -74,6 +74,7 @@ import torch
 from torch import nn
 
 from recsys.baselines import popularity_ranks, popularity_scores
+from recsys.bundle import file_fingerprint  # noqa: F401  (also used from here, by recsys.export)
 from recsys.config import load_config
 from recsys.data import build_dataset, case_targets
 from recsys.evaluate import (by_length, eval_file, evaluation_config, playlist_scores, print_by_length,
@@ -305,15 +306,6 @@ def build_shortlists(model, X, N, Y, device, k, search, vectors, chunk=20000, le
 
 
 SHORTLIST_CACHE = Path("runs/shortlist_cache")
-
-
-def file_fingerprint(path, block=1 << 24):
-    """SHA-256 of a file's bytes, read a block at a time."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        while chunk := f.read(block):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def shortlist_key(rc, retriever_print, X, N, Y, lengths):

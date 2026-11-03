@@ -39,7 +39,7 @@ import numpy as np
 
 from recsys.lb_extract import load_extract
 from recsys.lb_sessions import by_user_and_time, rank_from_end, sessions, user_starts_from, users_per_song
-from recsys.listenbrainz import clean_text
+from recsys.listenbrainz import clean_text, clean_title
 from recsys.mpd_store import MARKER
 
 MPD_SIZE = 66_346_428      # song entries in the MPD's 1M playlists
@@ -224,6 +224,13 @@ def read_genre_files(mpd_genres, mb_genres):
                 for sid in row["spotify_ids"]:
                     by_uri.setdefault(f"spotify:artist:{sid}", row["genres"])
     return by_uri, by_mbid
+
+
+def store_song_keys(store):
+    """Each store track's song key: its artist's key (a ListenBrainz store's artist URIs are
+    listenbrainz:artist:<key>) and its cleaned title, as recsys.listenbrainz.song_key made it."""
+    artist_keys = [uri.split(":", 2)[2] for uri in store.artist_uris]
+    return [f"{artist_keys[a]}|{clean_title(name)}" for a, name in zip(store.track_artist, store.track_names)]
 
 
 def build_store(extract_dir, out, target=MPD_SIZE, min_users=5, seed=42, max_day=1000, skip=30,

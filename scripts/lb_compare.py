@@ -46,6 +46,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from recsys.lb_store import store_song_keys  # noqa: E402,F401  (also used from here, by its tests)
 
 HELD_OUT = 3
 SETTINGS = [{"max_per_artist": 0, "mix": 0.0}, {"max_per_artist": 2, "mix": 0.5}]
@@ -187,15 +188,6 @@ def tune(args):
     rec.close()
     results["seconds"] = round(time.perf_counter() - began)
     (Path(args.cases) / "tune.json").write_text(json.dumps(results, indent=2))
-
-
-def store_song_keys(store):
-    """Each store track's song key: its artist's key (a ListenBrainz store's artist URIs are
-    listenbrainz:artist:<key>) and its cleaned title, as recsys.listenbrainz.song_key made it."""
-    from recsys.listenbrainz import clean_title
-
-    artist_keys = [uri.split(":", 2)[2] for uri in store.artist_uris]
-    return [f"{artist_keys[a]}|{clean_title(name)}" for a, name in zip(store.track_artist, store.track_names)]
 
 
 def build_catalog_cases(keys, tracks, offsets, n_cases, seed, input_length=10):
