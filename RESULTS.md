@@ -2331,3 +2331,10 @@ Decisions (the plan's rules):
 Time: download 36 min; first build 243 s (discarded); build 320 s (extracts of 16 real dumps 6-8 s each, 5 replays
 12-31 s each, 9 variants 2-24 s each); scoring 1,111 s (9 variants, ~123 s each: 2 settings x 20,000 cases); 2 more
 variants 103 s to build and 251 s to score. All on the Mac's CPU; no GPU.
+
+**The bar changed to 3 listeners** (2026-11-03, the user's call; nothing rerun). The decision above picked 5. The
+daily job uses 3, the catalog's own bar (N = 3; `recsys.daily.MIN_USERS`). From the same replay, with the lengthened
+artist average and old pairs, on the site's settings: +0.0031 ± 0.0005 NDCG@10 (+1.9%), the next song known in 78.6%
+of cases (78.2% at 5), old-song cases -0.0006 ± 0.0004 (-0.0003 at 5), a new song in 8.2% of top 10s (5.6% at 5);
+3 minus 5 listeners +0.0001 ± 0.0002. It adds 2.6x as many songs (17,918 vs 6,865 in 11 days), and the 2,000-a-dump
+cap was reached every day from Oct 23.
