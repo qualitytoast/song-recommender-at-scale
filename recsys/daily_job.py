@@ -316,8 +316,11 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
     after = info.get("chain_end", state["data_end"])
     began = time.perf_counter()
     found = list_dumps(source)
+    # the parent's own dumps are left out by name too: the nearly empty dump after a day's spans ~0.3 s, less than the
+    # chain's tolerance (1 s), so as the parent's last dump its window alone doesn't mark it as used (2761, 2026-11-02)
+    done = {d["dump"] for d in info.get("dumps", [])} | set(info.get("skipped_dumps", []))
     recent = {n: loc for n, loc in found.items()  # a dump is named for its window's end
-              if named_time(n) > after - 2 * DAY and (until is None or named_time(n) <= until + 3600)}
+              if n not in done and named_time(n) > after - 2 * DAY and (until is None or named_time(n) <= until + 3600)}
     windows = {n: read_window(loc) for n, loc in recent.items()}
     used, skipped, gaps = chain(windows, after)
     if until is not None:

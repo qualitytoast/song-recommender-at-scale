@@ -16,6 +16,7 @@ No file means the base alone ({"live": ".", "standby": null}), as before switchi
 desks read the file every second (follow). It's written whole, by renaming a finished file over it, so a reader
 never sees half of one. Imports nothing heavy (no numpy, FAISS or PyTorch).
 """
+import ctypes
 import json
 import os
 import threading
@@ -27,6 +28,15 @@ BASE = "."
 
 def say(message):
     print(message, flush=True)  # a container's log: unbuffered, so lines show when they happen
+
+
+def give_back():
+    """Return freed memory to the system after a version is dropped: glibc keeps part of it otherwise (~85 MB of a
+    shard's ~0.5 GB stayed after a switch). Nothing where there's no glibc (a Mac)."""
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def read(path):

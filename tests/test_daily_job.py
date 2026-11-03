@@ -32,7 +32,7 @@ def names(bundle):
 def write_dump(folder, number, start, end, sessions):
     """A daily dump in its own folder, named as ListenBrainz names them (for its window's end); sessions: {user:
     [(artist, title), ...]}, played in the 6 hours before the end."""
-    stamp = lambda t: f"{datetime.fromtimestamp(t, timezone.utc):%Y-%m-%d %H:%M:%S}+00:00".encode()
+    stamp = lambda t: f"{datetime.fromtimestamp(t, timezone.utc):%Y-%m-%d %H:%M:%S.%f}+00:00".encode()
     name = f"listenbrainz-dump-{number:04d}-{datetime.fromtimestamp(end, timezone.utc):%Y%m%d-%H%M%S}-incremental"
     lines = [listen_line(user=u, ts=end - 6 * 3600 + u * 1800 + i * 120, artist=a, title=t, release="")
              for u, songs in sessions.items() for i, (a, t) in enumerate(songs)]
@@ -55,6 +55,11 @@ def build(bundle, dumps, *extra):
     return built[0] if built else None
 
 
+def every_song_twice(songs, first_user):
+    """8 listeners' sessions of 10 songs that play each of the 40 songs twice (so none is over 5% of the day)."""
+    return {first_user + u: [songs[(u * 10 + k) % 40] for k in range(10)] for u in range(8)}
+
+
 @pytest.fixture(scope="module")
 def tiny(tmp_path_factory):
     """(bundle, dumps folder, the dumps' names): the tiny bundle with its daily files, and two days of dumps (each
@@ -71,10 +76,8 @@ def tiny(tmp_path_factory):
     uris = json.loads((bundle / "songs.json").read_text())["uris"]
     (daily / "cases.json").write_text(json.dumps([{"songs": [uris[j]], "target": uris[j + 1]} for j in range(30)]))
     dj.write_state(bundle, {"data_end": DATA_END, "paused": False, "paused_why": None, "skip": [], "runs": []})
-    run = lambda user: [songs[(user * 10 + k) % 40] for k in range(10)]  # users 0-7: every song twice
-    day1 = {u + 1: run(u) for u in range(8)}
+    day1, day2 = every_song_twice(songs, 1), every_song_twice(songs, 11)
     day1[1], day1[2] = day1[1] + [NEW], [NEW] + day1[2]
-    day2 = {u + 11: run(u) for u in range(8)}
     day2[11] = day2[11][:5] + [NEW] + day2[11][5:]
     dumps = root / "dumps"
     names_ = [write_dump(dumps, 1, DATA_END + 3, DATA_END + 86403, day1),
@@ -117,6 +120,24 @@ def test_a_skipped_dump_is_stepped_past(tiny):
         assert info["chain_end"] == pytest.approx(DATA_END + 2 * 86403) and info["added"] == 0  # 1 listener of it
     finally:
         dj.write_state(bundle, state)
+
+
+def test_a_tail_dump_is_used_once(tiny, tmp_path):
+    """As 2761 (2026-11-02): the nearly empty dump after a day's spans 0.31 s, less than the chain's 1 s tolerance,
+    so as an update's last dump its window alone doesn't mark it as used: its name keeps it out of the next build."""
+    bundle, _, _ = tiny
+    songs, sw, dumps = names(bundle), bundle / "switch.json", tmp_path / "dumps"
+    day1 = write_dump(dumps, 1, DATA_END + 3.3, DATA_END + 86402.91, every_song_twice(songs, 1))
+    tail = write_dump(dumps, 2, DATA_END + 86402.91, DATA_END + 86403.22, {9: songs[:1]})
+    day2 = write_dump(dumps, 3, DATA_END + 86403.22, DATA_END + 2 * 86403, every_song_twice(songs, 11))
+    first = build(bundle, dumps, "--until", "2026-10-16")
+    assert [d["dump"] for d in dj.update_info(bundle, first)["dumps"]] == [day1, tail]
+    switch.write(sw, first)
+    try:
+        second = build(bundle, dumps)
+        assert [d["dump"] for d in dj.update_info(bundle, second)["dumps"]] == [day2]
+    finally:
+        sw.unlink()
 
 
 def test_a_day_out_of_line_with_the_ones_before_stops_the_build():
