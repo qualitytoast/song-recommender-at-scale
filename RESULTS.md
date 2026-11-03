@@ -2392,3 +2392,60 @@ What was learned:
 - Not deployed yet: the deploy (one restart, ~22-51 s) waits for permission to write on the server.
 
 Time: tests 62 s; writing the two test updates 19 s; each drill ~110 s.
+
+**The daily job** (2026-11-03; `recsys/daily_job.py`, `deploy/songrec-daily.*`). Each day it builds an update on top
+of the live version from the dumps not used yet, checks it, switches to it, and watches it (the steps are in the
+module docstring). The job runs in its own container, with 1 core and 4 GB at most. Each update keeps what the next
+day needs: the dumps it used, and who played songs outside the catalog in the last 30 days (seen.npz). So an undo
+also rewinds what the next build starts from. Once, on the Mac, `starter` writes `<bundle>/daily/` (400 MB in 13 s):
+lookups for every song by its key's hash (the keys come from the training store), the search vectors, the
+held-out cases for the checks.
+
+Memory decided the design. The server has ~7.2 GB free next to the serving stack, and the first version of a day's
+build needed far more:
+
+| One day's build | Memory |
+|---|---|
+| Song lookups as Python strings (keys, Spotify IDs, albums) | 2.2 GB |
+| + the dump's rules, + the new songs' vectors | 3.7 GB |
+| + writing the slices (re-keying every pair at 8 bytes, several times) | 4.2-4.8 GB peak (the test update in part B) |
+| After: lookups by 64-bit hash, the pair table grown in its compact form (`pair_table.grow`, the same files as rebuilding it), new songs inserted into the name order | 1.2 GB allocated at the peak |
+| In the 4 GB container, streaming the dump from ListenBrainz | 2.7 GiB (page cache included) |
+
+The first update is a catch-up, built on the Mac from the 21 dumps on hand (Oct 18 to Nov 2; Oct 15-17 had expired):
+25,918 new songs, 30.9M pairs counted, 12.4M listens, in 47 s (7.4 GB: the Mac's job, not the server's), 1.9 GB on
+disk.
+
+On Docker on the Mac, with the cache on and steady traffic through nginx:
+
+| | Switch to the catch-up | A real day (Nov 3) from ListenBrainz |
+|---|---|---|
+| Build | (the Mac, above) | 183 s: the dump streamed at ~2 MB/s for 142 s; 2,000 new songs (the cap), 2.62M pairs |
+| New songs into the search index | 25,918 | 2,000 in 5 s |
+| Standby ready after prepare | 4.2 s | 4.2 s |
+| Checks: NDCG@10 live / standby | 0.2627 / 0.2618 | 0.2618 / 0.2619 |
+| Checks: p99 live / standby | not compared (live's answers were cached) | 19.6 / 18.3 ms |
+| Checks: lists with a new song; most lists for one new song | 8.5%; 3 of 2,000 | 0.4%; 1 |
+| Watch after the flip | 600 s, no failures | 600 s, no failures |
+| Whole switch | 634 s | 837 s with the build |
+| Traffic during it | 88,239 requests: 0 failed, 0 partial | 129,560: 0 failed, 0 partial |
+
+Also checked:
+- Restarting everything while an update is live brings it back: the shards and the front desk start on it.
+- Undo took 6 s back to the catch-up and paused the timer.
+- A shard keeps ~90 MB more after a switch than fresh (617 vs ~530 MB of its own memory). This stayed level over
+  3 switches. Releasing freed memory with `malloc_trim` changed nothing, so it isn't in the code.
+
+Fixed along the way, each with a test:
+- The checks' live answers came from the cache, so p99 wasn't compared on the first switch. The job's requests now
+  ask for answers computed despite the cache (`X-Recsys-Fresh`, stripped by nginx like the standby header).
+- A tail dump was used twice. Dump 2761 spans 0.31 s, less than the chain's 1 s tolerance. As the catch-up's last
+  dump, its window alone didn't mark it as used, and the next build counted it again (4 listens, 6 pairs). A build
+  now leaves its parent's dumps out by name.
+- FAISS and PyTorch in one test process crashed the tests (the Mac's two OpenMPs). `updates.py` imports FAISS only
+  where it writes an index, and the job's tests build in their own process.
+
+Not done yet: the server. Its deploy, the first switch and the timer all wait for permission to write on the
+server.
+
+Time: tests 70 s (357); starter 13 s; catch-up 47 s; the two switches 634 s and 837 s; undo 6 s.
