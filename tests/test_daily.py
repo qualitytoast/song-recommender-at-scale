@@ -31,8 +31,15 @@ def test_dump_window_reads_the_timestamp_files_before_the_listens():
 def test_chain_skips_a_second_dump_of_a_window_and_reports_gaps():
     windows = {"d1": (0, 100), "d1-again": (0, 101), "d1-tail": (100, 100.3), "d2": (100.3, 200), "d4": (300, 400)}
     assert chain(windows) == (["d1", "d1-tail", "d2", "d4"], ["d1-again"], [(200, 300)])
-    assert chain(windows, after=200) == (["d4"], ["d1", "d1-tail", "d1-again", "d2"], [(200, 300)])
-    assert chain(windows, after=400) == ([], ["d1", "d1-tail", "d1-again", "d2", "d4"], [])
+    assert chain(windows, after=200) == (["d4"], ["d1", "d1-again", "d1-tail", "d2"], [(200, 300)])
+    assert chain(windows, after=400) == ([], ["d1", "d1-again", "d1-tail", "d2", "d4"], [])
+
+
+def test_chain_follows_a_tail_dump_that_ends_before_it_starts():
+    # dumps 2752-2754 (2026-10-29/30): the tail dump's end is 0.16 s before its start, and the next day starts there
+    windows = {"2752": (1793232003.372690, 1793318403.434693), "2753": (1793318403.434693, 1793318403.272376),
+               "2754": (1793318403.272376, 1793404803.115939)}
+    assert chain(windows) == (["2752", "2754"], ["2753"], [])
 
 
 def test_catalog_sessions_apply_the_session_rules_again():

@@ -43,11 +43,14 @@ AB = 1 << 32      # an update's pair keys are a * AB + b: they don't depend on t
 
 def chain(windows, after=None):
     """Which dumps to use, in order. windows: {name: (start, end)}; after: where the last dump used ended (None:
-    start from the earliest). A dump is used if its window starts at or after the end of the last one used;
-    another dump of a window already used is skipped. Returns (used, skipped, gaps): names in order, and the
-    stretches [(from, to)] of time that no used dump covers."""
+    start from the earliest). Each dump's window starts where the one before ended, so the dumps are followed in
+    order of their start: one is used if it starts at or after the end of the last one used (within TOLERANCE),
+    and another dump of a window already used is skipped. (The nearly empty dump seconds after each day's can end
+    a fraction of a second before it starts, and the next day's then starts before it: ordered by their ends, a
+    whole day would look like a repeat.) Returns (used, skipped, gaps): names in order, and the stretches
+    [(from, to)] of time that no used dump covers."""
     used, skipped, gaps = [], [], []
-    for name, (start, end) in sorted(windows.items(), key=lambda item: (item[1][1], item[1][0], item[0])):
+    for name, (start, end) in sorted(windows.items(), key=lambda item: (item[1][0], item[1][1], item[0])):
         if after is not None and start < after - TOLERANCE:
             skipped.append(name)
             continue
