@@ -136,7 +136,7 @@ services:
   daily:
     image: song-recommender:latest
     profiles: ["tools"]
-    user: "${DAILY_UID:-1000}:${DAILY_GID:-1000}"  # the bundle owner (the server's ubuntu): root-owned files need sudo to delete
+    user: "${DAILY_UID:-1001}:${DAILY_GID:-1001}"  # the bundle owner, the server's ubuntu (uid 1001): root-owned files need sudo to delete
     volumes:
       - ${BUNDLE:-./bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff}:/bundle
     environment:
