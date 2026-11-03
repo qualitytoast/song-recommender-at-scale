@@ -188,7 +188,8 @@ def test_a_front_desk_reports_shards_without_its_version_as_down(updated):
             try:
                 assert all(s["up"] for s in old.shard_states()) and all(s["up"] for s in new.shard_states())
                 switch.write(path, str(update.relative_to(base)))  # the shards let the base go
-                wait_for(lambda: not old.shards_hold(version_of(base)), what="the base to be dropped")
+                # each shard reads the file on its own once-a-second clock: wait for every one, not the first
+                wait_for(lambda: not any(s["up"] for s in old.shard_states()), what="every shard to drop the base")
                 states = old.shard_states()
                 assert [s["up"] for s in states] == [False, False]
                 assert f"not {version_of(base)}" in states[0]["refuses"]
