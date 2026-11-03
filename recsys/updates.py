@@ -4,11 +4,14 @@ switches to it). The base bundle never changes; an update is a folder in it:
   <bundle>/updates/<date>-<version>/
     shards-N/shard-i/      complete slices in recsys/shard_slices.py's format, for the grown catalog
     added_songs.json       every song added since the base, in ID order (after the base's songs): uris, tracks,
-                           artist (artist IDs, only artists the base has), albums (album names)
+                           artist (artist IDs, only artists the base has), albums (album names), keys
+                           (recsys.listenbrainz.song_key), album_ids, listeners and joined (recsys.daily.NewSong)
     song_playlists.npy     every song's count (the menu's order and number)
     songs_by_track.npy, songs_by_artist.npy   the name search's order (bundle.name_index)
     settings.json          the base's, with the new song count
-    update.json            the base and parent versions, the songs added, a note, and the slices' checksums
+    update.json            the base and parent versions (and the parent's folder), the songs added, a note, the
+                           slices' checksums, and what made it (recsys/daily_job.py: the dumps used)
+    seen.npz, ...          files its maker keeps with it (recsys/daily_job.py: who played songs not yet served)
     manifest.json          the version: as for a bundle, over the files above (update.json carries the slices')
 
 Song IDs only append: song j stays song j, and a new song gets the next ID, so song j is still on shard j % N and
@@ -17,26 +20,28 @@ words, taste profiles) is the base's, which is why a front desk keeps the base's
 
 write_update makes one from its parent (the base or an earlier update) by extending the parent's slices, which
 is all the server has: each new song's rows appended, its search vector added to the index, the pair table
-re-keyed for the bigger catalog with the update's counts added. Imports numpy and FAISS only (never PyTorch:
-they can't share a process, see recsys/ann.py).
+grown for the bigger catalog with the update's counts added (pair_table.grow), the new songs put in their places
+in the name search's order. Imports numpy and FAISS only (never PyTorch:
+they can't share a process, see recsys/ann.py; FAISS only once an update is written).
 
     python -m recsys.updates fake --bundle bundles/<bundle> --copies 500   # a test update: copies of songs
 """
 import argparse
+import bisect
 import json
 import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-import faiss
 import numpy as np
 
-from recsys.bundle import file_fingerprint, name_index, write_manifest
-from recsys.pair_table import AB, read_pairs, save_pairs, with_pairs
+from recsys.bundle import file_fingerprint, name_index, name_key, write_manifest
+from recsys.pair_table import AB, grow, with_pairs
 from recsys.shard_slices import PER_SONG
 
-FIELDS = ("uris", "tracks", "artist", "albums")  # added_songs.json: one list per field, a song per position
+# added_songs.json: one list per field, a song per position
+FIELDS = ("uris", "tracks", "artist", "albums", "keys", "album_ids", "listeners", "joined")
 
 
 def version_of(folder):
@@ -58,12 +63,14 @@ def slice_count(folder):
     return int(sets[0].name.removeprefix("shards-"))
 
 
-def write_update(base, parent, added, rows, vectors, listens, pairs=None, note=""):
+def write_update(base, parent, added, rows, vectors, listens, pairs=None, note="", info=None, files=None):
     """Write an update of the bundle base on top of parent (base itself or one of its updates); returns its folder.
     added: {"uris", "tracks", "artist", "albums"} for the songs it adds (their IDs follow the parent's songs);
     rows: {name: (added, ...)} each of the slices' per-song tables (shard_slices.PER_SONG) for them;
     vectors: (added, d + 1) their search vectors, the bias last; listens: every song's count after the update;
-    pairs: (keys a * AB + b, sorted and distinct; counts) appeared-together counts to add, or None."""
+    pairs: (keys a * AB + b, sorted and distinct; counts) appeared-together counts to add, or None; info: more of
+    update.json; files: {name: path} files moved into the update (covered by its version)."""
+    import faiss  # here: reading an update's files needs no FAISS (a PyTorch process can, recsys/ann.py)
     base, parent = Path(base), Path(parent)
     settings = json.loads((parent / "settings.json").read_text())
     before, new = settings["songs"], len(added["uris"])
@@ -91,10 +98,8 @@ def write_update(base, parent, added, rows, vectors, listens, pairs=None, note="
         index = faiss.read_index(str(src / "search_index.faiss"))
         index.add_with_ids(np.ascontiguousarray(np.asarray(vectors)[mine - before], dtype=np.float32), mine)
         faiss.write_index(index, str(out / "search_index.faiss"))
-        keys, counts = read_pairs(src)
         here = pairs[0] % AB % shards == i  # pairs whose later song this shard holds
-        keys, counts = with_pairs(keys, counts, before, pairs[0][here], np.asarray(pairs[1])[here], songs)
-        save_pairs(out, keys, counts, songs)
+        grow(src, out, before, songs, pairs[0][here] // AB, pairs[0][here] % AB, np.asarray(pairs[1])[here])
         sizes.append(len(ids))
         for p in sorted(out.iterdir()):
             checksums[f"{out.relative_to(work)}/{p.name}"] = file_fingerprint(p)
@@ -104,16 +109,17 @@ def write_update(base, parent, added, rows, vectors, listens, pairs=None, note="
     (work / "settings.json").write_text(json.dumps({**settings, "songs": songs}, indent=2))
     listens = np.asarray(listens).astype(np.int32)
     np.save(work / "song_playlists.npy", listens)
-    names = json.loads((base / "songs.json").read_text())
-    song_artist = np.concatenate([np.load(base / "song_artist.npy"), np.asarray(since["artist"], dtype=np.int32)])
-    by_track, by_artist, _ = name_index(names["tracks"] + since["tracks"], names["artist_names"], song_artist, listens)
+    by_track, by_artist = grown_name_order(base, parent, since, before)
     np.save(work / "songs_by_track.npy", by_track)
     np.save(work / "songs_by_artist.npy", by_artist)
     made = datetime.now(timezone.utc)
+    for name, path in (files or {}).items():
+        shutil.move(str(path), work / name)
+    folder_of_parent = "." if parent.resolve() == base.resolve() else str(parent.resolve().relative_to(base.resolve()))
     (work / "update.json").write_text(json.dumps({
-        "base": version_of(base), "parent": version_of(parent), "songs": songs, "added": new,
-        "added_since_base": len(since["uris"]), "pairs_added": int(len(pairs[0])), "note": note,
-        "made": made.isoformat(timespec="seconds"), "slices": checksums}, indent=2))
+        "base": version_of(base), "parent": version_of(parent), "parent_folder": folder_of_parent, "songs": songs,
+        "added": new, "added_since_base": len(since["uris"]), "pairs_added": int(len(pairs[0])), "note": note,
+        "made": made.isoformat(timespec="seconds"), **(info or {}), "slices": checksums}, indent=2))
     version = write_manifest(work)
     for i, held in enumerate(sizes):  # last: they carry the version, which covers everything above
         (work / f"shards-{shards}" / f"shard-{i}" / "info.json").write_text(json.dumps(
@@ -124,6 +130,27 @@ def write_update(base, parent, added, rows, vectors, listens, pairs=None, note="
     else:
         work.rename(folder)
     return folder
+
+
+def grown_name_order(base, parent, since, before):
+    """(songs_by_track, songs_by_artist) with the songs from ID `before` on put in their places among the parent's:
+    each order sorted by name key (bundle.name_key), as the find-songs menu searches it. (Among equal names the
+    order doesn't matter: the menu sorts those by plays itself.) Inserting a few thousand songs this way reads the
+    names' keys only, not every name to sort again."""
+    keys = json.loads((base / "name_keys.json").read_text())
+    track_keys = keys["tracks"] + [name_key(t) for t in since["tracks"]]
+    new = sorted(range(before, len(track_keys)), key=track_keys.__getitem__)
+    by_track = np.load(parent / "songs_by_track.npy")
+    ordered = [track_keys[j] for j in by_track.tolist()]
+    by_track = np.insert(by_track, [bisect.bisect_right(ordered, track_keys[j]) for j in new], new)
+    del ordered
+    rank_of = {k: r for r, k in enumerate(sorted(set(keys["artists"])))}  # equal keys, equal rank
+    rank = np.array([rank_of[k] for k in keys["artists"]], dtype=np.int64)
+    song_artist = np.concatenate([np.load(base / "song_artist.npy"), np.asarray(since["artist"], dtype=np.int64)])
+    new = np.array(sorted(range(before, len(song_artist)), key=lambda j: rank[song_artist[j]]), dtype=np.int64)
+    by_artist = np.load(parent / "songs_by_artist.npy")
+    at = np.searchsorted(rank[song_artist[by_artist]], rank[song_artist[new]], side="right")
+    return by_track, np.insert(by_artist, at, new)
 
 
 def fake_update(bundle, copies, parent=None, note="", whole=None):
@@ -142,7 +169,9 @@ def fake_update(bundle, copies, parent=None, note="", whole=None):
     song_artist = np.load(base / "song_artist.npy")
     albums = json.loads((base / "song_albums.json").read_text())
     added = {"uris": [f"fake:track:{j}" for j in ids], "tracks": [f"{names['tracks'][s]} (copy)" for s in source],
-             "artist": song_artist[source].tolist(), "albums": [albums[s] for s in source]}
+             "artist": song_artist[source].tolist(), "albums": [albums[s] for s in source],
+             "keys": [f"fake|{j}" for j in ids], "album_ids": np.load(base / "song_album.npy")[source].tolist(),
+             "listeners": [0] * copies, "joined": [0.0] * copies}
     rows = {name: np.load(base / f"{name}.npy", mmap_mode="r")[source] for name in PER_SONG}
     vectors = np.array(np.load(base / "search_vectors.npy", mmap_mode="r")[source], dtype=np.float32)
     vectors[:, :-1] *= 0.99
@@ -158,6 +187,7 @@ def fake_update(bundle, copies, parent=None, note="", whole=None):
 
 def write_whole(base, out, added, rows, vectors, listens, pairs):
     """The base with the songs added, as a whole bundle in out (what one update on top of the base serves)."""
+    import faiss
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     settings = json.loads((base / "settings.json").read_text())

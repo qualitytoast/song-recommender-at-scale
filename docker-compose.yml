@@ -128,5 +128,22 @@ services:
     depends_on:
       meilisearch: {condition: service_started}
 
+  # The daily update (recsys/daily_job.py): each day's ListenBrainz dump as a new version, switched to live. One-off,
+  # started by a timer (deploy/songrec-daily.timer): `docker compose run --rm daily`. It writes the bundle's updates/
+  # and switch.json (the bundle is read-write here only), and talks to the front desk directly: nginx removes the
+  # header that reaches the standby version. One core and 4 GB at most, so it can't starve the shards; no autoheal
+  # label and no health check (a long build isn't frozen).
+  daily:
+    image: song-recommender:latest
+    profiles: ["tools"]
+    user: "${DAILY_UID:-1000}:${DAILY_GID:-1000}"  # the bundle owner (the server's ubuntu): root-owned files need sudo to delete
+    volumes:
+      - ${BUNDLE:-./bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff}:/bundle
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+    command: python -m recsys.daily_job run --bundle /bundle
+    cpus: 1.0
+    mem_limit: 4g
+
 volumes:
   meili_data:
