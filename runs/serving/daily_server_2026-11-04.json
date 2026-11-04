@@ -1,0 +1,238 @@
+{
+ "what": "The daily job on the Oracle server, 2026-11-03/04: the catch-up switch and two daily runs by hand, then the fixes (batcher cycle, 5-s health checks, the job's disk capped at 20 MB/s) and a disk-load test. 'job' is the job's own record (daily/state.json); the rest was measured alongside: light traffic through nginx (one request every ~0.2 s, the serving check's cases), memory every ~5-7 s, Docker's health-check log.",
+ "job": [
+  {
+   "at": "2026-11-03T23:36:58+00:00",
+   "command": "switch",
+   "report": {
+    "update": "updates/2026-11-03-eb55b3dae2d4",
+    "version": "eb55b3dae2d4",
+    "standby_ready_s": 41.4,
+    "checks": {
+     "live": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "84ec15359fff"
+      ],
+      "ndcg@10": 0.26269080321791966,
+      "p99_ms": 139.6885691594798,
+      "computed": 2000
+     },
+     "standby": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "eb55b3dae2d4"
+      ],
+      "ndcg@10": 0.2617829066977456,
+      "p99_ms": 130.62083484604955,
+      "computed": 2000
+     },
+     "new_songs": {
+      "lists_with_one": 0.085,
+      "most_lists": 3,
+      "most_lists_song": "listenbrainz:track:goddard|lilies"
+     }
+    },
+    "flip_seen_s": 1.0,
+    "watch": {
+     "probes": 198,
+     "failures": 0
+    },
+    "seconds": 873
+   },
+   "result": "switched to updates/2026-11-03-eb55b3dae2d4",
+   "seconds": 873
+  },
+  {
+   "at": "2026-11-04T00:53:27+00:00",
+   "command": "run",
+   "update": "updates/2026-11-04-a4c699b91979",
+   "result": "switched to updates/2026-11-04-a4c699b91979",
+   "report": {
+    "update": "updates/2026-11-04-a4c699b91979",
+    "version": "a4c699b91979",
+    "standby_ready_s": 24.5,
+    "checks": {
+     "live": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "eb55b3dae2d4"
+      ],
+      "ndcg@10": 0.2617829066977456,
+      "p99_ms": 128.77433805842884,
+      "computed": 2000
+     },
+     "standby": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "a4c699b91979"
+      ],
+      "ndcg@10": 0.26185980850141866,
+      "p99_ms": 109.88740205299108,
+      "computed": 2000
+     },
+     "new_songs": {
+      "lists_with_one": 0.004,
+      "most_lists": 1,
+      "most_lists_song": "listenbrainz:track:austin tv|otro sueno"
+     }
+    },
+    "flip_seen_s": 1.0,
+    "watch": {
+     "probes": 197,
+     "failures": 0
+    },
+    "seconds": 854
+   },
+   "seconds": 1169
+  },
+  {
+   "at": "2026-11-04T01:13:22+00:00",
+   "command": "run",
+   "update": "updates/2026-11-04-60c65ae7bbad",
+   "result": "switched to updates/2026-11-04-60c65ae7bbad",
+   "report": {
+    "update": "updates/2026-11-04-60c65ae7bbad",
+    "version": "60c65ae7bbad",
+    "standby_ready_s": 29.4,
+    "checks": {
+     "live": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "a4c699b91979"
+      ],
+      "ndcg@10": 0.26185980850141866,
+      "p99_ms": 101.41226471518165,
+      "computed": 2000
+     },
+     "standby": {
+      "failed": 0,
+      "partial": 0,
+      "versions": [
+       "60c65ae7bbad"
+      ],
+      "ndcg@10": 0.26181752547083814,
+      "p99_ms": 102.50646142987533,
+      "computed": 2000
+     },
+     "new_songs": {
+      "lists_with_one": 0.006,
+      "most_lists": 2,
+      "most_lists_song": "listenbrainz:track:lyn|cinematic tale duo"
+     }
+    },
+    "flip_seen_s": 1.0,
+    "watch": {
+     "probes": 198,
+     "failures": 0
+    },
+    "seconds": 857
+   },
+   "seconds": 1177
+  }
+ ],
+ "traffic": {
+  "catch-up switch": {
+   "requests": 3666,
+   "ok": 3666,
+   "by_version": {
+    "84ec15359fff": 1013,
+    "eb55b3dae2d4": 2653
+   },
+   "p50_ms": 36.3,
+   "p99_ms": 151.8,
+   "max_ms": 6338,
+   "over_500_ms": 6,
+   "slow_window": "23:37:52-23:38:28 UTC, while the 4 shards loaded the standby (37.8 s each) and the front desk built it"
+  },
+  "run 1": {
+   "requests": 4910,
+   "ok": 4818,
+   "partial": 89,
+   "error_503": 3,
+   "p50_ms": 38.2,
+   "p99_ms": 133.7,
+   "bad_window": "00:57:53-00:58:42 UTC: autoheal restarted shard 0 at 00:57:52 (2 health checks over 2 s under the build's disk load), back at 00:58:18"
+  },
+  "run 2": {
+   "requests": 5425,
+   "ok": 5425,
+   "p50_ms": 7.2,
+   "p99_ms": 83.1,
+   "max_ms": 919
+  },
+  "fix deploy (up -d)": {
+   "requests": 135,
+   "ok": 88,
+   "error_503": 47,
+   "503_seconds": 15.3
+  }
+ },
+ "memory": {
+  "lowest_available_mb": {
+   "catch-up switch": 4990,
+   "run 1": 4191,
+   "run 2": 3859
+  },
+  "peak_mib": {
+   "catch-up switch": {
+    "frontdesk": 1269,
+    "shard-0": 966,
+    "meilisearch": 2504,
+    "daily": 140
+   },
+   "run 1": {
+    "frontdesk": 1471,
+    "shard-0": 996,
+    "meilisearch": 2929,
+    "daily": 2227
+   },
+   "run 2": {
+    "frontdesk": 1595,
+    "shard-0": 1004,
+    "meilisearch": 3323,
+    "daily": 2801
+   }
+  },
+  "frontdesk_gib_after_each_switch": {
+   "before": 1.17,
+   "catch-up": 1.23,
+   "run 1": 1.4,
+   "run 2": 1.54
+  },
+  "frontdesk_anon_mib_after_fix_deploy": 1188
+ },
+ "disk_load_test": {
+  "load": "in the daily container: 1.9 GB read past the page cache (dd iflag=direct, an older update's shard files) while 1.5 GB is written and flushed (dd conv=fsync)",
+  "capped": {
+   "write_mb_s": 20.9,
+   "read_s": 78,
+   "traffic": "478 requests, all complete, max 86 ms",
+   "health_check_max_s": {
+    "frontdesk": 0.19,
+    "shard-0": 0.5,
+    "shard-1": 0.5,
+    "shard-2": 0.25,
+    "shard-3": 0.62
+   }
+  },
+  "uncapped": {
+   "write_mb_s": 31.1,
+   "read_s": 61,
+   "traffic": "356 requests, all complete, max 57 ms",
+   "health_check_max_s": {
+    "frontdesk": 7.37,
+    "shard-0": 8.51,
+    "shard-1": 7.71,
+    "shard-2": 8.67,
+    "shard-3": 8.73
+   }
+  },
+  "health_check_normal_s": "0.23-0.42 (docker exec, 5 tries); median 0.12 (front desk), 0.22-0.30 (shards)"
+ }
+}
