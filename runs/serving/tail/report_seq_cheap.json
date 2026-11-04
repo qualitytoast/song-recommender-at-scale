@@ -1,0 +1,374 @@
+{
+  "requests": 10000,
+  "partial": 0,
+  "total_ms": {
+    "p50": 31.03,
+    "p90": 37.54,
+    "p99": 52.27,
+    "p99.9": 69.7
+  },
+  "max_ms": 85.56,
+  "groups": {
+    "slow": 100,
+    "typical": 2001
+  },
+  "stages_ms": {
+    "lookup": {
+      "slow": 0.1,
+      "typical": 0.07
+    },
+    "shards: input songs": {
+      "slow": 8.05,
+      "typical": 3.65
+    },
+    "retriever": {
+      "slow": 3.71,
+      "typical": 1.64
+    },
+    "shards: search": {
+      "slow": 17.4,
+      "typical": 9.14
+    },
+    "shards: candidates": {
+      "slow": 17.71,
+      "typical": 8.43
+    },
+    "ranker inputs": {
+      "slow": 2.14,
+      "typical": 1.42
+    },
+    "ranker": {
+      "slow": 7.87,
+      "typical": 4.18
+    },
+    "other": {
+      "slow": 3.5,
+      "typical": 2.51
+    }
+  },
+  "shard_rounds": {
+    "shards: input songs": {
+      "slow": {
+        "slowest call: trip": 5.39,
+        "before": 2.25,
+        "work": 0.32,
+        "after": 2.82,
+        "rounds with a slow call": 56,
+        "slow shards in those rounds": {
+          "1": 29,
+          "2": 13,
+          "3": 9,
+          "4": 5
+        }
+      },
+      "typical": {
+        "slowest call: trip": 2.19,
+        "before": 1.07,
+        "work": 0.24,
+        "after": 0.88,
+        "rounds with a slow call": 74,
+        "slow shards in those rounds": {
+          "1": 65,
+          "2": 8,
+          "3": 1
+        }
+      }
+    },
+    "shards: search": {
+      "slow": {
+        "slowest call: trip": 12.19,
+        "before": 4.23,
+        "work": 4.92,
+        "after": 3.05,
+        "rounds with a slow call": 70,
+        "slow shards in those rounds": {
+          "1": 44,
+          "2": 11,
+          "3": 13,
+          "4": 2
+        }
+      },
+      "typical": {
+        "slowest call: trip": 6.43,
+        "before": 1.71,
+        "work": 3.36,
+        "after": 1.36,
+        "rounds with a slow call": 29,
+        "slow shards in those rounds": {
+          "1": 24,
+          "2": 3,
+          "3": 1,
+          "4": 1
+        }
+      }
+    },
+    "shards: candidates": {
+      "slow": {
+        "slowest call: trip": 9.56,
+        "before": 4.96,
+        "work": 0.38,
+        "after": 4.22,
+        "rounds with a slow call": 84,
+        "slow shards in those rounds": {
+          "1": 23,
+          "2": 19,
+          "3": 23,
+          "4": 19
+        }
+      },
+      "typical": {
+        "slowest call: trip": 3.53,
+        "before": 1.52,
+        "work": 0.33,
+        "after": 1.68,
+        "rounds with a slow call": 606,
+        "slow shards in those rounds": {
+          "1": 317,
+          "2": 155,
+          "3": 82,
+          "4": 52
+        }
+      }
+    }
+  },
+  "cases": {
+    "passes": 5,
+    "slow requests": 100,
+    "distinct cases": 96,
+    "slow requests whose case was slow in another pass too": 8,
+    "if slowness were luck, about": 4.0,
+    "mean length": {
+      "slow": 6.29,
+      "all": 5.5
+    }
+  },
+  "garbage_ms": {
+    "front desk": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "shards (sum of calls)": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "requests with a front-desk pause over 1 ms": 0
+  },
+  "machine_cores": {
+    "busy": {
+      "slow": 1.73,
+      "typical": 1.32
+    },
+    "cpu: anything else": {
+      "slow": 0.06,
+      "typical": -0.02
+    },
+    "cpu: autoheal": {
+      "slow": 0.01,
+      "typical": 0.01
+    },
+    "cpu: caddy": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "cpu: containerd": {
+      "slow": 0.39,
+      "typical": 0.02
+    },
+    "cpu: dockerd": {
+      "slow": 0.08,
+      "typical": 0.01
+    },
+    "cpu: frontdesk": {
+      "slow": 0.53,
+      "typical": 0.62
+    },
+    "cpu: meilisearch": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "cpu: nginx": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "cpu: redis": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "cpu: shards": {
+      "slow": 0.6,
+      "typical": 0.62
+    },
+    "cpu: ssh sessions": {
+      "slow": 0.07,
+      "typical": 0.06
+    },
+    "steal": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "waited": {
+      "slow": 0.72,
+      "typical": 0.43
+    },
+    "waited: autoheal": {
+      "slow": 0.02,
+      "typical": 0.0
+    },
+    "waited: caddy": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "waited: containerd": {
+      "slow": 0.37,
+      "typical": 0.02
+    },
+    "waited: dockerd": {
+      "slow": 0.17,
+      "typical": 0.01
+    },
+    "waited: frontdesk": {
+      "slow": 0.44,
+      "typical": 0.29
+    },
+    "waited: meilisearch": {
+      "slow": 0.01,
+      "typical": 0.0
+    },
+    "waited: nginx": {
+      "slow": 0.0,
+      "typical": 0.0
+    },
+    "waited: redis": {
+      "slow": 0.01,
+      "typical": 0.0
+    },
+    "waited: shards": {
+      "slow": 0.66,
+      "typical": 0.49
+    },
+    "waited: ssh sessions": {
+      "slow": 0.04,
+      "typical": 0.01
+    },
+    "threads ready to run": {
+      "slow": 7.55,
+      "typical": 4.54
+    }
+  },
+  "machine_cores_before_and_during": {
+    "before (62 s)": {
+      "busy": 0.192,
+      "cpu: anything else": -0.005,
+      "cpu: autoheal": 0.008,
+      "cpu: caddy": 0.0,
+      "cpu: containerd": 0.056,
+      "cpu: dockerd": 0.012,
+      "cpu: frontdesk": 0.032,
+      "cpu: meilisearch": 0.0,
+      "cpu: nginx": 0.0,
+      "cpu: redis": 0.005,
+      "cpu: shards": 0.053,
+      "cpu: ssh sessions": 0.032,
+      "steal": 0.002,
+      "waited": 0.044,
+      "waited: autoheal": 0.002,
+      "waited: caddy": 0.0,
+      "waited: containerd": 0.023,
+      "waited: dockerd": 0.008,
+      "waited: frontdesk": 0.009,
+      "waited: meilisearch": 0.0,
+      "waited: nginx": 0.0,
+      "waited: redis": 0.0,
+      "waited: shards": 0.022,
+      "waited: ssh sessions": 0.003
+    },
+    "during (355 s)": {
+      "busy": 1.364,
+      "cpu: anything else": -0.012,
+      "cpu: autoheal": 0.008,
+      "cpu: caddy": 0.0,
+      "cpu: containerd": 0.058,
+      "cpu: dockerd": 0.014,
+      "cpu: frontdesk": 0.612,
+      "cpu: meilisearch": 0.0,
+      "cpu: nginx": 0.0,
+      "cpu: redis": 0.005,
+      "cpu: shards": 0.619,
+      "cpu: ssh sessions": 0.06,
+      "steal": 0.004,
+      "waited": 0.46,
+      "waited: autoheal": 0.006,
+      "waited: caddy": 0.0,
+      "waited: containerd": 0.057,
+      "waited: dockerd": 0.028,
+      "waited: frontdesk": 0.298,
+      "waited: meilisearch": 0.002,
+      "waited: nginx": 0.0,
+      "waited: redis": 0.003,
+      "waited: shards": 0.509,
+      "waited: ssh sessions": 0.018
+    }
+  },
+  "health_checks": {
+    "checks during the run": 862,
+    "per second": 2.43,
+    "duration_ms": {
+      "p50": 54.79,
+      "p99": 103.92
+    },
+    "requests overlapping one": {
+      "slow": 0.99,
+      "typical": 0.048
+    },
+    "checks overlapping, mean": {
+      "slow": 2.04,
+      "typical": 0.05
+    },
+    "total_ms by checks running": {
+      "0": {
+        "requests": 8637,
+        "p50": 30.52,
+        "p99": 39.56
+      },
+      "1": {
+        "requests": 1012,
+        "p50": 36.83,
+        "p99": 53.13
+      },
+      "2": {
+        "requests": 320,
+        "p50": 44.2,
+        "p99": 72.89
+      },
+      "3+": {
+        "requests": 31,
+        "p50": 53.56,
+        "p99": 78.58
+      }
+    }
+  },
+  "against_baseline": {
+    "baseline": "runs/serving/tail/requests_seq.jsonl",
+    "p50": {
+      "baseline": 32.78,
+      "new": 31.03,
+      "change_ms": -1.76,
+      "change_pct": -5.4,
+      "95% range_ms": [
+        -1.92,
+        -1.62
+      ]
+    },
+    "p99": {
+      "baseline": 93.88,
+      "new": 52.27,
+      "change_ms": -41.6,
+      "change_pct": -44.3,
+      "95% range_ms": [
+        -49.6,
+        -36.38
+      ]
+    },
+    "passes the keep bar": true
+  }
+}
