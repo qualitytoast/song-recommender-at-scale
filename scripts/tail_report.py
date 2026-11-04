@@ -16,7 +16,9 @@ The slowest 1% of requests by the front desk's total time are set against typica
                steal, threads ready to run, and the health checks running (each a new Python process); and the same
                for the whole machine before the first request (the sampler's quiet minute) and during the run
   garbage      the front desk's and the shards' garbage-collection pauses
-CPU is given in cores (CPU milliseconds per millisecond of the request; the server has 2). The machine is sampled
+With --baseline (another run's requests file), the totals' p50 and p99 against it, with bootstrap 95% ranges of the
+changes and whether the keep bar for a speed-up is met. CPU is given in cores (CPU milliseconds per millisecond of the
+request; the server has 2). The machine is sampled
 every 50 ms, so a request's share of it is interpolated, smeared over about that much on either side.
 """
 import argparse
@@ -197,6 +199,28 @@ def report(requests, machine=None, events=None):
     return out
 
 
+def totals(requests):
+    return np.array([r["timings_ms"]["total"] for r in requests if r.get("trace") and not r["cached"]])
+
+
+def compare(base, new, rounds=2000, seed=0):
+    """Two runs' total p50 and p99, and for each the 95% range of new minus base over bootstrap rounds (both runs
+    resampled with replacement): a range below 0 says new is faster beyond the runs' own noise. Also whether new
+    passes the keep bar for a speed-up (p99 at least 5% lower, its range below 0, p50 at most 5% higher)."""
+    rng = np.random.default_rng(seed)
+    out = {}
+    for q in (50, 99):
+        b, n = float(np.percentile(base, q)), float(np.percentile(new, q))
+        diffs = [np.percentile(rng.choice(new, len(new)), q) - np.percentile(rng.choice(base, len(base)), q)
+                 for _ in range(rounds)]
+        out[f"p{q}"] = {"baseline": round(b, 2), "new": round(n, 2), "change_ms": round(n - b, 2),
+                        "change_pct": round(100 * (n - b) / b, 1),
+                        "95% range_ms": [round(float(x), 2) for x in np.percentile(diffs, [2.5, 97.5])]}
+    out["passes the keep bar"] = bool(out["p99"]["change_pct"] <= -5 and out["p99"]["95% range_ms"][1] < 0
+                                      and out["p50"]["change_pct"] <= 5)
+    return out
+
+
 def show(out):
     print(f"{out['requests']:,} requests ({out['partial']} partial): total " +
           ", ".join(f"{k} {v} ms" for k, v in out["total_ms"].items()) + f", max {out['max_ms']} ms; "
@@ -222,6 +246,14 @@ def show(out):
             print("\nthe machine (cores)                " + "  ".join(f"{k:>14}" for k in spans))
             for name in next(iter(spans.values())):
                 print(f"  {name:<32} " + "  ".join(f"{v.get(name, float('nan')):14.3f}" for v in spans.values()))
+    if "against_baseline" in out:
+        c = out["against_baseline"]
+        print(f"\nagainst the baseline ({c['baseline']}):")
+        for q in ("p50", "p99"):
+            v = c[q]
+            print(f"  total {q}: {v['baseline']} -> {v['new']} ms ({v['change_pct']:+.1f}%, 95% range of the change "
+                  f"{v['95% range_ms'][0]:+.2f} to {v['95% range_ms'][1]:+.2f} ms)")
+        print(f"  passes the keep bar: {c['passes the keep bar']}")
     if "health_checks" in out:
         h = {k: v for k, v in out["health_checks"].items() if k != "total_ms by checks running"}
         print("\nhealth checks:", json.dumps(h))
@@ -235,13 +267,17 @@ if __name__ == "__main__":
     ap.add_argument("--requests", required=True, help="requests_<label>.jsonl from serving_check.py serve --trace")
     ap.add_argument("--machine", help="machine_<label>.jsonl from machine_sampler.py (its .events.jsonl beside it)")
     ap.add_argument("--out", help="where to save the report (JSON)")
+    ap.add_argument("--baseline", help="another run's requests_<label>.jsonl to compare the totals with")
     args = ap.parse_args()
     machine = events = None
     if args.machine:
         machine = machine_counters(args.machine)
         events_path = Path(args.machine).with_suffix(".events.jsonl")
         events = health_checks(events_path) if events_path.exists() else None
-    out = report(load_jsonl(args.requests), machine, events)
+    requests = load_jsonl(args.requests)
+    out = report(requests, machine, events)
+    if args.baseline:
+        out["against_baseline"] = {"baseline": args.baseline, **compare(totals(load_jsonl(args.baseline)), totals(requests))}
     show(out)
     if args.out:
         Path(args.out).write_text(json.dumps(out, indent=2))

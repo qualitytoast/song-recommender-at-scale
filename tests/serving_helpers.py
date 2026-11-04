@@ -89,13 +89,14 @@ def slices(bundle, n):
 
 
 @contextmanager
-def shard_servers(folders, with_processes=False, switch_file=None, log=subprocess.DEVNULL):
-    """A shard server process per slice folder (following switch_file, if given); yields their addresses (and
-    processes)."""
+def shard_servers(folders, with_processes=False, switch_file=None, log=subprocess.DEVNULL, health_dir=None):
+    """A shard server process per slice folder (following switch_file, if given; checking itself into
+    health_dir/healthy-<i>, if given); yields their addresses (and processes)."""
     procs, addresses = [], []
-    for folder, port in zip(folders, free_ports(len(folders))):
+    for i, (folder, port) in enumerate(zip(folders, free_ports(len(folders)))):
         procs.append(subprocess.Popen([sys.executable, "-m", "recsys.shard", "--slice", str(folder), "--port", str(port),
-                                       "--host", "127.0.0.1", *(["--switch", str(switch_file)] if switch_file else [])],
+                                       "--host", "127.0.0.1", *(["--switch", str(switch_file)] if switch_file else []),
+                                       *(["--health-file", str(Path(health_dir) / f"healthy-{i}")] if health_dir else [])],
                                       cwd=ROOT, stdout=log, stderr=log))
         addresses.append(f"127.0.0.1:{port}")
     try:

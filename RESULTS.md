@@ -2714,3 +2714,45 @@ What it means for the fixes:
 
 Time: deploy 3 s build, 44 s pre-read, ~18 s of errors; the server run 12.4 min (quiet minute 62 s, one at a time
 401 s, 8 at a time 35 s, the rest the sampler's set lengths); report 6 s a run; CI 2 min 33 s (after 12 min queued).
+
+**Part B: health checks without starting Python** (2026-11-04, `f3f2cc2`; `runs/serving/tail/*_cheap.json`). Each
+server process now checks itself (`recsys/healthcheck.py`, `SelfCheck`): a thread asks its own server every 2 s
+whether it's serving (a shard: the gRPC health service over a connection kept open; the front desk: `GET /live`),
+and if so writes the time to `/dev/shm/healthy` (memory, so a busy disk can't delay it, and empty after a restart).
+Docker's check only reads the file with a shell one-liner, healthy if it was written in the last 10 s:
+`[ $(( $(date +%s) - $(cat /dev/shm/healthy) )) -lt 10 ]`. A process too stuck to answer itself, or to run the
+thread, stops writing. Same interval, retries and start-up allowance as before.
+
+Deployed from the branch (build 3 s, `up -d` 18 s: ~11 s of 503s), then the same runs as Part A's, compared with them
+(bootstrap 95% ranges of the change, both runs resampled):
+
+| On the server | Before | After |
+|---|---|---|
+| One at a time (10,000): total p50 | 32.8 ms | **31.0 ms** (-5.4%; -1.9 to -1.6 ms) |
+| Total p99 | 93.9 ms | **52.3 ms** (-44.3%; -49.6 to -36.4 ms) |
+| Total p99.9; slowest | 167.8; 239.7 ms | 69.7; 85.6 ms |
+| End to end p50 / p99 | 36.3 / 104.0 ms | 34.3 / 58.6 ms |
+| Stage p99s: input songs, search, candidates, ranker | 17.5, 30.1, 31.9, 16.0 ms | 8.2, 17.3, 16.5, 7.6 ms |
+| 8 at a time (2,000): requests a second | 57 | **71** (+25%) |
+| Total p50 / p99 | 110.1 / 225.1 ms | 92.7 / 155.2 ms (-15.8% / -31.1%) |
+| Docker's check, each (wall time p50 / p99) | 359 / 767 ms | 55 / 104 ms |
+| Quiet minute, machine busy | 0.55 cores | 0.19 cores |
+| Of it: the 4 shards; the front desk; containerd | 0.370; 0.068; 0.053 | 0.053; 0.032; 0.056 |
+| Requests with no check running | 59% (p99 38.7 ms) | 86% (p99 39.6 ms) |
+
+- Same answers: every one of the 12,000 requests gave the same match against the reference as before (3,380 and 676
+  in order, NDCG@10 0.2685 both).
+- Passes the keep bar (p99 at least 5% lower with its range below 0, p50 no worse), in both runs.
+- What's left of the tail is still the checks, now their start: 99% of the slowest 1% overlapped one (2.0 on average,
+  was 3.7). Each still costs ~23 ms of containerd's CPU to start (unchanged at ~0.056 cores) plus the shell's few
+  ms, and checks come a little more often (2.43 a second, was 2.1), since the 2 s interval counts from the end of
+  the last one. A longer interval would cut that further; the self-check decides health, so Docker's check could
+  run less often without missing a freeze for longer. Not made.
+- A frozen shard (its Python process stopped with SIGSTOP, on the server): unhealthy after 13.1 s, restarted by
+  autoheal after 14 s, healthy again (back on the live version) after 21.6 s. The old check took ~14 s too.
+- Tests: the self-check writes only while its check passes and keeps going after a failure; Docker's command (read
+  from both compose files) passes on a fresh file and fails on a stale or missing one; a shard subprocess checks
+  itself over gRPC and stops writing when frozen; the one-off check by hand still works.
+
+Time: tests 83 s (368); deploy 3 s build, ~11 s of 503s; the run 12.3 min (one at a time 355 s, was 401 s; 8 at a
+time 28 s, was 35 s); the freeze drill 22 s.

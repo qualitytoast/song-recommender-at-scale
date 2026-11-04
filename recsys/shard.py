@@ -3,6 +3,7 @@ song ID % shards == index and answers searches, per-song lookups and appeared-to
 
     python -m recsys.shard --slice bundles/<bundle>/shards-4/shard-0 --port 50051
     python -m recsys.shard --slice ... --switch bundles/<bundle>/switch.json   # follows the switch file
+    python -m recsys.shard --slice ... --health-file /dev/shm/healthy   # checks itself (recsys/healthcheck.py)
 
 The slice comes from recsys.shard_slices. Every request carries the bundle version; a request for a
 version the shard doesn't hold is refused (FAILED_PRECONDITION), so a front desk can never mix model
@@ -28,6 +29,7 @@ import numpy as np
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from recsys import switch
+from recsys.healthcheck import SelfCheck, grpc_serving
 from recsys.pair_table import PairTable
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.tracing import timed
@@ -181,8 +183,9 @@ class Shard(shard_pb2_grpc.ShardServicer):
         return shard_pb2.CountsReply(counts=pack(s.pairs.lookup(unpack(request.keys))))
 
 
-def serve(folder, port, host="0.0.0.0", workers=8, switch_file=None):
-    """Start a shard server on host:port (returns it, already serving); with switch_file, it follows that file."""
+def serve(folder, port, host="0.0.0.0", workers=8, switch_file=None, health_file=None):
+    """Start a shard server on host:port (returns it, already serving); with switch_file, it follows that file; with
+    health_file, it checks itself every 2 s and writes the time there while it serves (healthcheck.SelfCheck)."""
     start = time.perf_counter()
     shard = Shard(folder, switch_file)
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=workers),
@@ -194,6 +197,8 @@ def serve(folder, port, host="0.0.0.0", workers=8, switch_file=None):
     server.add_insecure_port(f"{host}:{port}")
     server.start()
     health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    if health_file:
+        SelfCheck(grpc_serving(f"{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"), health_file)
     if switch_file:
         switch.follow(switch_file, shard.sync)
     print(f"shard serving on {host}:{port} after {time.perf_counter() - start:.1f}s", flush=True)
@@ -206,5 +211,7 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=50051)
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--switch", help="the bundle's switch.json (recsys/switch.py) to follow")
+    ap.add_argument("--health-file", help="check itself and write the time here while serving (recsys/healthcheck.py)")
     args = ap.parse_args()
-    serve(args.slice, args.port, args.host, switch_file=args.switch).wait_for_termination()
+    serve(args.slice, args.port, args.host, switch_file=args.switch,
+          health_file=args.health_file).wait_for_termination()

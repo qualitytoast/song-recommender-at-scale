@@ -233,7 +233,8 @@ Live at **https://songrec.duckdns.org** on one Oracle Cloud Arm machine (2 cores
 rules make Oracle refuse anything beyond the free allowance, and a budget emails on any spend), running the
 whole Compose system (~4.7 GB; song vectors stored at 16 bits). `docker-compose.oracle.yml` adds Caddy for
 HTTPS (Let's Encrypt, renewed by itself). Each visitor may ask for 5 recommendations and 20 searches a second.
-On the server, 2,000 of 2,000 held-out requests gave the offline top 10 in order (p50 35 ms, p99 87 ms); a
+On the server, 2,000 of 2,000 held-out requests gave the offline top 10 in order, and a request takes p50 34 ms,
+p99 59 ms end to end (each process checks its own health, so Docker's check starts no Python); a
 model switch is a restart on the new bundle, ~10-50 s of "busy".
 
 ```bash

@@ -52,6 +52,7 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] Replayed 11 days of real daily dumps, no retraining: new songs and their counts give +1.8% NDCG@10 on new listening
 - [x] Daily ListenBrainz updates on the site, no restart: up to 2,000 new songs a day, all 4 shards switch at once, undo
 - [x] Failure drills for the daily updates on the Mac and the site: all held, no answer mixed versions; 2 gaps fixed
+- [x] Slowest 1% sped up with cheaper health checks (self-check + file): p99 93.9 -> 52.3 ms, +25% requests/s
 
 ## TODO Now
 
@@ -71,4 +72,3 @@ The full year is on disk.
 - [ ] A bigger transformer if size helps, then mixture of experts
 - [ ] Songs the model doesn't know: their artist and album from Spotify's API, or a shared "unknown song" vector
 - [ ] Predict vectors for songs outside the catalog from AcousticBrainz audio data (needs recording IDs), tested on known songs
-- [ ] Speed up the slowest 1% of requests (84+ ms): C++ search in place of FAISS, backup requests to a second copy of each shard
