@@ -1,0 +1,160 @@
+{
+  "label": "seq",
+  "health": {
+    "status": "ok",
+    "version": "60c65ae7bbad",
+    "base_version": "84ec15359fff",
+    "songs": 2492290,
+    "switch": {
+      "live": "updates/2026-11-04-60c65ae7bbad",
+      "standby": null,
+      "retiring": [],
+      "failed": {},
+      "last_error": null
+    },
+    "defaults": {
+      "max_per_artist": 3,
+      "mix": 0.0
+    },
+    "device": "cpu",
+    "shards": [
+      {
+        "index": 0,
+        "address": "shard-0:50051",
+        "up": true,
+        "skipped_for_s": 0.0
+      },
+      {
+        "index": 1,
+        "address": "shard-1:50051",
+        "up": true,
+        "skipped_for_s": 0.0
+      },
+      {
+        "index": 2,
+        "address": "shard-2:50051",
+        "up": true,
+        "skipped_for_s": 0.0
+      },
+      {
+        "index": 3,
+        "address": "shard-3:50051",
+        "up": true,
+        "skipped_for_s": 0.0
+      }
+    ],
+    "cache": {
+      "hits": 0,
+      "misses": 1,
+      "errors": 0,
+      "hit_rate": 0.0
+    },
+    "search": {
+      "index": "songs-84ec15359fff",
+      "answered": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_error": null
+    },
+    "profiles": 1,
+    "batching": {
+      "batches": 2,
+      "mean_size": 1.0,
+      "largest": 1,
+      "dropped_waited_too_long": 0
+    },
+    "answers": {
+      "total": 2,
+      "partial": 0,
+      "cached": 0
+    },
+    "admission": {
+      "recommend": {
+        "admitted": 2,
+        "rejected_full": 0,
+        "rejected_waited": 0,
+        "pending": 0,
+        "max_pending": 64,
+        "max_wait_ms": 1000.0
+      },
+      "songs": {
+        "admitted": 0,
+        "rejected_full": 0,
+        "rejected_waited": 0,
+        "pending": 0,
+        "max_pending": 512,
+        "max_wait_ms": null
+      }
+    }
+  },
+  "cases": 2000,
+  "requests": 10000,
+  "repeat": 5,
+  "concurrency": 1,
+  "fresh": true,
+  "seconds": 401.0,
+  "same_top10_in_order": 3380,
+  "same_top10_as_set": 6300,
+  "same_top10_by_length": {
+    "1": "505/1000",
+    "2": "460/1000",
+    "3": "370/1000",
+    "4": "415/1000",
+    "5": "310/1000",
+    "6": "355/1000",
+    "7": "260/1000",
+    "8": "240/1000",
+    "9": "280/1000",
+    "10": "185/1000"
+  },
+  "ndcg@10": {
+    "offline": 0.26925776109125515,
+    "served": 0.2684628816855314
+  },
+  "latency_ms": {
+    "lookup": {
+      "p50": 0.065,
+      "p99": 0.129
+    },
+    "shards: input songs": {
+      "p50": 4.034,
+      "p99": 17.523280000000028
+    },
+    "retriever": {
+      "p50": 1.473,
+      "p99": 5.519070000000002
+    },
+    "shards: search": {
+      "p50": 9.715,
+      "p99": 30.04641000000001
+    },
+    "shards: candidates": {
+      "p50": 8.851500000000001,
+      "p99": 31.92455000000001
+    },
+    "ranker inputs": {
+      "p50": 1.404,
+      "p99": 3.8640400000000006
+    },
+    "ranker": {
+      "p50": 4.084,
+      "p99": 15.982590000000013
+    },
+    "batch size": {
+      "p50": 1.0,
+      "p99": 1.0
+    },
+    "total": {
+      "p50": 32.785,
+      "p99": 93.87607000000001
+    },
+    "end to end (client)": {
+      "p50": 36.254437058232725,
+      "p99": 103.94964561797683
+    }
+  },
+  "memory_mb": {
+    "server": 1255,
+    "search process": 0
+  }
+}
