@@ -26,7 +26,8 @@ x-recommender: &recommender
 x-shard-health: &shard-health
   test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
   interval: 2s              # checked every 2 s; 2 misses in a row = unhealthy (then autoheal restarts it)
-  timeout: 2s
+  timeout: 5s               # a check takes 0.25-0.4 s on the server, but over 2 s twice in a row while the daily job
+                            # loaded the disk, so autoheal restarted a working shard (2-s timeout, 2026-11-04)
   retries: 2
   start_period: 120s        # misses while loading do not count: a first load from disk took 38 s on the server
 
@@ -68,7 +69,7 @@ services:
     healthcheck:  # /live, never stuck behind busy requests: a busy front desk mustn't be restarted
       test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
       interval: 2s
-      timeout: 2s
+      timeout: 5s  # as the shards': a slow disk mustn't make it look frozen
       retries: 3
       start_period: 60s
 
@@ -131,8 +132,9 @@ services:
   # The daily update (recsys/daily_job.py): each day's ListenBrainz dump as a new version, switched to live. One-off,
   # started by a timer (deploy/songrec-daily.timer): `docker compose run --rm daily`. It writes the bundle's updates/
   # and switch.json (the bundle is read-write here only), and talks to the front desk directly: nginx removes the
-  # header that reaches the standby version. One core and 4 GB at most, so it can't starve the shards; no autoheal
-  # label and no health check (a long build isn't frozen).
+  # header that reaches the standby version. One core and 4 GB at most, so it can't starve the shards (and on the
+  # server a share of the disk: docker-compose.oracle.yml); no autoheal label and no health check (a long build
+  # isn't frozen).
   daily:
     image: song-recommender:latest
     profiles: ["tools"]

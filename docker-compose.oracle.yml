@@ -10,6 +10,13 @@ services:
   nginx:
     ports: !override ["127.0.0.1:8000:80"]
 
+  daily:  # the daily job reads and writes GBs; the server's one disk gives ~50 MB/s at most, and at full speed the
+          # site's own reads waited on it (starting a health check's Python took over 2 s: a working shard restarted,
+          # 2026-11-04). At most 20 MB/s each way, so most of the disk stays the site's.
+    blkio_config:
+      device_read_bps: [{path: /dev/sda, rate: 20mb}]
+      device_write_bps: [{path: /dev/sda, rate: 20mb}]
+
   caddy:
     image: caddy:2-alpine
     ports: ["80:80", "443:443"]

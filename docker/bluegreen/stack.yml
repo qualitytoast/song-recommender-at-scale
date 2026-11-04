@@ -12,7 +12,7 @@ x-recommender: &recommender
 x-shard-health: &shard-health
   test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
   interval: 2s
-  timeout: 3s
+  timeout: 5s  # as docker-compose.yml's
   retries: 3
   start_period: 30s
 
@@ -36,7 +36,7 @@ services:
     healthcheck:
       test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
       interval: 2s
-      timeout: 3s
+      timeout: 5s
       retries: 3
       start_period: 60s
     networks:

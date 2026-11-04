@@ -1,5 +1,6 @@
 """Switching versions without a restart (recsys/switch.py, recsys/updates.py): updates of the tiny bundle, shards
 that hold two versions, and a front desk that flips between them under traffic."""
+import gc
 import json
 import subprocess
 import sys
@@ -7,12 +8,14 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import weakref
 
 import grpc
 import numpy as np
 import pytest
 
 from recsys import switch
+from recsys.batching import Batcher
 from recsys.bundle import write_manifest
 from recsys.frontdesk import ShardMismatch, ShardedRecommender
 from recsys.proto import shard_pb2, shard_pb2_grpc
@@ -199,6 +202,37 @@ def test_a_front_desk_reports_shards_without_its_version_as_down(updated):
                 new.close()
             with pytest.raises(ShardMismatch, match=f"not {version_of(base)}"):
                 ShardedRecommender(base, addresses, "cpu", startup_wait=60)
+    finally:
+        path.unlink()
+
+
+def test_a_closed_version_is_freed_at_once(updated):
+    """A front desk switches versions every day, so nothing may keep a closed one alive: built as serve.create_app
+    builds it (with a batcher), it's freed once the last reference goes, without waiting for the garbage collector
+    (which, on the server, let each old version stay: ~150 MB more after every switch, 2026-11-04)."""
+    base, update, _, _, _ = updated
+    path = base / "switch.json"
+    switch.write(path, ".", str(update.relative_to(base)))
+    try:
+        with shard_servers(slices_of(base), switch_file=path) as addresses:
+            def build(folder=None, share=None):
+                rec = ShardedRecommender(base, addresses, "cpu", startup_wait=60, update=folder, share=share)
+                rec.batcher = Batcher(rec.recommend_batch, 4, 2.0)
+                return rec
+
+            old = build()
+            wait_for(lambda: old.shards_hold(version_of(update)), what="the update to load")
+            new = build(update, old)
+            try:
+                for rec in (old, new):
+                    assert len(rec.recommend(["spotify:track:3"])["recommendations"]) == 10
+                gone = weakref.ref(old)
+                old.close()
+                del old, rec
+                assert gone() is None, [type(r).__name__ for r in gc.get_referrers(gone())]
+                assert len(new.recommend(["spotify:track:4"])["recommendations"]) == 10  # its shared names still whole
+            finally:
+                new.close()
     finally:
         path.unlink()
 
