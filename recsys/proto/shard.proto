@@ -11,6 +11,14 @@ message Array {
   repeated int64 shape = 3;
 }
 
+// How a shard spent one call, for the timing checks (scripts/tail_report.py): when its handler started and how long
+// it ran. The rest of the call's round trip is waiting: the network, gRPC's queue, the CPU busy with others.
+message Work {
+  double start_s = 1;      // Unix time the handler started (one clock: the containers share the server's)
+  float ms = 2;            // the handler's own time, from the request read to the reply built
+  float gc_ms = 3;         // of it, Python's garbage collector (recsys/tracing.py)
+}
+
 // A shard can hold two versions at once (recsys/switch.py): the reply describes the one asked for, or the
 // live one if none is named. A version it doesn't hold is refused (FAILED_PRECONDITION), like any request.
 message InfoRequest {
@@ -34,6 +42,7 @@ message SearchRequest {
 message SearchReply {
   Array ids = 1;           // (queries, k) int64; -1 where the searched clusters held fewer songs
   Array scores = 2;        // (queries, k) float32
+  Work work = 3;
 }
 
 // Per-song data for songs this shard holds.
@@ -47,6 +56,7 @@ message LookupReply {
   Array artist = 3;            // (n,) int32
   Array album = 4;             // (n,) int32
   Array genres = 5;            // (n, k) int16
+  Work work = 6;
 }
 
 // Appeared-together counts for pairs (a, b) whose later song b this shard holds.
@@ -56,6 +66,7 @@ message CountsRequest {
 }
 message CountsReply {
   Array counts = 1;        // (n,) int32, 0 for pairs never seen
+  Work work = 2;
 }
 
 service Shard {

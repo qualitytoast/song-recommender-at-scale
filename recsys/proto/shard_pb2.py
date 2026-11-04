@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18recsys/proto/shard.proto\x12\x05shard\"3\n\x05\x41rray\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\r\n\x05\x64type\x18\x02 \x01(\t\x12\r\n\x05shape\x18\x03 \x03(\x03\"\x1e\n\x0bInfoRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\"m\n\tInfoReply\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\r\n\x05index\x18\x02 \x01(\x05\x12\x0e\n\x06shards\x18\x03 \x01(\x05\x12\r\n\x05songs\x18\x04 \x01(\x03\x12\x0f\n\x07\x63\x61talog\x18\x05 \x01(\x03\x12\x10\n\x08versions\x18\x06 \x03(\t\"J\n\rSearchRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x1d\n\x07queries\x18\x02 \x01(\x0b\x32\x0c.shard.Array\x12\t\n\x01k\x18\x03 \x01(\x05\"F\n\x0bSearchReply\x12\x19\n\x03ids\x18\x01 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06scores\x18\x02 \x01(\x0b\x32\x0c.shard.Array\";\n\rLookupRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x19\n\x03ids\x18\x02 \x01(\x0b\x32\x0c.shard.Array\"\xb3\x01\n\x0bLookupReply\x12&\n\x10retriever_inputs\x18\x01 \x01(\x0b\x32\x0c.shard.Array\x12#\n\rranker_inputs\x18\x02 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06\x61rtist\x18\x03 \x01(\x0b\x32\x0c.shard.Array\x12\x1b\n\x05\x61lbum\x18\x04 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06genres\x18\x05 \x01(\x0b\x32\x0c.shard.Array\"<\n\rCountsRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x1a\n\x04keys\x18\x02 \x01(\x0b\x32\x0c.shard.Array\"+\n\x0b\x43ountsReply\x12\x1c\n\x06\x63ounts\x18\x01 \x01(\x0b\x32\x0c.shard.Array2\xd1\x01\n\x05Shard\x12,\n\x04Info\x12\x12.shard.InfoRequest\x1a\x10.shard.InfoReply\x12\x32\n\x06Search\x12\x14.shard.SearchRequest\x1a\x12.shard.SearchReply\x12\x32\n\x06Lookup\x12\x14.shard.LookupRequest\x1a\x12.shard.LookupReply\x12\x32\n\x06\x43ounts\x12\x14.shard.CountsRequest\x1a\x12.shard.CountsReplyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18recsys/proto/shard.proto\x12\x05shard\"3\n\x05\x41rray\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\r\n\x05\x64type\x18\x02 \x01(\t\x12\r\n\x05shape\x18\x03 \x03(\x03\"2\n\x04Work\x12\x0f\n\x07start_s\x18\x01 \x01(\x01\x12\n\n\x02ms\x18\x02 \x01(\x02\x12\r\n\x05gc_ms\x18\x03 \x01(\x02\"\x1e\n\x0bInfoRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\"m\n\tInfoReply\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\r\n\x05index\x18\x02 \x01(\x05\x12\x0e\n\x06shards\x18\x03 \x01(\x05\x12\r\n\x05songs\x18\x04 \x01(\x03\x12\x0f\n\x07\x63\x61talog\x18\x05 \x01(\x03\x12\x10\n\x08versions\x18\x06 \x03(\t\"J\n\rSearchRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x1d\n\x07queries\x18\x02 \x01(\x0b\x32\x0c.shard.Array\x12\t\n\x01k\x18\x03 \x01(\x05\"a\n\x0bSearchReply\x12\x19\n\x03ids\x18\x01 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06scores\x18\x02 \x01(\x0b\x32\x0c.shard.Array\x12\x19\n\x04work\x18\x03 \x01(\x0b\x32\x0b.shard.Work\";\n\rLookupRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x19\n\x03ids\x18\x02 \x01(\x0b\x32\x0c.shard.Array\"\xce\x01\n\x0bLookupReply\x12&\n\x10retriever_inputs\x18\x01 \x01(\x0b\x32\x0c.shard.Array\x12#\n\rranker_inputs\x18\x02 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06\x61rtist\x18\x03 \x01(\x0b\x32\x0c.shard.Array\x12\x1b\n\x05\x61lbum\x18\x04 \x01(\x0b\x32\x0c.shard.Array\x12\x1c\n\x06genres\x18\x05 \x01(\x0b\x32\x0c.shard.Array\x12\x19\n\x04work\x18\x06 \x01(\x0b\x32\x0b.shard.Work\"<\n\rCountsRequest\x12\x0f\n\x07version\x18\x01 \x01(\t\x12\x1a\n\x04keys\x18\x02 \x01(\x0b\x32\x0c.shard.Array\"F\n\x0b\x43ountsReply\x12\x1c\n\x06\x63ounts\x18\x01 \x01(\x0b\x32\x0c.shard.Array\x12\x19\n\x04work\x18\x02 \x01(\x0b\x32\x0b.shard.Work2\xd1\x01\n\x05Shard\x12,\n\x04Info\x12\x12.shard.InfoRequest\x1a\x10.shard.InfoReply\x12\x32\n\x06Search\x12\x14.shard.SearchRequest\x1a\x12.shard.SearchReply\x12\x32\n\x06Lookup\x12\x14.shard.LookupRequest\x1a\x12.shard.LookupReply\x12\x32\n\x06\x43ounts\x12\x14.shard.CountsRequest\x1a\x12.shard.CountsReplyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,22 +33,24 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_ARRAY']._serialized_start=35
   _globals['_ARRAY']._serialized_end=86
-  _globals['_INFOREQUEST']._serialized_start=88
-  _globals['_INFOREQUEST']._serialized_end=118
-  _globals['_INFOREPLY']._serialized_start=120
-  _globals['_INFOREPLY']._serialized_end=229
-  _globals['_SEARCHREQUEST']._serialized_start=231
-  _globals['_SEARCHREQUEST']._serialized_end=305
-  _globals['_SEARCHREPLY']._serialized_start=307
-  _globals['_SEARCHREPLY']._serialized_end=377
-  _globals['_LOOKUPREQUEST']._serialized_start=379
-  _globals['_LOOKUPREQUEST']._serialized_end=438
-  _globals['_LOOKUPREPLY']._serialized_start=441
-  _globals['_LOOKUPREPLY']._serialized_end=620
-  _globals['_COUNTSREQUEST']._serialized_start=622
-  _globals['_COUNTSREQUEST']._serialized_end=682
-  _globals['_COUNTSREPLY']._serialized_start=684
-  _globals['_COUNTSREPLY']._serialized_end=727
-  _globals['_SHARD']._serialized_start=730
-  _globals['_SHARD']._serialized_end=939
+  _globals['_WORK']._serialized_start=88
+  _globals['_WORK']._serialized_end=138
+  _globals['_INFOREQUEST']._serialized_start=140
+  _globals['_INFOREQUEST']._serialized_end=170
+  _globals['_INFOREPLY']._serialized_start=172
+  _globals['_INFOREPLY']._serialized_end=281
+  _globals['_SEARCHREQUEST']._serialized_start=283
+  _globals['_SEARCHREQUEST']._serialized_end=357
+  _globals['_SEARCHREPLY']._serialized_start=359
+  _globals['_SEARCHREPLY']._serialized_end=456
+  _globals['_LOOKUPREQUEST']._serialized_start=458
+  _globals['_LOOKUPREQUEST']._serialized_end=517
+  _globals['_LOOKUPREPLY']._serialized_start=520
+  _globals['_LOOKUPREPLY']._serialized_end=726
+  _globals['_COUNTSREQUEST']._serialized_start=728
+  _globals['_COUNTSREQUEST']._serialized_end=788
+  _globals['_COUNTSREPLY']._serialized_start=790
+  _globals['_COUNTSREPLY']._serialized_end=860
+  _globals['_SHARD']._serialized_start=863
+  _globals['_SHARD']._serialized_end=1072
 # @@protoc_insertion_point(module_scope)

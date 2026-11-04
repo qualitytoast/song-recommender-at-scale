@@ -177,13 +177,23 @@ class ShardedRecommender(Catalog):
         except grpc.RpcError:
             return False
 
-    def call_all(self, calls):
+    def call_all(self, calls, trace=None, stage=None):
         """Send every (shard, method, request) at once; the replies, with None for each call that failed
         (after gRPC's retries) or went to a shard the circuit breaker skips, and the shards that failed one.
-        A shard that let a call run past its deadline is skipped for `cooldown` seconds."""
+        A shard that let a call run past its deadline is skipped for `cooldown` seconds. With a list `trace`, a
+        record of each call is added to it, for the timing checks: its stage, shard and kind; when it was sent and
+        its reply arrived (Unix time, the arrival set by gRPC's thread as it comes in); the shard's own start, work
+        and garbage-collection time (shard.proto's Work), or "failed"."""
         now = time.monotonic()
-        pending = [(shard, None if now < self.skip_until[shard] else method.future(request, timeout=self.deadline))
-                   for shard, method, request in calls]
+        pending, entries = [], []
+        for shard, method, request in calls:
+            entry = {"stage": stage, "shard": shard, "call": type(request).__name__.removesuffix("Request"),
+                     "sent_s": time.time()}
+            p = None if now < self.skip_until[shard] else method.future(request, timeout=self.deadline)
+            if p is not None and trace is not None:
+                p.add_done_callback(lambda _, entry=entry: entry.__setitem__("arrived_s", time.time()))
+            pending.append((shard, p))
+            entries.append(entry)
         replies, failed = [], set()
         for shard, p in pending:
             try:
@@ -195,6 +205,14 @@ class ShardedRecommender(Catalog):
                 failed.add(shard)
                 if isinstance(e, grpc.RpcError) and e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                     self.skip_until[shard] = time.monotonic() + self.cooldown
+        if trace is not None:
+            for entry, reply in zip(entries, replies):
+                if reply is None:
+                    entry["failed"] = True
+                else:
+                    entry.update(start_s=reply.work.start_s, work_ms=round(reply.work.ms, 3),
+                                 gc_ms=round(reply.work.gc_ms, 3))
+            trace.extend(entries)
         return replies, failed
 
     def by_shard(self, ids):
@@ -227,10 +245,10 @@ class ShardedRecommender(Catalog):
         s, device, songs = self.settings, self.device, self.settings["songs"]
         X = np.asarray(song_ids[-s["input_length"]:], dtype=np.int64)
         N = np.asarray(name_ids, dtype=np.int64).reshape(1, -1)
-        missing = set()
+        missing, shard_calls = set(), []
         # 1. the input songs' rows (songs on a shard that didn't answer are left out)
         parts, calls = self.lookup_calls(X)
-        replies, failed = self.call_all(calls)
+        replies, failed = self.call_all(calls, shard_calls, "shards: input songs")
         missing |= failed
         inputs = self.gather_rows(len(X), parts, replies)
         keep = ~np.isin(X % len(self.stubs), list(failed))
@@ -249,7 +267,7 @@ class ShardedRecommender(Catalog):
         k = s["shortlist"] + (L if s["exclude_input"] else 0)
         replies, failed = self.call_all([(i, stub.Search, shard_pb2.SearchRequest(version=self.version,
                                                                                   queries=pack(h), k=k))
-                                         for i, stub in enumerate(self.stubs)])
+                                         for i, stub in enumerate(self.stubs)], shard_calls, "shards: search")
         missing |= failed
         replies = [r for r in replies if r is not None]
         if not replies:
@@ -266,7 +284,7 @@ class ShardedRecommender(Catalog):
         calls += [(o, self.stubs[o].Counts, shard_pb2.CountsRequest(version=self.version,
                                                                     keys=pack(keys[at].ravel())))
                   for o, at in count_parts.items()]
-        replies, failed = self.call_all(calls)
+        replies, failed = self.call_all(calls, shard_calls, "shards: candidates")
         missing |= failed
         rows = self.gather_rows(len(cands), parts, replies[:len(parts)])
         counts = np.zeros((len(cands), L), dtype=np.int64)
@@ -299,7 +317,7 @@ class ShardedRecommender(Catalog):
         rerank = self.ranker(context_t, torch.from_numpy(N).to(device), cands_t, base, f).cpu().numpy()[0]
         clock.mark("ranker")
         best = np.argsort(-rerank, kind="stable")
-        notes = {"partial": bool(missing)}
+        notes = {"partial": bool(missing), "shard_calls": shard_calls}
         if missing:
             notes["missing_shards"] = sorted(int(i) for i in missing)
         return cands[best], rerank[best], clock.times, notes
@@ -319,11 +337,11 @@ class ShardedRecommender(Catalog):
         mixes = np.array([r[2] if len(r) > 2 else MIX for r in requests], dtype=np.float64)
         tastes = [r[3] if len(r) > 3 else None for r in requests]
         ws = np.array([r[4] if len(r) > 4 and r[3] is not None else 0.0 for r in requests], dtype=np.float64)
-        missing = set()
+        missing, shard_calls = set(), []
         # 1. the rows of every input song of the batch
         uniq_in = np.unique(np.concatenate(Xs))
         parts, calls = self.lookup_calls(uniq_in)
-        replies, failed = self.call_all(calls)
+        replies, failed = self.call_all(calls, shard_calls, "shards: input songs")
         missing |= failed
         in_rows = self.gather_rows(len(uniq_in), parts, replies)
         in_ok = ~np.isin(uniq_in % n_shards, list(failed))
@@ -351,7 +369,7 @@ class ShardedRecommender(Catalog):
         k = s["shortlist"] + (L if s["exclude_input"] else 0)
         replies, failed = self.call_all([(i, stub.Search, shard_pb2.SearchRequest(version=self.version,
                                                                                   queries=pack(h), k=k))
-                                         for i, stub in enumerate(self.stubs)])
+                                         for i, stub in enumerate(self.stubs)], shard_calls, "shards: search")
         missing |= failed
         replies = [r for r in replies if r is not None]
         if not replies:
@@ -372,7 +390,7 @@ class ShardedRecommender(Catalog):
         count_parts = self.by_shard(uniq_keys % songs)  # each pair from its later song's shard
         calls += [(o, self.stubs[o].Counts, shard_pb2.CountsRequest(version=self.version, keys=pack(uniq_keys[at])))
                   for o, at in count_parts.items()]
-        replies, failed = self.call_all(calls)
+        replies, failed = self.call_all(calls, shard_calls, "shards: candidates")
         missing |= failed
         c_rows = self.gather_rows(len(uniq_c), parts, replies[:len(parts)])
         c_ok = ~np.isin(uniq_c % n_shards, list(failed))
@@ -409,7 +427,7 @@ class ShardedRecommender(Catalog):
         rerank = self.ranker(t(context), t(N), t(local_c), base, f, t(lengths)).cpu().numpy()
         rerank[lost] = -np.inf
         clock.mark("ranker")
-        notes = {"partial": bool(missing)}
+        notes = {"partial": bool(missing), "shard_calls": shard_calls}
         if missing:
             notes["missing_shards"] = sorted(int(i) for i in missing)
         times = {**clock.times, "batch size": B}

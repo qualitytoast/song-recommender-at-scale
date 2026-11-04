@@ -24,7 +24,7 @@ from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender, version_of
 from recsys.taste import adjust, make_profile, save_profile
 from recsys.wire import pack, unpack
-from serving_helpers import ARTISTS, ROOT, V, free_ports, shard_servers, slices, write_tiny_bundle
+from serving_helpers import ARTISTS, ROOT, V, free_ports, public, shard_servers, slices, write_tiny_bundle
 
 COPIES = 3  # the test update's new songs: copies of the base's 3 most played songs (IDs V, V + 1, V + 2)
 
@@ -131,7 +131,7 @@ def test_an_update_answers_as_the_whole_bundle_it_stands_for(updated, which):
                         expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name, mix)
                         np.testing.assert_array_equal(ids, expected_ids)
                         np.testing.assert_allclose(scores, expected_scores, rtol=1e-5, atol=1e-5)
-                        assert notes == {"partial": False}
+                        assert public(notes) == {"partial": False}
                 request = ([f"fake:track:{V}", "Nightcall - Kavinsky", "nope"], "drive")
                 out, expected = rec.recommend(*request), single.recommend(*request)
                 assert {**out, "timings_ms": None, "version": None} == {**expected, "timings_ms": None, "version": None}

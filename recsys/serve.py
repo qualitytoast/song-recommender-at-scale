@@ -7,7 +7,8 @@
 With --switch the version served is the one the bundle's switch file names (recsys/switch.py): the bundle itself
 or an update of it (recsys/updates.py), changed without a restart. A request with the X-Recsys-Standby header
 (nginx removes it from the public's requests) is answered by the standby version instead, to check it first;
-one with X-Recsys-Fresh is computed even if the answer cache has it.
+one with X-Recsys-Fresh is computed even if the answer cache has it; one with X-Recsys-Trace also says where its
+time went (per stage and per shard call), for the timing checks.
 
   POST /recommend   {"songs": ["spotify:track:...", "Nightcall - Kavinsky", ...], "name": "road trip"}
                     (songs: Spotify URIs or "Track - Artist" text; name optional; "max_per_artist": at most
@@ -210,10 +211,11 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
 
     @app.post("/recommend")
     def recommend(request: RecommendRequest, x_recsys_standby: str | None = Header(None),
-                  x_recsys_fresh: str | None = Header(None)):
-        """Two headers for the daily job's checks (recsys/daily_job.py), which nginx removes from the public's
+                  x_recsys_fresh: str | None = Header(None), x_recsys_trace: str | None = Header(None)):
+        """Headers for checks (recsys/daily_job.py, scripts/serving_check.py), which nginx removes from the public's
         requests: X-Recsys-Standby answers with the standby version, to check it before switching to it (409 if there
-        is none); X-Recsys-Fresh computes the answer even if the cache has it, so the check reaches the shards."""
+        is none); X-Recsys-Fresh computes the answer even if the cache has it, so the check reaches the shards;
+        X-Recsys-Trace adds where the request's time went ("trace", recommender.Catalog.recommend)."""
         arrived = time.monotonic()
         if not request.songs:
             raise HTTPException(400, {"error": "no songs given: send at least one Spotify track URI"})
@@ -224,7 +226,7 @@ def create_app(bundle, device="cpu", shards=None, deadline=2.0, redis_url=None, 
             raise busy()
         try:
             return rec.recommend(request.songs, request.name, arrived, request.max_per_artist, request.mix,
-                                 request.profile, fresh=bool(x_recsys_fresh))
+                                 request.profile, fresh=bool(x_recsys_fresh), trace=bool(x_recsys_trace))
         except NoKnownSongs as e:
             raise HTTPException(400, {"error": str(e), "ignored": e.ignored})
         except Overloaded as e:

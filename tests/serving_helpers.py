@@ -27,6 +27,11 @@ PLAYLISTS = np.array([50, 5, 3, 20, 30, 10] + [1 + i % 4 for i in range(V - 6)])
 TRACKS = [NAMED.get(i, f"Song {i}") for i in range(V)]
 
 
+def public(notes):
+    """A sharded answer's notes without its shard calls' records (frontdesk.ShardedRecommender.call_all)."""
+    return {k: v for k, v in notes.items() if k != "shard_calls"}
+
+
 def tiny_pair(names=True):
     """A retriever with artist, album, length and genre features and name words (unless names=False, as for
     listening sessions), and a ranker on it, every weight random (so each table matters), the ranker's song

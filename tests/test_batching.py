@@ -7,7 +7,7 @@ from recsys.admission import Overloaded
 from recsys.batching import Batcher
 from recsys.frontdesk import ShardedRecommender, ShardsUnavailable
 from recsys.recommender import Recommender
-from serving_helpers import shard_servers, slices, write_tiny_bundle
+from serving_helpers import public, shard_servers, slices, write_tiny_bundle
 
 REQUESTS = [([7], "road trip"), ([7, 21], "gym"), ([3, 17, 9], ""), ([1, 2, 3, 4, 5], "chill mix"), ([5, 5, 8], "trip"),
             ([30], "")]
@@ -32,7 +32,11 @@ def test_a_batch_gives_each_request_its_own_answer(sharded):
         expected_ids, expected_scores, _, _ = single.recommend_ids(songs, name_ids, mix)
         np.testing.assert_array_equal(ids, expected_ids)
         np.testing.assert_allclose(scores, expected_scores, rtol=1e-4, atol=1e-4)
-        assert notes == {"partial": False} and times["batch size"] == len(requests)
+        assert public(notes) == {"partial": False} and times["batch size"] == len(requests)
+    # one record per shard call, shared by the batch's requests: each shard searched once for all of them
+    calls = batched[0][3]["shard_calls"]
+    assert all(notes["shard_calls"] is calls for *_, notes in batched)
+    assert sorted(c["shard"] for c in calls if c["call"] == "Search") == [0, 1, 2]
 
 
 def test_in_a_batch_each_request_gets_its_own_taste(sharded):
@@ -73,7 +77,7 @@ def test_in_a_batch_a_dead_shard_only_fails_the_requests_it_holds_every_song_of(
     results = rec.recommend_batch([([4, 7], single.encode_name("")), ([3, 4], single.encode_name(""))])
     assert isinstance(results[0], ShardsUnavailable)  # both its songs live on shard 1
     ids, _, _, notes = results[1]
-    assert notes == {"partial": True, "missing_shards": [1]} and len(ids) >= 10 and not (ids % 3 == 1).any()
+    assert public(notes) == {"partial": True, "missing_shards": [1]} and len(ids) >= 10 and not (ids % 3 == 1).any()
 
 
 
