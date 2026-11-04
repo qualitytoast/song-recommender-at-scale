@@ -2518,3 +2518,57 @@ with the fixed front desk, to confirm its memory stays level; Part D's drills.
 
 Time: deploy 216 s upload, 174 s build, 34 s pre-read, 18.2 s down; catch-up switch 873 s; the daily runs 1,169 s
 and 1,177 s; tests 71 s (358); the fixes' deploy 2 s build, 34 s pre-read, 15.3 s down; disk test 78 s and 61 s.
+
+**Shards load a new version one at a time** (2026-11-04, `recsys/shard.py`). At the catch-up's prepare on the server,
+all 4 shards loaded the standby from cold files at once (37.8 s each, the disk's ~50 MB/s shared four ways) and
+answers stalled up to 6.3 s. Now a shard that is already serving loads a new version only during its turn: a lock
+(`flock`) on the bundle's folder, which every shard following the switch file can open (the bundle is mounted
+read-only, so it needs no file of its own). The others try again each second; the kernel lets go of a dead
+shard's turn. Starting up, a shard loads at once, so a restart isn't four times slower. New test: shards wait while
+another holds the turn, then both load; starting up doesn't wait. On the Mac's Docker the lock works across the
+containers: each switch below loaded the shards one after another, ~0.5 s each, the next starting within a second.
+
+**Failure drills on the Mac** (Part D, 2026-11-04; `scripts/daily_drills.py`, `runs/serving/drills_mac_2026-11-04.json`).
+Steady traffic went straight to the front desk the whole time (4 threads, ~60 requests a second, every answer
+computed, `X-Recsys-Fresh`), while the real job ran each drill in its container. An answer that mixed two versions
+would differ from the other answers to the same case from that version: none did, in any drill (88,913 requests).
+
+| Drill | What happened | Traffic during it |
+|---|---|---|
+| Flip: `switch` base → the catch-up | standby ready 6.1 s, checks passed, live, 120 s watch; 168 s | 10,343: 0 failed, 0 partial |
+| Undo under load (twice) | back on the base in 7 s and 6 s, the timer paused (then resumed) | 2,056: 0 failed, 0 partial |
+| A personalized request reaching a new song | 400 with the owner's profile: all answered and personalized, 94 with a new song | 581: 0 failed |
+| Everything restarted with an update live | recreated, healthy after 12.4 s, back on the catch-up | 386 failed in 9.0 s, then none |
+| Bad update: every pair count zeroed | stopped by the checks: NDCG@10 0.2562 vs live 0.2618 (limit 0.003 lower) | 3,303: 0 failed |
+| Bad update: a new song's vector 3x as long as any | stopped: in 185 of 2,000 lists (limit 1%), NDCG@10 0.2553 | 3,694: 0 failed |
+| Damaged dump (one byte flipped) | stopped after 30 s: zstd's checksum failed; nothing written | 1,916: 0 failed |
+| Repeated dump (Nov 1's window under a new number) | nothing new | 42: 0 failed |
+| A shard's program killed 1 s into the prepare | Docker restarted it, it came back on the live version in 0.8 s, then loaded the standby in its turn; the job carried on (ready 7.1 s, checks, flip, watch; 173 s) | 10,469: 0 failed, 44 partial in 1.6 s |
+
+The bad updates skip the build's own checks (`daily_drills.py bad` writes them straight on top of the live
+version, as a bug the build missed would): the switch's checks are the second line, and they held. The zeroed
+counts were caught with less room than expected, 0.0056 below live for a limit of 0.003. A failed switch leaves its
+new songs in the song search index, which is harmless: the menu drops IDs past the catalog, and the next update's
+songs take those IDs. The next successful switch deleted both bad updates (pruning keeps only the live one's line).
+
+Found and fixed, each with a test:
+- **A damaged dump crashed the job.** zstd's error went up as a traceback: the run wasn't recorded (status didn't
+  show it), and half an extract stayed on disk. A dump that can't be read now stops the build like a check
+  ("... can't be read ...; the next run tries it again"), and leaves nothing behind. Any other error is recorded too.
+- **A switch that gave up waiting left its standby named.** The first try at the shard drill stopped shard 0 with
+  `docker kill`, which Docker counts as stopped by hand, so it wasn't restarted (autoheal only restarts running
+  containers that are unhealthy). The job waited its 900 s and stopped, but `switch.json` still named the standby,
+  and no command could clear it. The shards would have kept the extra version (+1.9 GB on the server), and every
+  later build would have refused to start. Now anything that stops a switch or an undo before the flip lets the
+  standby go. A new `finish` command keeps what's live and lets the standby go, for a job stopped part way through a
+  switch. The rerun killed the shard's program inside its container instead, as a crash would (above).
+
+Found, not fixed: while shard 0 was stopped (15 min), the median answer took 96.5 ms instead of ~14 ms, and 3.6%
+of requests were refused (503). The refusals are by design: the front desk refuses a request whose every input
+song is on the missing shard. The slowdown isn't: the front desk's notes say an unreachable shard costs no waiting.
+The cause isn't confirmed. The likely one is gRPC's retries of the missing shard in each round of a request's shard
+calls; the circuit breaker skips a shard only after a missed deadline. A shard is missing that long only if stopped
+by hand: a crashed one is back within seconds on the Mac, and within ~26 s on the server.
+
+Time: tests 79 s (361); the bad updates 9 s and 10 s to write; the drills 30 min with traffic (the stopped shard's
+900 s wait included).

@@ -10,6 +10,7 @@ if anything fails. Nothing is retrained (recsys/daily.py says what a dump adds, 
     python -m recsys.daily_job build --bundle /bundle [--dumps <URL or folder>]   # a new update, not switched to
     python -m recsys.daily_job switch --bundle /bundle --update updates/<folder>   # check it, switch, watch
     python -m recsys.daily_job undo --bundle /bundle [--to <folder>]   # back to the parent (or a kept folder); pauses
+    python -m recsys.daily_job finish --bundle /bundle   # let the standby go, keep what's live (a job stopped mid-switch)
     python -m recsys.daily_job skip-dump --bundle /bundle <dump>       # never use that dump (step past a bad one)
     python -m recsys.daily_job resume --bundle /bundle                # let the timer run again
     python -m recsys.daily_job status --bundle /bundle
@@ -18,7 +19,7 @@ build, on top of the live version (the base or an update):
   1. the dumps not used yet: chained by their windows after the live version's (recsys.daily.chain); for the base,
      after where its training data ends; skip-dump's ones are stepped past, not used
   2. each one's fresh listens as an extract, its checksum checked (recsys.daily.fresh_extract, streamed: the dump
-     itself is never stored), then what it adds (recsys.daily.apply_dump): new songs at 3+ listeners (most first,
+     itself is never stored; one that can't be read stops the build), then what it adds (recsys.daily.apply_dump): new songs at 3+ listeners (most first,
      2,000 a dump at most), every catalog song's listens, every pair's count
   3. checks before writing anything (a day's dump, not the tail dump seconds after it): fresh listens per day
      within 0.3-3x of the median of the last 14 days, no song over 5% of the day's listens
@@ -197,6 +198,12 @@ def named_time(name):
     return timegm(datetime.strptime(d + t, "%Y%m%d%H%M%S").timetuple())
 
 
+def unreadable(name, error):
+    """The Stop for a dump that can't be read (damaged, cut short, its download failed): nothing is built."""
+    return Stop(f"{name} can't be read ({type(error).__name__}: {error}); the next run tries it again (skip-dump "
+                f"it if it stays so)")
+
+
 class SliceTable:
     """A per-song table of the base's songs read from the base's slices as if it were one array (song j is row
     j // N of shard j % N), memory-mapped: only the rows asked for are read."""
@@ -310,7 +317,7 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
     bundle = Path(bundle)
     state, sw = read_state(bundle), switch.read(bundle / "switch.json")
     if sw["standby"] is not None:
-        raise Stop(f"a switch is under way (standby {sw['standby']}): finish it or undo first")
+        raise Stop(f"a switch is under way (standby {sw['standby']}): finish (keeps what's live) or undo first")
     parent_folder = sw["live"]
     parent, info = bundle / parent_folder, update_info(bundle, parent_folder)
     after = info.get("chain_end", state["data_end"])
@@ -321,7 +328,12 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
     done = {d["dump"] for d in info.get("dumps", [])} | set(info.get("skipped_dumps", []))
     recent = {n: loc for n, loc in found.items()  # a dump is named for its window's end
               if n not in done and named_time(n) > after - 2 * DAY and (until is None or named_time(n) <= until + 3600)}
-    windows = {n: read_window(loc) for n, loc in recent.items()}
+    windows = {}
+    for n, loc in recent.items():
+        try:
+            windows[n] = read_window(loc)
+        except Exception as e:
+            raise unreadable(n, e) from None
     used, skipped, gaps = chain(windows, after)
     if until is not None:
         used = [n for n in used if windows[n][1] <= until + 3600]
@@ -341,7 +353,10 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
             log(f"{name}: skipped (skip-dump)")
             continue
         t = time.perf_counter()
-        ext, window = fresh_extract(recent[name], extracts / name, workers)
+        try:
+            ext, window = fresh_extract(recent[name], extracts / name, workers)
+        except Exception as e:  # a wrong checksum, or zstd's or tar's error part way through (2026-11-04's drill)
+            raise unreadable(name, e) from None
         report = apply_dump(served, update, seen, ext, window, name, MIN_USERS, MAX_NEW)
         check_dump(report, rates)
         if window[1] - window[0] >= DAY / 2:
@@ -516,19 +531,24 @@ def switch_to(bundle, folder, desk, search=None, search_key=None, watch_s=WATCH_
         add_songs(search, search_key, info["base"], docs)
         log(f"{len(docs):,} new songs in the search index")
     switch.prepare(path, folder)
-    report["standby_ready_s"] = round(wait_for(lambda: (desk.health()["switch"]["standby"] or {}).get("version")
-                                               == version, 900, "every shard and the front desk to load it"), 1)
-    log(f"standby {version} ready after {report['standby_ready_s']} s")
-    cases = json.loads((daily_dir(bundle) / "cases.json").read_text())
-    added = added_songs(bundle / folder, bundle)["uris"]
-    checks, problems = check_standby(desk, cases, version, added[len(added) - info["added"]:])
-    report["checks"] = checks
-    log(f"checks: live NDCG@10 {checks['live']['ndcg@10']:.4f}, standby {checks['standby']['ndcg@10']:.4f}; "
-        f"p99 {checks['live']['p99_ms']} / {checks['standby']['p99_ms']} ms; new songs in "
-        f"{checks['new_songs']['lists_with_one']:.1%} of lists, at most {checks['new_songs']['most_lists']} for one")
-    if problems:
-        switch.finish(path)  # the update is dropped; live as it was
-        raise Stop("standby checks failed, not switched: " + "; ".join(problems))
+    try:
+        report["standby_ready_s"] = round(wait_for(lambda: (desk.health()["switch"]["standby"] or {}).get("version")
+                                                   == version, 900, "every shard and the front desk to load it"), 1)
+        log(f"standby {version} ready after {report['standby_ready_s']} s")
+        cases = json.loads((daily_dir(bundle) / "cases.json").read_text())
+        added = added_songs(bundle / folder, bundle)["uris"]
+        checks, problems = check_standby(desk, cases, version, added[len(added) - info["added"]:])
+        report["checks"] = checks
+        log(f"checks: live NDCG@10 {checks['live']['ndcg@10']:.4f}, standby {checks['standby']['ndcg@10']:.4f}; "
+            f"p99 {checks['live']['p99_ms']} / {checks['standby']['p99_ms']} ms; new songs in "
+            f"{checks['new_songs']['lists_with_one']:.1%} of lists, at most {checks['new_songs']['most_lists']} for one")
+        if problems:
+            raise Stop("standby checks failed, not switched: " + "; ".join(problems))
+    except BaseException:
+        # failed checks, a shard that never loaded it (a drill, 2026-11-04: left named, the standby stayed loaded and
+        # every later build refused), anything else before the flip: the update is dropped, live as it was
+        switch.finish(path)
+        raise
     switch.flip(path)
     report["flip_seen_s"] = round(wait_for(lambda: desk.health()["version"] == version, 120, "the flip"), 1)
     log(f"live: {version} (watching {watch_s:.0f} s)")
@@ -587,7 +607,12 @@ def undo(bundle, desk, to=None):
     pause(bundle, f"undo from {sw['live']} to {target}")
     if sw["standby"] != target:
         switch.prepare(path, target)
-    wait_for(lambda: (desk.health()["switch"]["standby"] or {}).get("version") == version, 900, "the old version to load")
+    try:
+        wait_for(lambda: (desk.health()["switch"]["standby"] or {}).get("version") == version, 900,
+                 "the old version to load")
+    except BaseException:  # as in switch_to: not loaded everywhere, so let it go; live as it was (still paused)
+        switch.finish(path)
+        raise
     switch.flip(path)
     wait_for(lambda: desk.health()["version"] == version, 120, "the flip")
     switch.finish(path)
@@ -610,7 +635,8 @@ def status(bundle):
 
 def main():
     ap = argparse.ArgumentParser(description="The daily update (recsys/daily_job.py).")
-    ap.add_argument("command", choices=["starter", "build", "switch", "run", "undo", "skip-dump", "resume", "status"])
+    ap.add_argument("command", choices=["starter", "build", "switch", "run", "undo", "finish", "skip-dump", "resume",
+                                        "status"])
     ap.add_argument("dump", nargs="?", help="skip-dump: the dump's name")
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--dumps", default=DUMPS, help="ListenBrainz's listing (a URL) or a folder of dump folders")
@@ -647,6 +673,13 @@ def main():
             if args.command == "undo":
                 undo(bundle, desk, args.to)
                 run["result"] = "undone"
+            elif args.command == "finish":
+                sw = switch.read(bundle / "switch.json")
+                if sw["standby"] is None:
+                    raise Stop("no standby: nothing to finish")
+                switch.finish(bundle / "switch.json")
+                log(f"kept {sw['live']} live, let {sw['standby']} go")
+                run["result"] = f"finished: {sw['live']} live, {sw['standby']} let go"
             elif args.command == "switch":
                 run["report"] = switch_to(bundle, args.update, desk, args.search or None, key, args.watch_s)
                 run["result"] = f"switched to {args.update}"
@@ -670,6 +703,9 @@ def main():
         run["result"] = f"stopped: {e}"
         log(f"STOPPED: {e}")
         raise SystemExit(1)
+    except Exception as e:  # not a check: a bug or an outage, recorded too (status shows it), then raised as it is
+        run["result"] = f"failed: {type(e).__name__}: {e}"
+        raise
     finally:
         run["seconds"] = round(time.perf_counter() - began)
         if "result" in run and (daily_dir(bundle) / "state.json").exists():

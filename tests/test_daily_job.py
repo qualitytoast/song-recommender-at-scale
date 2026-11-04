@@ -140,6 +140,23 @@ def test_a_tail_dump_is_used_once(tiny, tmp_path):
         sw.unlink()
 
 
+def test_a_damaged_dump_stops_the_build_and_leaves_nothing(tiny, tmp_path):
+    bundle, dumps, (day1, _) = tiny
+    shutil.copytree(dumps / day1, tmp_path / "dumps" / day1)
+    path = next((tmp_path / "dumps" / day1).glob("*.tar.zst"))
+    data = bytearray(path.read_bytes())
+    data[len(data) // 2] ^= 0xFF  # one byte damaged: as in the drill (2026-11-04), zstd's own checksum fails
+    path.write_bytes(bytes(data))
+    updates = sorted((bundle / "updates").glob("*")) if (bundle / "updates").exists() else []
+    out = subprocess.run([sys.executable, "-m", "recsys.daily_job", "build", "--bundle", str(bundle), "--dumps",
+                          str(tmp_path / "dumps"), "--extracts", str(tmp_path / "extracts")],
+                         cwd=ROOT, capture_output=True, text=True)
+    assert out.returncode == 1 and f"STOPPED: {day1} can't be read" in out.stdout, out.stdout + out.stderr
+    assert dj.read_state(bundle)["runs"][-1]["result"].startswith(f"stopped: {day1} can't be read")
+    assert not any((tmp_path / "extracts").glob("*"))  # no half an extract
+    assert (sorted((bundle / "updates").glob("*")) if (bundle / "updates").exists() else []) == updates
+
+
 def test_a_day_out_of_line_with_the_ones_before_stops_the_build():
     day = {"dump": "d", "start": 0.0, "end": 86400.0, "fresh_listens": 4_000_000, "top_song_share": 0.02}
     with pytest.raises(dj.Stop, match="3.33x the median"):
@@ -217,6 +234,37 @@ def test_pruning_keeps_the_live_ones_last_three_and_the_standby(tmp_path):
     assert sorted(p.name for p in (bundle / "updates").iterdir()) == ["other", "u3", "u4", "u5"]
     assert sorted(p.name for p in (bundle / "daily" / "extracts").iterdir()) == \
         [f"listenbrainz-dump-{k:04d}" for k in range(2, 6)]
+
+
+def test_a_switch_that_gives_up_before_the_flip_lets_the_standby_go(tiny, monkeypatch):
+    """As in the drill (2026-11-04): a shard that never loads the standby. Waiting runs out, and the standby must not
+    stay named (loaded on the shards, and every later build refusing). finish does the same by hand."""
+    bundle, dumps, _ = tiny
+    path = bundle / "switch.json"
+    path.unlink(missing_ok=True)
+    folder = build(bundle, dumps)
+    wait_for = dj.wait_for
+    monkeypatch.setattr(dj, "wait_for", lambda condition, timeout, what: wait_for(condition, 1.0, what))
+
+    class NeverReady:
+        def health(self):
+            return {"status": "degraded", "version": version_of(bundle), "switch": {"standby": None}}
+    state = dj.read_state(bundle)
+    try:
+        with pytest.raises(dj.Stop, match="waited 1 s for every shard"):
+            dj.switch_to(bundle, folder, NeverReady())
+        assert switch.read(path) == {"live": ".", "standby": None}
+        switch.write(path, folder)  # as if switched to; undo to the base can't load it either
+        with pytest.raises(dj.Stop, match="waited 1 s for the old version"):
+            dj.undo(bundle, NeverReady())
+        assert switch.read(path) == {"live": folder, "standby": None}
+        switch.write(path, folder, ".")  # a job stopped part way through a switch
+        out = subprocess.run([sys.executable, "-m", "recsys.daily_job", "finish", "--bundle", str(bundle)], cwd=ROOT,
+                             capture_output=True, text=True)
+        assert out.returncode == 0 and switch.read(path) == {"live": folder, "standby": None}, out.stdout + out.stderr
+    finally:
+        path.unlink(missing_ok=True)
+        dj.write_state(bundle, state)
 
 
 def test_a_switch_checks_flips_watches_and_undoes(tiny, monkeypatch, tmp_path):

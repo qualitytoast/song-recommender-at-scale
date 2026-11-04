@@ -1,7 +1,9 @@
 """Switching versions without a restart (recsys/switch.py, recsys/updates.py): updates of the tiny bundle, shards
 that hold two versions, and a front desk that flips between them under traffic."""
+import fcntl
 import gc
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -177,6 +179,33 @@ def test_a_shard_holds_what_the_switch_file_names(updated, tmp_path):
         assert list(info().versions) == [u]
         assert unpack(lookup(u, [V]).retriever_inputs).shape == (1, 8)
     path.unlink()
+
+
+def test_shards_load_a_new_version_in_turn_but_start_at_once(updated, tmp_path):
+    base, update, _, _, _ = updated
+    path = base / "switch.json"
+    path.unlink(missing_ok=True)
+    u, b = version_of(update), version_of(base)
+    turn = os.open(base, os.O_RDONLY)
+    fcntl.flock(turn, fcntl.LOCK_EX)  # as a shard loading would hold it
+    try:
+        with open(tmp_path / "shards.log", "w") as log, \
+                shard_servers(slices_of(base), switch_file=path, log=log) as addresses:
+            stubs = [shard_pb2_grpc.ShardStub(grpc.insecure_channel(a)) for a in addresses]
+            held = lambda: [list(s.Info(shard_pb2.InfoRequest(), timeout=60, wait_for_ready=True).versions)
+                            for s in stubs]
+            assert held() == [[b], [b]]  # starting up doesn't wait for the turn
+            switch.prepare(path, str(update.relative_to(base)))
+            time.sleep(2.5)
+            assert held() == [[b], [b]]  # serving, a shard waits for it
+            os.close(turn)
+            turn = None
+            wait_for(lambda: held() == [[b, u], [b, u]], what="both shards to load it")
+        assert (tmp_path / "shards.log").read_text().count("waiting for its turn") == 2
+    finally:
+        if turn is not None:
+            os.close(turn)
+        path.unlink(missing_ok=True)
 
 
 def test_a_front_desk_reports_shards_without_its_version_as_down(updated):
