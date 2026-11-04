@@ -9,23 +9,26 @@ x-recommender: &recommender
   restart: unless-stopped
   init: true
 
+# as docker-compose.yml's: each server writes /dev/shm/healthy while it serves (--health-file), Docker reads it
+x-alive-check: &alive-check ["CMD-SHELL", "[ $$(( $$(date +%s) - $$(cat /dev/shm/healthy) )) -lt 10 ]"]
+
 x-shard-health: &shard-health
-  test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
+  test: *alive-check
   interval: 2s
-  timeout: 5s  # as docker-compose.yml's
+  timeout: 5s
   retries: 3
   start_period: 30s
 
 services:
-  shard-0: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051, healthcheck: *shard-health}
-  shard-1: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051, healthcheck: *shard-health}
-  shard-2: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051, healthcheck: *shard-health}
-  shard-3: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051, healthcheck: *shard-health}
+  shard-0: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051 --health-file /dev/shm/healthy, healthcheck: *shard-health}
+  shard-1: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051 --health-file /dev/shm/healthy, healthcheck: *shard-health}
+  shard-2: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051 --health-file /dev/shm/healthy, healthcheck: *shard-health}
+  shard-3: {<<: *recommender, command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051 --health-file /dev/shm/healthy, healthcheck: *shard-health}
   frontdesk:
     <<: *recommender
     command: >
       python -m recsys.serve --bundle /bundle --host 0.0.0.0 --port 8000 --deadline 0.25
-      --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
+      --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051 --health-file /dev/shm/healthy
     environment:
       OMP_NUM_THREADS: "1"
     depends_on:
@@ -34,7 +37,7 @@ services:
       shard-2: {condition: service_healthy}
       shard-3: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
+      test: *alive-check
       interval: 2s
       timeout: 5s
       retries: 3

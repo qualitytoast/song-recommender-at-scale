@@ -23,30 +23,36 @@ x-recommender: &recommender
   labels:
     recsys.autoheal: "true"  # a frozen (unhealthy) container is restarted by the autoheal service
 
+# Every server process checks itself every 2 s and, while it serves, writes the time to /dev/shm/healthy
+# (--health-file, recsys/healthcheck.py). Docker's check only reads that file: healthy if it was written in the last
+# 10 s. A shell one-liner, not a new Python process: one importing gRPC every 2 s cost ~205 ms of CPU a time and
+# caused the slowest 1% of requests (RESULTS.md, 2026-11-04). ($$ is a literal $ for compose.)
+x-alive-check: &alive-check ["CMD-SHELL", "[ $$(( $$(date +%s) - $$(cat /dev/shm/healthy) )) -lt 10 ]"]
+
 x-shard-health: &shard-health
-  test: ["CMD", "python", "-m", "recsys.healthcheck", "grpc", "localhost:50051"]
-  interval: 2s              # checked every 2 s; 2 misses in a row = unhealthy (then autoheal restarts it)
-  timeout: 5s               # a check takes 0.25-0.4 s on the server, but over 2 s twice in a row while the daily job
-                            # loaded the disk, so autoheal restarted a working shard (2-s timeout, 2026-11-04)
+  test: *alive-check
+  interval: 2s              # checked every 2 s; 2 misses in a row = unhealthy (then autoheal restarts it): a frozen
+                            # shard ~14 s after its last self-check
+  timeout: 5s
   retries: 2
   start_period: 120s        # misses while loading do not count: a first load from disk took 38 s on the server
 
 services:
   shard-0:
     <<: *recommender
-    command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051 --switch /bundle/switch.json
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-0 --port 50051 --switch /bundle/switch.json --health-file /dev/shm/healthy
     healthcheck: *shard-health
   shard-1:
     <<: *recommender
-    command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051 --switch /bundle/switch.json
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-1 --port 50051 --switch /bundle/switch.json --health-file /dev/shm/healthy
     healthcheck: *shard-health
   shard-2:
     <<: *recommender
-    command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051 --switch /bundle/switch.json
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-2 --port 50051 --switch /bundle/switch.json --health-file /dev/shm/healthy
     healthcheck: *shard-health
   shard-3:
     <<: *recommender
-    command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051 --switch /bundle/switch.json
+    command: python -m recsys.shard --slice /bundle/shards-4/shard-3 --port 50051 --switch /bundle/switch.json --health-file /dev/shm/healthy
     healthcheck: *shard-health
 
   frontdesk:
@@ -56,6 +62,7 @@ services:
       --shards shard-0:50051,shard-1:50051,shard-2:50051,shard-3:50051
       --redis "${REDIS_URL-redis://redis:6379/0}" --batch ${BATCH:-16} --batch-wait-ms ${BATCH_WAIT_MS:-2}
       --search "${SEARCH_URL-http://meilisearch:7700}" --profiles /bundle/profiles --switch /bundle/switch.json
+      --health-file /dev/shm/healthy
     environment:
       OMP_NUM_THREADS: "1"  # one request's computations are tiny: splitting them over threads costs more
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
@@ -66,10 +73,10 @@ services:
       shard-1: {condition: service_healthy}
       shard-2: {condition: service_healthy}
       shard-3: {condition: service_healthy}
-    healthcheck:  # /live, never stuck behind busy requests: a busy front desk mustn't be restarted
-      test: ["CMD", "python", "-m", "recsys.healthcheck", "http", "http://localhost:8000/live"]
+    healthcheck:  # its self-check asks /live, never stuck behind busy requests: a busy front desk mustn't be restarted
+      test: *alive-check
       interval: 2s
-      timeout: 5s  # as the shards': a slow disk mustn't make it look frozen
+      timeout: 5s
       retries: 3
       start_period: 60s
 

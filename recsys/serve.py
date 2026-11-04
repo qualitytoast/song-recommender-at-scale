@@ -27,8 +27,9 @@ time went (per stage and per shard call), for the timing checks.
                        first (the bundle's count: listens for a ListenBrainz model, playlists for an MPD one)
   GET  /health      -> {"status": "ok" or "degraded", "version", "base_version", "songs", "switch", "defaults",
                         "device", "shards", ...}
-  GET  /live        -> {"ok": true}: the container health check; answered on the event loop, so it never
-                       waits behind busy requests (a busy front desk mustn't look frozen and be restarted)
+  GET  /live        -> {"ok": true}: what the front desk's self-check asks (--health-file, recsys/healthcheck.py);
+                       answered on the event loop, so it never waits behind busy requests (a busy front desk
+                       mustn't look frozen and be restarted)
   GET  /            the webpage (web/)
   GET  /docs        FastAPI's page for trying requests in a browser
 
@@ -295,8 +296,13 @@ if __name__ == "__main__":
     ap.add_argument("--max-pending", type=int, default=64, help="recommendation requests admitted at once")
     ap.add_argument("--max-wait-ms", type=float, default=1000.0, help="a request not started by then gets 503")
     ap.add_argument("--switch", help="the bundle's switch.json to follow (recsys/switch.py; sharded)")
+    ap.add_argument("--health-file", help="check /live every 2 s and write the time here while it answers "
+                                          "(recsys/healthcheck.py)")
     args = ap.parse_args()
     shards = args.shards.split(",") if args.shards else None
+    if args.health_file:  # writes nothing until uvicorn below is up and answering
+        from recsys.healthcheck import SelfCheck, http_ok
+        SelfCheck(http_ok(f"http://127.0.0.1:{args.port}/live"), args.health_file)
     uvicorn.run(create_app(args.bundle or latest_bundle(), args.device, shards, args.deadline, args.redis, args.batch,
                            args.batch_wait_ms, args.max_pending, args.max_wait_ms, search_url=args.search,
                            profiles=args.profiles, switch_file=args.switch),

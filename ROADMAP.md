@@ -71,4 +71,4 @@ The full year is on disk.
 - [ ] A bigger transformer if size helps, then mixture of experts
 - [ ] Songs the model doesn't know: their artist and album from Spotify's API, or a shared "unknown song" vector
 - [ ] Predict vectors for songs outside the catalog from AcousticBrainz audio data (needs recording IDs), tested on known songs
-- [ ] Speed up the slowest 1% of requests (84+ ms): C++ search in place of FAISS, backup requests to a second copy of each shard
+- [ ] Speed up the slowest 1% of requests w/ cheaper health checks
