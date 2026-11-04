@@ -18,7 +18,7 @@ build, on top of the live version (the base or an update):
   1. the dumps not used yet: chained by their windows after the live version's (recsys.daily.chain); for the base,
      after where its training data ends; skip-dump's ones are stepped past, not used
   2. each one's fresh listens as an extract, its checksum checked (recsys.daily.fresh_extract, streamed: the dump
-     itself is never stored), then what it adds (recsys.daily.apply_dump): new songs at 3+ listeners (most first,
+     itself is never stored; one that can't be read stops the build), then what it adds (recsys.daily.apply_dump): new songs at 3+ listeners (most first,
      2,000 a dump at most), every catalog song's listens, every pair's count
   3. checks before writing anything (a day's dump, not the tail dump seconds after it): fresh listens per day
      within 0.3-3x of the median of the last 14 days, no song over 5% of the day's listens
@@ -197,6 +197,12 @@ def named_time(name):
     return timegm(datetime.strptime(d + t, "%Y%m%d%H%M%S").timetuple())
 
 
+def unreadable(name, error):
+    """The Stop for a dump that can't be read (damaged, cut short, its download failed): nothing is built."""
+    return Stop(f"{name} can't be read ({type(error).__name__}: {error}); the next run tries it again (skip-dump "
+                f"it if it stays so)")
+
+
 class SliceTable:
     """A per-song table of the base's songs read from the base's slices as if it were one array (song j is row
     j // N of shard j % N), memory-mapped: only the rows asked for are read."""
@@ -321,7 +327,12 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
     done = {d["dump"] for d in info.get("dumps", [])} | set(info.get("skipped_dumps", []))
     recent = {n: loc for n, loc in found.items()  # a dump is named for its window's end
               if n not in done and named_time(n) > after - 2 * DAY and (until is None or named_time(n) <= until + 3600)}
-    windows = {n: read_window(loc) for n, loc in recent.items()}
+    windows = {}
+    for n, loc in recent.items():
+        try:
+            windows[n] = read_window(loc)
+        except Exception as e:
+            raise unreadable(n, e) from None
     used, skipped, gaps = chain(windows, after)
     if until is not None:
         used = [n for n in used if windows[n][1] <= until + 3600]
@@ -341,7 +352,10 @@ def build(bundle, source=DUMPS, extracts=None, workers=1, until=None):
             log(f"{name}: skipped (skip-dump)")
             continue
         t = time.perf_counter()
-        ext, window = fresh_extract(recent[name], extracts / name, workers)
+        try:
+            ext, window = fresh_extract(recent[name], extracts / name, workers)
+        except Exception as e:  # a wrong checksum, or zstd's or tar's error part way through (2026-11-04's drill)
+            raise unreadable(name, e) from None
         report = apply_dump(served, update, seen, ext, window, name, MIN_USERS, MAX_NEW)
         check_dump(report, rates)
         if window[1] - window[0] >= DAY / 2:
@@ -670,6 +684,9 @@ def main():
         run["result"] = f"stopped: {e}"
         log(f"STOPPED: {e}")
         raise SystemExit(1)
+    except Exception as e:  # not a check: a bug or an outage, recorded too (status shows it), then raised as it is
+        run["result"] = f"failed: {type(e).__name__}: {e}"
+        raise
     finally:
         run["seconds"] = round(time.perf_counter() - began)
         if "result" in run and (daily_dir(bundle) / "state.json").exists():

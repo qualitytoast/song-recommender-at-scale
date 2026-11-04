@@ -140,6 +140,23 @@ def test_a_tail_dump_is_used_once(tiny, tmp_path):
         sw.unlink()
 
 
+def test_a_damaged_dump_stops_the_build_and_leaves_nothing(tiny, tmp_path):
+    bundle, dumps, (day1, _) = tiny
+    shutil.copytree(dumps / day1, tmp_path / "dumps" / day1)
+    path = next((tmp_path / "dumps" / day1).glob("*.tar.zst"))
+    data = bytearray(path.read_bytes())
+    data[len(data) // 2] ^= 0xFF  # one byte damaged: as in the drill (2026-11-04), zstd's own checksum fails
+    path.write_bytes(bytes(data))
+    updates = sorted((bundle / "updates").glob("*")) if (bundle / "updates").exists() else []
+    out = subprocess.run([sys.executable, "-m", "recsys.daily_job", "build", "--bundle", str(bundle), "--dumps",
+                          str(tmp_path / "dumps"), "--extracts", str(tmp_path / "extracts")],
+                         cwd=ROOT, capture_output=True, text=True)
+    assert out.returncode == 1 and f"STOPPED: {day1} can't be read" in out.stdout, out.stdout + out.stderr
+    assert dj.read_state(bundle)["runs"][-1]["result"].startswith(f"stopped: {day1} can't be read")
+    assert not any((tmp_path / "extracts").glob("*"))  # no half an extract
+    assert (sorted((bundle / "updates").glob("*")) if (bundle / "updates").exists() else []) == updates
+
+
 def test_a_day_out_of_line_with_the_ones_before_stops_the_build():
     day = {"dump": "d", "start": 0.0, "end": 86400.0, "fresh_listens": 4_000_000, "top_song_share": 0.02}
     with pytest.raises(dj.Stop, match="3.33x the median"):

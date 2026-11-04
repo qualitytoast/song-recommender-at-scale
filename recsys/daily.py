@@ -74,7 +74,11 @@ def fresh_extract(dump, out, workers=4):
     out = Path(out)
     if not (out / MARKER).exists():
         shutil.rmtree(out, ignore_errors=True)  # an unfinished one
-        meta = extract(str(dump), out, int(end) - FRESH_DAYS * DAY, int(end) + 3600, workers)
+        try:
+            meta = extract(str(dump), out, int(end) - FRESH_DAYS * DAY, int(end) + 3600, workers)
+        except Exception:  # a dump that can't be read leaves no half an extract behind
+            shutil.rmtree(out, ignore_errors=True)
+            raise
         if meta["sha256_ok"] is not True:
             shutil.rmtree(out)
             raise ValueError(f"{dump}: checksum {'missing' if meta['sha256_ok'] is None else 'wrong'}")
