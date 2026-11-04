@@ -1,0 +1,1082 @@
+{
+  "what": "Part D's failure drills on the server (scripts/daily_drills.py), 2026-11-04 04:28-04:59 UTC; light steady traffic straight to the front desk the whole time (2 threads, 0.1 s pause, every answer computed)",
+  "notes": [
+    "the deploy's pre-read read nothing (a wrong path in the drill's script): the restart ran on cold files",
+    "the forward switch's marks after the kill come from the job's own log (its output reached the file only at the end)"
+  ],
+  "drills": {
+    "all": {
+      "requests": 32513,
+      "failed": {
+        "0": 574,
+        "503": 9
+      },
+      "partial": 59,
+      "versions": {
+        "60c65ae7bbad": 28130,
+        "a4c699b91979": 3800
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 39.9,
+        "p99": 148.6,
+        "max": 952.1
+      },
+      "over_500_ms": 20,
+      "problems": [
+        {
+          "at_s": 25.7,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 25.8,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 25.9,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.0,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.0,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.9,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 26.9,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.0,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.1,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.0,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.2,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.2,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 27.5,
+          "code": 0,
+          "missing_shards": null
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 0.0,
+          "ms": 679.2
+        },
+        {
+          "at_s": -0.0,
+          "ms": 681.4
+        },
+        {
+          "at_s": 56.0,
+          "ms": 507.4
+        },
+        {
+          "at_s": 56.0,
+          "ms": 508.0
+        },
+        {
+          "at_s": 240.2,
+          "ms": 952.1
+        },
+        {
+          "at_s": 240.6,
+          "ms": 780.5
+        },
+        {
+          "at_s": 241.8,
+          "ms": 555.2
+        },
+        {
+          "at_s": 241.7,
+          "ms": 586.5
+        },
+        {
+          "at_s": 615.2,
+          "ms": 603.8
+        },
+        {
+          "at_s": 615.6,
+          "ms": 618.3
+        },
+        {
+          "at_s": 616.5,
+          "ms": 536.3
+        },
+        {
+          "at_s": 616.6,
+          "ms": 500.5
+        },
+        {
+          "at_s": 948.9,
+          "ms": 542.8
+        },
+        {
+          "at_s": 949.0,
+          "ms": 751.1
+        },
+        {
+          "at_s": 949.5,
+          "ms": 517.9
+        },
+        {
+          "at_s": 949.9,
+          "ms": 670.0
+        },
+        {
+          "at_s": 1029.8,
+          "ms": 847.4
+        },
+        {
+          "at_s": 1030.1,
+          "ms": 693.2
+        },
+        {
+          "at_s": 1031.1,
+          "ms": 704.2
+        },
+        {
+          "at_s": 1031.1,
+          "ms": 674.5
+        }
+      ]
+    },
+    "restart": {
+      "steps_s": {
+        "start": 0.0,
+        "recreate": 5.0,
+        "healthy": 39.7,
+        "end": 54.8
+      },
+      "requests": 911,
+      "failed": {
+        "0": 574,
+        "503": 7
+      },
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 330
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 3.2,
+        "p99": 119.1,
+        "max": 508.0
+      },
+      "over_500_ms": 2,
+      "problems": [
+        {
+          "at_s": 6.0,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.1,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.9,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 6.9,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.0,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.0,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.1,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.1,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.2,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.3,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.4,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 7.8,
+          "code": 0,
+          "missing_shards": null
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 36.3,
+          "ms": 507.4
+        },
+        {
+          "at_s": 36.3,
+          "ms": 508.0
+        }
+      ]
+    },
+    "personal": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 27.0
+      },
+      "requests": 327,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 327
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 56.6,
+        "p99": 193.4,
+        "max": 225.6
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "bad_counts": {
+      "steps_s": {
+        "start": 0.0,
+        "written": 102.4,
+        "end": 337.7
+      },
+      "requests": 4218,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 4218
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 53.0,
+        "p99": 174.2,
+        "max": 952.1
+      },
+      "over_500_ms": 4,
+      "problems": [],
+      "slow": [
+        {
+          "at_s": 111.5,
+          "ms": 952.1
+        },
+        {
+          "at_s": 111.8,
+          "ms": 780.5
+        },
+        {
+          "at_s": 113.0,
+          "ms": 555.2
+        },
+        {
+          "at_s": 113.0,
+          "ms": 586.5
+        }
+      ]
+    },
+    "bad_vector": {
+      "steps_s": {
+        "start": 0.0,
+        "written": 135.8,
+        "end": 380.9
+      },
+      "requests": 4786,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 4786
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 51.7,
+        "p99": 172.4,
+        "max": 618.3
+      },
+      "over_500_ms": 4,
+      "problems": [],
+      "slow": [
+        {
+          "at_s": 148.1,
+          "ms": 603.8
+        },
+        {
+          "at_s": 148.4,
+          "ms": 618.3
+        },
+        {
+          "at_s": 149.4,
+          "ms": 536.3
+        },
+        {
+          "at_s": 149.4,
+          "ms": 500.5
+        }
+      ]
+    },
+    "repeat": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 5.5
+      },
+      "requests": 74,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 74
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 41.3,
+        "p99": 158.0,
+        "max": 160.0
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "undo": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 42.7
+      },
+      "requests": 576,
+      "failed": {},
+      "partial": 4,
+      "versions": {
+        "60c65ae7bbad": 568,
+        "a4c699b91979": 8
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 37.5,
+        "p99": 348.9,
+        "max": 751.1
+      },
+      "over_500_ms": 4,
+      "problems": [
+        {
+          "at_s": 38.7,
+          "code": 200,
+          "missing_shards": [
+            2
+          ]
+        },
+        {
+          "at_s": 38.8,
+          "code": 200,
+          "missing_shards": [
+            2
+          ]
+        },
+        {
+          "at_s": 39.3,
+          "code": 200,
+          "missing_shards": [
+            2
+          ]
+        },
+        {
+          "at_s": 39.7,
+          "code": 200,
+          "missing_shards": [
+            2
+          ]
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 38.7,
+          "ms": 542.8
+        },
+        {
+          "at_s": 38.8,
+          "ms": 751.1
+        },
+        {
+          "at_s": 39.3,
+          "ms": 517.9
+        },
+        {
+          "at_s": 39.7,
+          "ms": 670.0
+        }
+      ]
+    },
+    "shard_kill": {
+      "steps_s": {
+        "start": 0.0,
+        "prepare": 3.6,
+        "killed shard-0": 6.0,
+        "end": 46.8
+      },
+      "requests": 594,
+      "failed": {
+        "503": 2
+      },
+      "partial": 55,
+      "versions": {
+        "a4c699b91979": 592
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 43.5,
+        "p99": 319.9,
+        "max": 847.4
+      },
+      "over_500_ms": 4,
+      "problems": [
+        {
+          "at_s": 6.0,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.2,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.5,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.8,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 6.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.0,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.2,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.5,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 7.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.2,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.5,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 8.8,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 44.1,
+          "ms": 847.4
+        },
+        {
+          "at_s": 44.4,
+          "ms": 693.2
+        },
+        {
+          "at_s": 45.3,
+          "ms": 704.2
+        },
+        {
+          "at_s": 45.4,
+          "ms": 674.5
+        }
+      ]
+    },
+    "flip": {
+      "steps_s": {
+        "start": 0,
+        "end": 602
+      },
+      "requests": 8528,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "60c65ae7bbad": 8528
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 35.8,
+        "p99": 117.6,
+        "max": 270.8
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    }
+  },
+  "deploy": [
+    "2a5bbbe Merge pull request #60 from qualitytoast/part-d-drills",
+    " frontdesk  Built",
+    "build 2 s",
+    "b610e67a07bbcab7b0c7477797f69671ce8d8ea0d09fd95bea2dd697f8701dc3",
+    "cat: '/home/ubuntu/bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff/updates/updates/2026-11-04-60c65ae7bbad/shards-4/shard-*/*': No such file or directory",
+    "cat: '/home/ubuntu/bundles/ranker_1m_lb_n3_1.5x_next10w-84ec15359fff/updates/updates/2026-11-04-60c65ae7bbad/*.*': No such file or directory",
+    "pre-read 0 s",
+    "04:28:37 restart: start",
+    "04:28:42 restart: recreate",
+    "04:29:16 restart: healthy",
+    "ok 60c65ae7bbad 2492290 updates/2026-11-04-60c65ae7bbad",
+    "04:29:31 restart: end",
+    "3",
+    "1180",
+    "DONE"
+  ],
+  "checks_log": [
+    "front desk anon 1147 MiB; available 6956 MiB",
+    "04:29:59 personal: start",
+    "04:30:26 personal: end",
+    "04:30:26 bad_counts: start",
+    "04:32:08 bad_counts: written",
+    "bad counts: updates/2026-11-04-834d682a2e92",
+    "2026-11-04 04:32:20 standby 834d682a2e92 ready after 9.8 s",
+    "2026-11-04 04:36:03 checks: live NDCG@10 0.2618, standby 0.2562; p99 149.5514933322556 / 144.04875912354325 ms; new songs in 0.0% of lists, at most 0 for one",
+    "2026-11-04 04:36:03 STOPPED: standby checks failed, not switched: NDCG@10 0.2562, live 0.2618: more than 0.003 lower",
+    "04:36:03 bad_counts: end",
+    "{\"live\": \"updates/2026-11-04-60c65ae7bbad\", \"standby\": null}",
+    "deleted updates/2026-11-04-834d682a2e92",
+    "front desk anon 1313 MiB; available 4936 MiB",
+    "04:36:04 bad_vector: start",
+    "04:38:20 bad_vector: written",
+    "bad vector: updates/2026-11-04-09771e397911",
+    "2026-11-04 04:38:34 standby 09771e397911 ready after 12.4 s",
+    "2026-11-04 04:42:25 checks: live NDCG@10 0.2618, standby 0.2553; p99 167.9685043042991 / 138.06337327696383 ms; new songs in 9.2% of lists, at most 185 for one",
+    "2026-11-04 04:42:25 STOPPED: standby checks failed, not switched: NDCG@10 0.2553, live 0.2618: more than 0.003 lower; a new song (fake:track:2492290) is in 185 of 2000 lists (at most 1%)",
+    "04:42:25 bad_vector: end",
+    "{\"live\": \"updates/2026-11-04-60c65ae7bbad\", \"standby\": null}",
+    "deleted updates/2026-11-04-09771e397911",
+    "front desk anon 1320 MiB; available 4885 MiB",
+    "04:42:26 repeat: start",
+    "2026-11-04 04:42:31 nothing new: 30 dumps listed, none after 2026-11-04T00:00:02+00:00",
+    "04:42:32 repeat: end",
+    "live: updates/2026-11-04-60c65ae7bbad (60c65ae7bbad), standby: None",
+    "dumps used up to 2026-11-04T00:00:02+00:00",
+    "paused: False",
+    "skipped dumps: []",
+    "kept updates: ['2026-11-03-eb55b3dae2d4', '2026-11-04-60c65ae7bbad', '2026-11-04-a4c699b91979']",
+    "run 2026-11-04T00:53:27+00:00: switched to updates/2026-11-04-a4c699b91979",
+    "run 2026-11-04T01:13:22+00:00: switched to updates/2026-11-04-60c65ae7bbad",
+    "run 2026-11-04T04:32:10+00:00: stopped: standby checks failed, not switched: NDCG@10 0.2562, live 0.2618: more than 0.003 lower",
+    "run 2026-11-04T04:38:22+00:00: stopped: standby checks failed, not switched: NDCG@10 0.2553, live 0.2618: more than 0.003 lower; a new song (fake:track:2492290) is in 185 of 2000 lists (at most 1%)",
+    "run 2026-11-04T04:42:28+00:00: nothing new",
+    "front desk anon 1326 MiB; available 6623 MiB",
+    "DONE"
+  ],
+  "switches_log": [
+    "front desk anon 1168 MiB; available 6949 MiB",
+    "04:43:27 undo: start",
+    "2026-11-04 04:43:29 paused: undo from updates/2026-11-04-60c65ae7bbad to updates/2026-11-04-a4c699b91979",
+    "2026-11-04 04:44:10 undone: updates/2026-11-04-a4c699b91979 (a4c699b91979) live again; the timer is paused (resume to restart it)",
+    "04:44:10 undo: end",
+    "live: updates/2026-11-04-a4c699b91979 (a4c699b91979), standby: None",
+    "paused: False",
+    "front desk anon 1319 MiB; available 4862 MiB",
+    "04:44:43 shard_kill: start",
+    "04:44:46 shard_kill: prepare",
+    "turn held by pid 3013581: shard-0",
+    "04:44:49 shard_kill: killed shard-0",
+    "04:59:23 shard_kill: end",
+    "04:59:23 flip: start",
+    "04:59:23 flip: end",
+    "2026-11-04 04:44:46 2,000 new songs in the search index",
+    "2026-11-04 04:45:30 standby 60c65ae7bbad ready after 43.5 s",
+    "2026-11-04 04:49:20 checks: live NDCG@10 0.2619, standby 0.2618; p99 168.6947726586368 / 138.79148324485868 ms; new songs in 0.6% of lists, at most 2 for one",
+    "2026-11-04 04:49:21 live: 60c65ae7bbad (watching 600 s)",
+    "2026-11-04 04:59:23 done: 60c65ae7bbad live, the old version let go (878 s)",
+    "job exit 0",
+    "shard-0 Up 14 minutes (healthy)",
+    "shard-1 Up 30 minutes (healthy)",
+    "shard-2 Up 30 minutes (healthy)",
+    "shard-3 Up 30 minutes (healthy)",
+    "{\"live\": \"updates/2026-11-04-60c65ae7bbad\", \"standby\": null}",
+    "live: updates/2026-11-04-60c65ae7bbad (60c65ae7bbad), standby: None",
+    "dumps used up to 2026-11-04T00:00:02+00:00",
+    "paused: False",
+    "skipped dumps: []",
+    "kept updates: ['2026-11-03-eb55b3dae2d4', '2026-11-04-60c65ae7bbad', '2026-11-04-a4c699b91979']",
+    "run 2026-11-04T04:32:10+00:00: stopped: standby checks failed, not switched: NDCG@10 0.2562, live 0.2618: more than 0.003 lower",
+    "run 2026-11-04T04:38:22+00:00: stopped: standby checks failed, not switched: NDCG@10 0.2553, live 0.2618: more than 0.003 lower; a new song (fake:track:2492290) is in 185 of 2000 lists (at most 1%)",
+    "run 2026-11-04T04:42:28+00:00: nothing new",
+    "run 2026-11-04T04:43:29+00:00: undone",
+    "run 2026-11-04T04:44:44+00:00: switched to updates/2026-11-04-60c65ae7bbad",
+    "front desk anon 1340 MiB; available 5150 MiB",
+    "DONE"
+  ],
+  "shard_logs": {
+    "checks": [
+      "shard-1-1 | shard 1/4: loaded version 834d682a2e92 (updates/2026-11-04-834d682a2e92): 623,073 songs, 44,731,365 pairs, in 2.9s, after 3s waiting for its turn",
+      "shard-2-1 | shard 2/4: loaded version 834d682a2e92 (updates/2026-11-04-834d682a2e92): 623,072 songs, 44,560,407 pairs, in 0.5s",
+      "shard-3-1 | shard 3/4: loaded version 834d682a2e92 (updates/2026-11-04-834d682a2e92): 623,072 songs, 44,800,474 pairs, in 0.4s",
+      "shard-0-1 | shard 0/4: loaded version 834d682a2e92 (updates/2026-11-04-834d682a2e92): 623,073 songs, 44,833,485 pairs, in 0.5s, after 1s waiting for its turn",
+      "frontdesk-1 | front desk: version 834d682a2e92 (updates/2026-11-04-834d682a2e92) ready",
+      "shard-0-1 | shard: dropped version 834d682a2e92 (updates/2026-11-04-834d682a2e92)",
+      "shard-0-1 | shard 0/4: loaded version 09771e397911 (updates/2026-11-04-09771e397911): 623,078 songs, 44,833,493 pairs, in 6.8s, after 2s waiting for its turn",
+      "shard-3-1 | shard: dropped version 834d682a2e92 (updates/2026-11-04-834d682a2e92)",
+      "shard-3-1 | shard 3/4: loaded version 09771e397911 (updates/2026-11-04-09771e397911): 623,077 songs, 44,800,483 pairs, in 0.4s",
+      "shard-2-1 | shard: dropped version 834d682a2e92 (updates/2026-11-04-834d682a2e92)",
+      "shard-2-1 | shard 2/4: loaded version 09771e397911 (updates/2026-11-04-09771e397911): 623,077 songs, 44,560,419 pairs, in 0.3s, after 1s waiting for its turn",
+      "shard-1-1 | shard: dropped version 834d682a2e92 (updates/2026-11-04-834d682a2e92)",
+      "shard-1-1 | shard 1/4: loaded version 09771e397911 (updates/2026-11-04-09771e397911): 623,078 songs, 44,731,376 pairs, in 0.5s",
+      "frontdesk-1 | front desk: closed version 834d682a2e92",
+      "frontdesk-1 | front desk: version 09771e397911 (updates/2026-11-04-09771e397911) ready"
+    ],
+    "switches": [
+      "shard-0-1 | shard 0/4: loaded version a4c699b91979 (updates/2026-11-04-a4c699b91979): 622,573 songs, 44,419,410 pairs, in 9.3s, after 8s waiting for its turn",
+      "shard-2-1 | shard 2/4: loaded version a4c699b91979 (updates/2026-11-04-a4c699b91979): 622,572 songs, 44,149,936 pairs, in 9.6s, after 17s waiting for its turn",
+      "shard-1-1 | shard 1/4: loaded version a4c699b91979 (updates/2026-11-04-a4c699b91979): 622,573 songs, 44,316,692 pairs, in 9.2s, after 27s waiting for its turn",
+      "shard-3-1 | shard 3/4: loaded version a4c699b91979 (updates/2026-11-04-a4c699b91979): 622,572 songs, 44,389,471 pairs, in 7.8s",
+      "frontdesk-1 | front desk: version a4c699b91979 (updates/2026-11-04-a4c699b91979) ready",
+      "frontdesk-1 | front desk: now serving version a4c699b91979 (updates/2026-11-04-a4c699b91979)",
+      "shard-3-1 | shard 3/4: loaded version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad): 623,072 songs, 44,800,474 pairs, in 9.5s, after 12s waiting for its turn",
+      "shard-2-1 | shard 2/4: loaded version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad): 623,072 songs, 44,560,407 pairs, in 9.7s, after 2s waiting for its turn",
+      "shard-0-1 | shard 0/4: loaded version a4c699b91979 (updates/2026-11-04-a4c699b91979): 622,573 songs, 44,419,410 pairs, in 0.2s",
+      "shard-0-1 | shard serving on 0.0.0.0:50051 after 0.5s",
+      "shard-0-1 | shard 0/4: loaded version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad): 623,073 songs, 44,833,485 pairs, in 9.4s, after 22s waiting for its turn",
+      "shard-1-1 | shard 1/4: loaded version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad): 623,073 songs, 44,731,365 pairs, in 8.2s, after 22s waiting for its turn",
+      "frontdesk-1 | front desk: version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad) ready",
+      "frontdesk-1 | front desk: now serving version 60c65ae7bbad (updates/2026-11-04-60c65ae7bbad)"
+    ]
+  },
+  "personal": {
+    "live": "updates/2026-11-04-60c65ae7bbad",
+    "profile": "owner.npz",
+    "new song": {
+      "requests": 200,
+      "answered": 200,
+      "partial": 0,
+      "personalized": 200,
+      "with_a_new_song": 87,
+      "ms": {
+        "p50": 59.2,
+        "max": 256.7
+      }
+    },
+    "old songs": {
+      "requests": 200,
+      "answered": 200,
+      "partial": 0,
+      "personalized": 200,
+      "with_a_new_song": 18,
+      "ms": {
+        "p50": 60.9,
+        "max": 265.6
+      }
+    }
+  },
+  "front_desk_anon_mib": {
+    "after the deploy": 1147,
+    "after the two bad standbys were closed": 1169,
+    "after the undo and the switch forward (both old versions closed)": 1337
+  },
+  "mac_front_desk_over_6_more_switches_mib": [
+    "23:09:36 start: anon 1357 MiB, 84ec15359fff None 0",
+    "23:10:28 switch 1 to updates/2026-11-03-eb55b3dae2d4: anon 1280 MiB, eb55b3dae2d4 None 0",
+    "23:16:18 switch 2 to .: anon 1240 MiB, 84ec15359fff None 0",
+    "23:22:07 switch 3 to updates/2026-11-03-eb55b3dae2d4: anon 1259 MiB, eb55b3dae2d4 None 0",
+    "23:24:44 switch 4 to .: anon 1237 MiB, 84ec15359fff None 0",
+    "23:25:52 switch 5 to updates/2026-11-03-eb55b3dae2d4: anon 1295 MiB, eb55b3dae2d4 None 0",
+    "23:29:18 switch 6 to .: anon 1234 MiB, 84ec15359fff None 0"
+  ]
+}

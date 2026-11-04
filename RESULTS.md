@@ -2572,3 +2572,39 @@ by hand: a crashed one is back within seconds on the Mac, and within ~26 s on th
 
 Time: tests 79 s (361); the bad updates 9 s and 10 s to write; the drills 30 min with traffic (the stopped shard's
 900 s wait included).
+
+**Failure drills on the server** (Part D, 2026-11-04 04:28-04:59 UTC; `runs/serving/drills_server_2026-11-04.json`).
+The same drills on the site, under light steady traffic straight to the front desk (2 threads, ~14 requests a
+second, every answer computed), after deploying the code above. No answer mixed two versions (32,513 requests).
+
+| Drill | What happened | Traffic during it |
+|---|---|---|
+| Everything restarted with an update live (the deploy) | healthy 34.7 s after the recreate, back on the Nov 4 update | 581 failed in 30.2 s, then none |
+| A personalized request reaching a new song | 400 with the owner's profile: all answered and personalized, 105 with a new song | 327: 0 failed |
+| Bad update: every pair count zeroed | written in 102 s; stopped by the checks, NDCG@10 0.2562 vs 0.2618 | 4,218: 0 failed |
+| Bad update: a new song's vector 3x as long as any | written in 136 s; stopped, in 185 of 2,000 lists | 4,786: 0 failed |
+| The same day's run again | nothing new (30 dumps listed) | 74: 0 failed |
+| Undo, Nov 4 → Nov 3 (files not in the page cache) | 42.7 s: the shards loaded one after another, 7.8-9.6 s each | 576: 4 partial, 4 over 0.5 s (751 ms at most), all within 1 s |
+| The shard holding the loading turn killed 2 s into its load | the kernel freed its turn, and the next shard took it within a second. Docker restarted it, back on the live version in 0.5 s, and it loaded the standby last; ready 43.5 s after prepare | 594: 55 partial and 2 refused while it restarted |
+| Then the flip and the 600 s watch | checks passed, live, no failed probe; the whole switch 878 s | 8,528: 0 failed, 0 partial, 271 ms at most |
+
+What this showed:
+- **Loading in turn removed the stall.** At the catch-up's prepare, answers stalled up to 6.3 s while 4 shards read
+  cold files at once. In the undo, the same kind of load (each shard alone, 8-10 s) slowed no answer. What's left
+  is a blip about a second long at the end, after the last shard loaded, when the front desk builds its
+  recommender for the standby. The undo had 4 partial answers there (shard 2 missed its 0.25 s deadline), and the
+  switch forward had 4 answers over 0.5 s. The cause isn't confirmed; the front desk's 2 cores busy with the build
+  is the likely one.
+- **The restart took twice as long as past deploys** (30.2 s down, was 15-16.5 s): the drill script's pre-read of
+  the live files had a wrong path and read nothing, so the shards started on cold files.
+- **The front desk's memory.** 1,147 MiB after the deploy, 1,169 after the two bad standbys were built and closed, 1,337 after the undo
+  and the switch forward (both old versions closed). To tell a leak from memory the allocator keeps, 6 more
+  switches on the Mac under traffic: its front desk stayed at 1,234-1,295 MiB, after ~14 versions built since its
+  restart. A leak grows ~150 MB with every switch (before `ec87ac1`), so this is kept memory, which levels off. The
+  next daily runs will show the server's level. (These Mac switches had 9,094 requests, all complete. The Mac
+  paused during them: no requests at all for up to 298 s, twice.)
+- The bad updates were switched to without the song search step (`--search ''`), so their songs never reached
+  the live index, and deleted right after. The site ended on the Nov 4 update, not paused, the timer on.
+
+Time: deploy 2 s build, 30.2 s down; personal 27 s; the bad updates 338 s and 381 s (writing included); the rerun
+5.5 s; undo 43 s; the switch forward 878 s (600 s of it the watch); in all 31 min. The Mac's 6 switches 20 min.
