@@ -2608,3 +2608,35 @@ What this showed:
 
 Time: deploy 2 s build, 30.2 s down; personal 27 s; the bad updates 338 s and 381 s (writing included); the rerun
 5.5 s; undo 43 s; the switch forward 878 s (600 s of it the watch); in all 31 min. The Mac's 6 switches 20 min.
+
+# Serving: the slowest 1% of requests
+
+On the server the slowest 1% of requests take 84-95 ms against a typical ~33 ms (`check_oracle16_warm`: total p50
+33.1 / p99 94.6 ms; `check_oracle_compact_pairs`: 35.2 / 84.2). Every stage's p99 is 3-4x its p50 there, including
+the two that run inside the front desk and touch no shard (retriever 1.5 -> 4.7 ms, ranker 4.2 -> 16.5 ms), and the
+search round's tail (FAISS) is no worse than the candidate round's (no FAISS). So before choosing a fix (the roadmap
+named C++ search and backup requests to a second copy of each shard), first measure what the slow requests wait on.
+
+**The tools** (2026-11-04). Nothing changes for visitors:
+- Each shard reply says when the shard's handler started and how long it ran, and how much of that was Python's
+  garbage collector (`Work` in `recsys/proto/shard.proto`, `recsys/tracing.py`). The front desk records every shard
+  call: sent, the shard's start and work, the reply's arrival. A round trip is then the wait before the shard
+  started, its work, and the wait after.
+- A request with the `X-Recsys-Trace` header gets those records back, with the request's start and the front desk's
+  garbage-collection time (`trace`). nginx removes the header from the public's requests, as it does the other
+  check headers.
+- `scripts/serving_check.py serve` gains `--fresh` (answers computed despite the cache), `--trace` (one line per
+  request in `requests_<label>.jsonl`, not kept in git), `--repeat` and `--concurrency`.
+- `scripts/machine_sampler.py` runs on the server itself during a check. Every 50 ms it records each container's
+  CPU time and its threads' wait for a CPU (cgroup counters), the machine's CPU by kind (steal included), threads
+  ready to run, and Docker's exec events, which is what a health check is.
+- `scripts/tail_report.py` sets the slowest 1% against typical requests (40th-60th percentile): stages, each shard
+  round's slowest call (work or waiting; one shard slow or all of them), whether the same cases are slow on every
+  pass, garbage collection, and the machine during each request.
+
+Tried on the Mac, natively (4 shards and the front desk, no Docker; the 2,000 `lb_n3_16_cases` cases twice, every
+answer computed): 4,000 of 4,000 the same top 10 in order, total p50 3.39 / p99 3.69 ms, 17 s. The few slowest were
+the longer cases (7.3 songs on average, against 5.5), not the machine. The sampler's 5-s dry run on the server
+recorded 100 samples of 13 groups and the health checks' starts and ends.
+
+Time: tests 81 s (362); the Mac check 17 s.
