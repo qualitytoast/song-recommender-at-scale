@@ -1,0 +1,1262 @@
+{
+  "what": "Part D's failure drills on Docker on the Mac (scripts/daily_drills.py), 2026-11-04 03:45-04:18 UTC; steady traffic straight to the front desk the whole time (4 threads, 0.05 s pause, every answer computed)",
+  "drills": {
+    "all": {
+      "requests": 88913,
+      "failed": {
+        "0": 374,
+        "503": 925
+      },
+      "partial": 24281,
+      "versions": {
+        "84ec15359fff": 36935,
+        "eb55b3dae2d4": 50679
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 15.0,
+        "p99": 113.6,
+        "max": 7149.3
+      },
+      "over_500_ms": 18,
+      "problems": [
+        {
+          "at_s": 277.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.2,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.5,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 277.8,
+          "code": 0,
+          "missing_shards": null
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 277.7,
+          "ms": 7149.2
+        },
+        {
+          "at_s": 277.7,
+          "ms": 7149.3
+        },
+        {
+          "at_s": 737.8,
+          "ms": 751.9
+        },
+        {
+          "at_s": 737.8,
+          "ms": 752.4
+        },
+        {
+          "at_s": 737.9,
+          "ms": 767.1
+        },
+        {
+          "at_s": 737.9,
+          "ms": 767.6
+        },
+        {
+          "at_s": 832.7,
+          "ms": 1260.8
+        },
+        {
+          "at_s": 832.7,
+          "ms": 1261.0
+        },
+        {
+          "at_s": 832.8,
+          "ms": 1257.5
+        },
+        {
+          "at_s": 832.8,
+          "ms": 1257.7
+        },
+        {
+          "at_s": 1733.4,
+          "ms": 639.6
+        },
+        {
+          "at_s": 1733.4,
+          "ms": 639.3
+        },
+        {
+          "at_s": 1733.5,
+          "ms": 699.1
+        },
+        {
+          "at_s": 1733.5,
+          "ms": 699.3
+        },
+        {
+          "at_s": 1734.2,
+          "ms": 550.0
+        },
+        {
+          "at_s": 1734.2,
+          "ms": 566.4
+        },
+        {
+          "at_s": 1734.2,
+          "ms": 566.6
+        },
+        {
+          "at_s": 1734.2,
+          "ms": 551.8
+        }
+      ]
+    },
+    "flip": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 169.2
+      },
+      "requests": 10343,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "84ec15359fff": 2855,
+        "eb55b3dae2d4": 7488
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 13.7,
+        "p99": 37.9,
+        "max": 472.8
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "personal": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 4.7
+      },
+      "requests": 289,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 289
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 13.8,
+        "p99": 22.4,
+        "max": 29.5
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "personal2": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 4.7
+      },
+      "requests": 292,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 292
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 13.4,
+        "p99": 31.2,
+        "max": 33.7
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "restart": {
+      "steps_s": {
+        "start": 0.0,
+        "recreate": 5.1,
+        "healthy": 17.5,
+        "end": 32.8
+      },
+      "requests": 1841,
+      "failed": {
+        "0": 374,
+        "503": 12
+      },
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 1455
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 14.2,
+        "p99": 39.9,
+        "max": 7149.3
+      },
+      "over_500_ms": 2,
+      "problems": [
+        {
+          "at_s": 5.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.3,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.4,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.5,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.6,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.7,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.8,
+          "code": 0,
+          "missing_shards": null
+        },
+        {
+          "at_s": 5.8,
+          "code": 0,
+          "missing_shards": null
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 5.8,
+          "ms": 7149.2
+        },
+        {
+          "at_s": 5.8,
+          "ms": 7149.3
+        }
+      ]
+    },
+    "bad_counts": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 55.4
+      },
+      "requests": 3303,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 3303
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 14.7,
+        "p99": 36.8,
+        "max": 460.0
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "bad_vector": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 63.5
+      },
+      "requests": 3694,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 3694
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 15.5,
+        "p99": 48.9,
+        "max": 427.7
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "dump_damaged": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 30.8
+      },
+      "requests": 1916,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 1916
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 12.5,
+        "p99": 35.5,
+        "max": 69.3
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "dump_repeat": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 0.7
+      },
+      "requests": 42,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "eb55b3dae2d4": 42
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 12.4,
+        "p99": 20.4,
+        "max": 20.5
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    },
+    "undo": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 18.1
+      },
+      "requests": 1062,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "84ec15359fff": 660,
+        "eb55b3dae2d4": 402
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 14.1,
+        "p99": 33.2,
+        "max": 767.6
+      },
+      "over_500_ms": 4,
+      "problems": [],
+      "slow": [
+        {
+          "at_s": 5.5,
+          "ms": 751.9
+        },
+        {
+          "at_s": 5.5,
+          "ms": 752.4
+        },
+        {
+          "at_s": 5.5,
+          "ms": 767.1
+        },
+        {
+          "at_s": 5.5,
+          "ms": 767.6
+        }
+      ]
+    },
+    "shard_kill_docker_kill": {
+      "steps_s": {
+        "start": 0.0,
+        "killed shard-0": 2.8,
+        "end": 902.2
+      },
+      "requests": 24820,
+      "failed": {
+        "503": 894
+      },
+      "partial": 23778,
+      "versions": {
+        "84ec15359fff": 23926
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 96.5,
+        "p99": 119.7,
+        "max": 1261.0
+      },
+      "over_500_ms": 4,
+      "problems": [
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 503,
+          "missing_shards": null
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.7,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.0,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.0,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.4,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.5,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.5,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        },
+        {
+          "at_s": 3.6,
+          "code": 200,
+          "missing_shards": [
+            0
+          ]
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 52.5,
+          "ms": 1260.8
+        },
+        {
+          "at_s": 52.5,
+          "ms": 1261.0
+        },
+        {
+          "at_s": 52.6,
+          "ms": 1257.5
+        },
+        {
+          "at_s": 52.6,
+          "ms": 1257.7
+        }
+      ]
+    },
+    "shard_kill": {
+      "steps_s": {
+        "start": 0.0,
+        "killed shard-1": 2.5,
+        "end": 174.2
+      },
+      "requests": 10469,
+      "failed": {},
+      "partial": 44,
+      "versions": {
+        "84ec15359fff": 2961,
+        "eb55b3dae2d4": 7508
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 14.1,
+        "p99": 46.4,
+        "max": 699.3
+      },
+      "over_500_ms": 8,
+      "problems": [
+        {
+          "at_s": 2.4,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.4,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.5,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.5,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.6,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.7,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.7,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.8,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 2.9,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.0,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.0,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.1,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.2,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.3,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.4,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.4,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.5,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        },
+        {
+          "at_s": 3.5,
+          "code": 200,
+          "missing_shards": [
+            1
+          ]
+        }
+      ],
+      "slow": [
+        {
+          "at_s": 6.7,
+          "ms": 639.6
+        },
+        {
+          "at_s": 6.7,
+          "ms": 639.3
+        },
+        {
+          "at_s": 6.7,
+          "ms": 699.1
+        },
+        {
+          "at_s": 6.7,
+          "ms": 699.3
+        },
+        {
+          "at_s": 7.5,
+          "ms": 550.0
+        },
+        {
+          "at_s": 7.5,
+          "ms": 566.4
+        },
+        {
+          "at_s": 7.5,
+          "ms": 566.6
+        },
+        {
+          "at_s": 7.5,
+          "ms": 551.8
+        }
+      ]
+    },
+    "undo2": {
+      "steps_s": {
+        "start": 0.0,
+        "end": 16.9
+      },
+      "requests": 994,
+      "failed": {},
+      "partial": 0,
+      "versions": {
+        "84ec15359fff": 637,
+        "eb55b3dae2d4": 357
+      },
+      "cases_answered_two_ways_by_one_version": 0,
+      "ms": {
+        "p50": 14.5,
+        "p99": 47.7,
+        "max": 499.1
+      },
+      "over_500_ms": 0,
+      "problems": [],
+      "slow": []
+    }
+  },
+  "jobs": {
+    "flip": [
+      "2026-11-04 03:45:44 25,918 new songs in the search index",
+      "2026-11-04 03:45:50 standby eb55b3dae2d4 ready after 6.1 s",
+      "2026-11-04 03:46:30 checks: live NDCG@10 0.2627, standby 0.2618; p99 23.581012829997402 / 20.872480000001016 ms; new songs in 8.5% of lists, at most 3 for one",
+      "2026-11-04 03:46:31 live: eb55b3dae2d4 (watching 120 s)",
+      "2026-11-04 03:48:32 done: eb55b3dae2d4 live, the old version let go (168 s)"
+    ],
+    "bad_counts": [
+      "2026-11-04 03:50:53 0 new songs in the search index",
+      "2026-11-04 03:51:00 standby 127ac7abfb11 ready after 6.2 s",
+      "2026-11-04 03:51:40 checks: live NDCG@10 0.2618, standby 0.2562; p99 17.837788839949553 / 19.491480840016493 ms; new songs in 0.0% of lists, at most 0 for one",
+      "2026-11-04 03:51:40 STOPPED: standby checks failed, not switched: NDCG@10 0.2562, live 0.2618: more than 0.003 lower"
+    ],
+    "bad_vector": [
+      "2026-11-04 03:51:52 20 new songs in the search index",
+      "2026-11-04 03:51:58 standby d630aaf133bf ready after 6.3 s",
+      "2026-11-04 03:52:44 checks: live NDCG@10 0.2618, standby 0.2553; p99 23.816398010028472 / 31.439018330054292 ms; new songs in 9.2% of lists, at most 185 for one",
+      "2026-11-04 03:52:44 STOPPED: standby checks failed, not switched: NDCG@10 0.2553, live 0.2618: more than 0.003 lower; a new song (fake:track:2488290) is in 185 of 2000 lists (at most 1%)"
+    ],
+    "dump_damaged": [
+      "2026-11-04 03:56:43 reading 2026-11",
+      "2026-11-04 03:57:12 STOPPED: listenbrainz-dump-2762-20261103-000002-incremental can't be read (ZstdError: zstd decompress error: Restored data doesn't match checksum); the next run tries it again (skip-dump it if it stays so)"
+    ],
+    "dump_repeat": [
+      "2026-11-04 03:57:13 nothing new: 2 dumps listed, none after 2026-11-02T00:00:03+00:00"
+    ],
+    "undo": [
+      "2026-11-04 03:57:24 paused: undo from updates/2026-11-03-eb55b3dae2d4 to .",
+      "2026-11-04 03:57:31 undone: . (84ec15359fff) live again; the timer is paused (resume to restart it)"
+    ],
+    "shard_kill": [
+      "2026-11-04 04:13:59 25,918 new songs in the search index",
+      "2026-11-04 04:14:06 standby eb55b3dae2d4 ready after 7.1 s",
+      "2026-11-04 04:14:49 checks: live NDCG@10 0.2627, standby 0.2618; p99 16.52127665994385 / 23.517517499910806 ms; new songs in 8.5% of lists, at most 3 for one",
+      "2026-11-04 04:14:50 live: eb55b3dae2d4 (watching 120 s)",
+      "2026-11-04 04:16:51 done: eb55b3dae2d4 live, the old version let go (173 s)",
+      "2026-11-04 04:16:51 deleted updates/2026-11-04-127ac7abfb11",
+      "2026-11-04 04:16:51 deleted updates/2026-11-04-d630aaf133bf",
+      "job exit 0"
+    ]
+  },
+  "shard_logs": {
+    "flip": [
+      "shard-1-1 | shard 1/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,073 songs, 43,904,681 pairs, in 0.4s, after 2s waiting for its turn",
+      "shard-0-1 | shard 0/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,073 songs, 44,008,005 pairs, in 0.3s",
+      "shard-2-1 | shard 2/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,072 songs, 43,742,288 pairs, in 0.6s, after 3s waiting for its turn",
+      "shard-3-1 | shard 3/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,072 songs, 43,979,663 pairs, in 0.3s, after 1s waiting for its turn",
+      "frontdesk-1 | front desk: version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4) ready",
+      "frontdesk-1 | front desk: now serving version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)"
+    ],
+    "undo": [
+      "shard-1-1 | shard 1/4: loaded version 84ec15359fff (.): 615,593 songs, 37,834,804 pairs, in 0.6s",
+      "shard-1-1 | shard: dropped version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)",
+      "shard-2-1 | shard 2/4: loaded version 84ec15359fff (.): 615,593 songs, 37,669,792 pairs, in 0.5s, after 1s waiting for its turn",
+      "shard-0-1 | shard 0/4: loaded version 84ec15359fff (.): 615,593 songs, 37,892,921 pairs, in 0.5s, after 3s waiting for its turn",
+      "shard-0-1 | shard: dropped version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)",
+      "shard-2-1 | shard: dropped version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)",
+      "shard-3-1 | shard 3/4: loaded version 84ec15359fff (.): 615,593 songs, 37,890,669 pairs, in 0.5s, after 2s waiting for its turn",
+      "shard-3-1 | shard: dropped version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)",
+      "frontdesk-1 | front desk: version 84ec15359fff (.) ready",
+      "frontdesk-1 | front desk: now serving version 84ec15359fff (.)"
+    ],
+    "shard_kill": [
+      "shard-2-1 | shard 2/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,072 songs, 43,742,288 pairs, in 0.7s, after 2s waiting for its turn",
+      "shard-0-1 | shard 0/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,073 songs, 44,008,005 pairs, in 0.7s",
+      "shard-1-1 | shard 1/4: loaded version 84ec15359fff (.): 615,593 songs, 37,834,804 pairs, in 0.8s",
+      "shard-1-1 | shard serving on 0.0.0.0:50051 after 0.8s",
+      "shard-1-1 | shard 1/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,073 songs, 43,904,681 pairs, in 0.8s, after 1s waiting for its turn",
+      "shard-3-1 | shard 3/4: loaded version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4): 622,072 songs, 43,979,663 pairs, in 0.9s, after 1s waiting for its turn",
+      "frontdesk-1 | front desk: version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4) ready",
+      "frontdesk-1 | front desk: now serving version eb55b3dae2d4 (updates/2026-11-03-eb55b3dae2d4)"
+    ]
+  },
+  "personal": {
+    "live": "updates/2026-11-03-eb55b3dae2d4",
+    "profile": "owner.npz",
+    "new song": {
+      "requests": 200,
+      "answered": 200,
+      "partial": 0,
+      "personalized": 200,
+      "with_a_new_song": 76,
+      "ms": {
+        "p50": 8.9,
+        "max": 26.5
+      }
+    },
+    "old songs": {
+      "requests": 200,
+      "answered": 200,
+      "partial": 0,
+      "personalized": 200,
+      "with_a_new_song": 18,
+      "ms": {
+        "p50": 9.1,
+        "max": 45.3
+      }
+    }
+  }
+}
