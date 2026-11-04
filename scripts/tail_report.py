@@ -13,7 +13,8 @@ The slowest 1% of requests by the front desk's total time are set against typica
                all of them at the machine
   cases        whether the same cases are slow on every pass (serving_check --repeat): slow by their size, or by luck
   machine      during each request: each container's CPU and its threads' wait for a CPU, the machine's busy CPU and
-               steal, threads ready to run, and the health checks running (each a new Python process)
+               steal, threads ready to run, and the health checks running (each a new Python process); and the same
+               for the whole machine before the first request (the sampler's quiet minute) and during the run
   garbage      the front desk's and the shards' garbage-collection pauses
 CPU is given in cores (CPU milliseconds per millisecond of the request; the server has 2). The machine is sampled
 every 50 ms, so a request's share of it is interpolated, smeared over about that much on either side.
@@ -164,8 +165,18 @@ def report(requests, machine=None, events=None):
         out["machine_cores"] = {k: {g: summarize(v[m & inside]) for g, m in groups.items()} for k, v in sorted(cores.items())}
         out["machine_cores"]["threads ready to run"] = {g: summarize(ready[m & inside & ~np.isnan(ready)])
                                                         for g, m in groups.items()}
-        out["machine_whole_run"] = {k: round(float((v[-1] - v[0]) / ((t[-1] - t[0]) * 1000)), 3)
-                                    for k, v in counters.items() if k in ("busy", "steal", "waited")}
+        # the machine as a whole: before the first request (the sampler starts a quiet minute early) and during the run
+        out["machine_cores_before_and_during"] = {}
+        for when, (a, b) in {"before": (t[0], start.min()), "during": (start.min(), end.max())}.items():
+            if b - a < 10:  # under 10 s of samples: not enough to say
+                continue
+            per = {}
+            for name, v in counters.items():
+                kind, _, who = name.partition(": ")
+                key = f"{kind}: {group_name(who)}" if who else name
+                per[key] = per.get(key, 0.0) + (np.interp(b, t, v) - np.interp(a, t, v)) / ((b - a) * 1000)
+            per["cpu: anything else"] = per["busy"] - sum(v for k, v in per.items() if k.startswith("cpu: "))
+            out["machine_cores_before_and_during"][f"{when} ({b - a:.0f} s)"] = {k: round(v, 3) for k, v in sorted(per.items())}
     if events is not None:
         checks = [c for c in events if c[0] <= end.max() and c[1] >= start.min()]
         overlap = np.array([sum(1 for a, b, _ in checks if a < e and b > s) for s, e in zip(start, end)])
@@ -176,7 +187,13 @@ def report(requests, machine=None, events=None):
             "duration_ms": {"p50": summarize([np.median(durations)]), "p99": summarize([np.percentile(durations, 99)])}
             if len(durations) else None,
             "requests overlapping one": {g: round(float((overlap[m] > 0).mean()), 3) for g, m in groups.items()},
-            "checks overlapping, mean": {g: summarize(overlap[m]) for g, m in groups.items()}}
+            "checks overlapping, mean": {g: summarize(overlap[m]) for g, m in groups.items()},
+            # every request by how many checks ran during it: what the total looks like with none
+            "total_ms by checks running": {
+                label: {"requests": int(m.sum()), "p50": round(float(np.percentile(total[m], 50)), 2),
+                        "p99": round(float(np.percentile(total[m], 99)), 2)}
+                for label, m in {"0": overlap == 0, "1": overlap == 1, "2": overlap == 2, "3+": overlap >= 3}.items()
+                if m.sum() >= 20}}
     return out
 
 
@@ -200,9 +217,17 @@ def show(out):
         for k, v in out["machine_cores"].items():
             print(f"  {k:<32} {v['slow'] if v['slow'] is not None else float('nan'):6.3f}  "
                   f"{v['typical'] if v['typical'] is not None else float('nan'):6.3f}")
-        print("whole run (cores):", json.dumps(out["machine_whole_run"]))
+        spans = out["machine_cores_before_and_during"]
+        if spans:
+            print("\nthe machine (cores)                " + "  ".join(f"{k:>14}" for k in spans))
+            for name in next(iter(spans.values())):
+                print(f"  {name:<32} " + "  ".join(f"{v.get(name, float('nan')):14.3f}" for v in spans.values()))
     if "health_checks" in out:
-        print("health checks:", json.dumps(out["health_checks"]))
+        h = {k: v for k, v in out["health_checks"].items() if k != "total_ms by checks running"}
+        print("\nhealth checks:", json.dumps(h))
+        print("total by health checks running during the request:")
+        for k, v in out["health_checks"]["total_ms by checks running"].items():
+            print(f"  {k:>2}: {v['requests']:6,} requests, p50 {v['p50']:7.2f} ms, p99 {v['p99']:7.2f} ms")
 
 
 if __name__ == "__main__":

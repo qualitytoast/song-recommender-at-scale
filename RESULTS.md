@@ -2640,3 +2640,77 @@ the longer cases (7.3 songs on average, against 5.5), not the machine. The sampl
 recorded 100 samples of 13 groups and the health checks' starts and ends.
 
 Time: tests 81 s (362); the Mac check 17 s.
+
+**What the slow 1% wait on: the health checks** (2026-11-04, the server, serving the Nov 4 update `60c65ae7bbad`;
+`runs/serving/tail/`: `check_*.json`, `report_*.json`). The tools deployed first (build 3 s, pre-read 44 s, `up -d`
+19 s: 503s for ~16 s, then 502s for 2 s while nginx was recreated). Then, straight to the front desk with every
+answer computed: a quiet minute with the sampler alone, the 2,000 cases 5 times one at a time (10,000 requests,
+401 s), then once 8 at a time (35 s). Only 3,380 of the 10,000 are the base bundle's top 10 in order, as expected:
+the update changes counts and adds songs (NDCG@10 0.2685 vs 0.2693).
+
+One at a time: total p50 32.8, p90 45.2, p99 93.9, p99.9 167.8 ms, max 239.7 (end to end p50 36.3 / p99 104.0),
+the same as the earlier checks. The slowest 1% (100 requests, 93.9 ms and up) against typical ones (40th-60th
+percentile, 2,001):
+
+| Stage (ms) | Slowest 1% | Typical |
+|---|---|---|
+| Shards: input songs | 20.1 | 4.1 |
+| Retriever (front desk only) | 4.5 | 1.7 |
+| Shards: search | 34.7 | 9.8 |
+| Shards: candidates | 40.4 | 9.0 |
+| Ranker inputs | 3.6 | 1.5 |
+| Ranker (front desk only) | 17.5 | 4.3 |
+| Other (the batcher's 2 ms wait, the top 10 picked) | 7.4 | 2.6 |
+
+| Each round's slowest shard call (ms) | Round trip | Before the shard started | Shard's work | After |
+|---|---|---|---|---|
+| Input songs: slowest 1% / typical | 15.9 / 2.4 | 6.4 / 1.2 | 0.3 / 0.3 | 9.3 / 1.0 |
+| Search (FAISS): slowest 1% / typical | 28.3 / 7.0 | 13.0 / 2.1 | 8.3 / 3.6 | 7.0 / 1.4 |
+| Candidates: slowest 1% / typical | 30.5 / 3.9 | 18.8 / 2.0 | 0.9 / 0.3 | 10.9 / 1.6 |
+
+- **Every stage slows, and the shards' time is waiting, not work.** In a slow request the shards' own work is a
+  few ms (FAISS 8.3 ms, slowed 2.3x by sharing the CPU); the rest is waiting for a CPU before and after.
+- **The machine is full then.** During a slow request 1.99 of the 2 cores are busy (typical: 1.44), the shard
+  containers use 1.38 cores (0.74), 8.6 threads are ready to run (5.0), and the front desk gets less (0.40 cores,
+  against 0.62) while its threads wait for a CPU more.
+- **The health checks are what fills it.** Each container's check (every 2 s after the last one ends) starts a new
+  Python process; a shard's imports gRPC. 841 checks ran during the 401 s (2.1 a second), taking 359 ms each at
+  p50 (767 at p99). **Every one of the slowest 100 requests overlapped a check, 3.7 on average; typical ones 26.6%,
+  0.31 on average.** (A longer request overlaps more by being longer, but only slightly: about 0.8 checks expected at
+  30 ms, 1.0 at 90 ms.) By how many checks ran during the request:
+
+| Checks running during the request | Requests | Total p50 | Total p99 |
+|---|---|---|---|
+| None | 5,878 | 30.7 ms | **38.7 ms** |
+| 1 | 2,506 | 36.2 ms | 51.5 ms |
+| 2 | 1,053 | 42.5 ms | 88.5 ms |
+| 3 or more | 563 | 61.4 ms | 192.4 ms |
+
+- **What the checks cost.** In the quiet minute (no requests) the machine used 0.55 cores: the 4 shards 0.37 (each
+  0.092, ~205 ms of CPU a check, nearly all of it the check), the front desk 0.068 (~146 ms a check), containerd
+  (which starts each check) 0.053, the sampler 0.034, dockerd 0.011, autoheal 0.008. So about a quarter of the
+  server's 2 cores goes to health checks while nobody uses the site. 2 or more checks run at once 14.6% of the time,
+  3 or more 5.0%.
+- **Not the cases:** the slowest 100 were 100 different cases (each sent 5 times; by luck about 4 would repeat) of
+  average length (5.7 songs, 5.5 overall). **Not garbage collection:** one pause in 10,000 requests (0.14 ms) and
+  one in 149,250 shard calls (0.27 ms). **Not other tenants:** steal 0.004 cores.
+- **One shard alone or several:** in the slow requests' candidate rounds, 3 or 4 of the 4 shards were slow in 66 of
+  96 (a call counts as slow at over twice its kind's median); in their search rounds 1 or 2 were in 73 of 91 (a
+  check's process hogs one core, so whichever shards land on it wait).
+
+8 at a time (2,000 requests, 57 a second, batches of 6 at p50): total p50 110.1 / p99 225.1 ms (end to end 131.1 /
+258.9), 1.78 of 2 cores busy, the batcher's queue 45 ms of a typical request. The checks show here too: no check
+during the request p99 120.6 ms, 3 or more 278.1 ms.
+
+What it means for the fixes:
+- **Cheaper health checks** should take most of the tail: requests with no check running had p99 38.7 ms against
+  93.9 ms for all, and the checks' quarter of the CPU would go back to serving (more requests a second too).
+- **C++ search:** FAISS's work is 3.6 ms of a typical request (11%) and 8.3 ms of a slow one (9%), under the
+  plan's 25% bar. Not supported.
+- **Backup requests to a second copy of each shard:** the slowness is the shared 2 cores, so a copy on the same
+  machine waits at the same moments. It would also add 4 containers, ~2 GB, and 4 more health checks. Not supported.
+- Smaller, for later: the shards' rounds wait 1-2 ms before and after each call even when nothing else runs, so one
+  round fewer (search and candidates merged) would help p50 more than p99.
+
+Time: deploy 3 s build, 44 s pre-read, ~18 s of errors; the server run 12.4 min (quiet minute 62 s, one at a time
+401 s, 8 at a time 35 s, the rest the sampler's set lengths); report 6 s a run; CI 2 min 33 s (after 12 min queued).
