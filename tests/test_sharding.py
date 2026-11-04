@@ -14,7 +14,7 @@ from recsys.pair_table import AB, PairTable, grow, read_pairs, save_pairs, with_
 from recsys.proto import shard_pb2, shard_pb2_grpc
 from recsys.recommender import Recommender
 from recsys.wire import pack, unpack
-from serving_helpers import ROOT, shard_servers, slices, write_tiny_bundle
+from serving_helpers import ROOT, public, shard_servers, slices, write_tiny_bundle
 
 
 @pytest.fixture(scope="module")
@@ -118,6 +118,30 @@ def test_sharded_answers_equal_the_single_process_ones(bundle, n):
             rec.close()
 
 
+def test_a_traced_answer_says_where_its_time_went(bundle):
+    path, _ = bundle
+    with shard_servers(slices(path, 2)) as addresses:
+        rec = ShardedRecommender(path, addresses, "cpu", startup_wait=60)
+        try:
+            request = (["Nightcall - Kavinsky", "spotify:track:9"], "drive")  # songs 0 and 9: both shards
+            plain, traced = rec.recommend(*request), rec.recommend(*request, trace=True)
+            assert "trace" not in plain and "shard_calls" not in plain and "shard_calls" not in traced
+            assert {**traced, "timings_ms": None, "trace": None} == {**plain, "timings_ms": None, "trace": None}
+            t = traced["trace"]
+            assert t["gc_ms"] >= 0 and abs(t["start_s"] - time.time()) < 60
+            calls = t["shard_calls"]
+            assert {(c["stage"], c["call"]) for c in calls} == {
+                ("shards: input songs", "Lookup"), ("shards: search", "Search"), ("shards: candidates", "Lookup"),
+                ("shards: candidates", "Counts")}
+            assert sorted(c["shard"] for c in calls if c["stage"] == "shards: input songs") == [0, 1]
+            assert sorted(c["shard"] for c in calls if c["call"] == "Search") == [0, 1]
+            for c in calls:  # one clock on one machine: sent, then the shard's work, then the reply's arrival
+                assert c["sent_s"] <= c["start_s"] and c["start_s"] + c["work_ms"] / 1000 <= c["arrived_s"] + 1e-3
+                assert 0 < c["work_ms"] < 1000 and 0 <= c["gc_ms"] <= c["work_ms"] and "failed" not in c
+        finally:
+            rec.close()
+
+
 def test_the_front_desk_refuses_shards_in_the_wrong_order_or_of_another_version(bundle, tmp_path):
     path, _ = bundle
     folders = slices(path, 2)
@@ -156,11 +180,11 @@ def test_a_crashed_shard_gives_a_flagged_partial_answer_without_its_songs(bundle
         try:
             name = single.encode_name("")
             ids, _, _, notes = rec.recommend_ids([3, 4, 5], name)
-            assert notes == {"partial": False}
+            assert public(notes) == {"partial": False}
             procs[1].terminate()
             procs[1].wait(timeout=30)
             ids, _, _, notes = rec.recommend_ids([3, 4, 5], name)  # song 4 lives on shard 1
-            assert notes == {"partial": True, "missing_shards": [1]}
+            assert public(notes) == {"partial": True, "missing_shards": [1]}
             assert len(ids) >= 10 and not (ids % 3 == 1).any()  # nothing from shard 1
             assert [s["up"] for s in rec.shard_states()] == [True, False, True]
             with pytest.raises(ShardsUnavailable):
@@ -178,15 +202,15 @@ def test_a_hung_shard_is_cut_off_by_the_deadline(bundle):
             procs[2].send_signal(signal.SIGSTOP)  # alive but not answering
             start = time.perf_counter()
             _, _, _, notes = rec.recommend_ids([3, 4], name)
-            assert notes == {"partial": True, "missing_shards": [2]}
+            assert public(notes) == {"partial": True, "missing_shards": [2]}
             assert time.perf_counter() - start < 2.0  # waited for a deadline, not forever
             start = time.perf_counter()
             _, _, _, notes = rec.recommend_ids([3, 4], name)  # the breaker skips shard 2: no waiting
-            assert notes == {"partial": True, "missing_shards": [2]} and time.perf_counter() - start < 0.2
+            assert public(notes) == {"partial": True, "missing_shards": [2]} and time.perf_counter() - start < 0.2
             procs[2].send_signal(signal.SIGCONT)
             time.sleep(1.1)  # the cooldown passes; the next call tries shard 2 again
             ids, _, _, notes = rec.recommend_ids([3, 4], name)
-            assert notes == {"partial": False}
+            assert public(notes) == {"partial": False}
             np.testing.assert_array_equal(ids, single.recommend_ids([3, 4], name)[0])
         finally:
             rec.close()
@@ -209,7 +233,7 @@ def test_a_shard_with_two_copies_survives_losing_one(bundle):
             procs[0].wait(timeout=30)
             for _ in range(4):  # each call goes to a live copy (retried there if it hit the dead one)
                 ids, _, _, notes = rec.recommend_ids([2, 3, 4], name)
-                assert notes == {"partial": False}
+                assert public(notes) == {"partial": False}
                 np.testing.assert_array_equal(ids, expected)
         finally:
             rec.close()

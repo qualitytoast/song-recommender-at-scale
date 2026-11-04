@@ -28,6 +28,7 @@ import torch
 from torch import nn
 
 from recsys.admission import Overloaded  # noqa: F401  (raised through compute)
+from recsys.tracing import GC
 from recsys.bundle import name_key
 from recsys.data import encode_names
 from recsys.model import SongRecommender
@@ -307,7 +308,8 @@ class Catalog:
         timings in ms by stage, notes for the response: {"partial": bool} and, if partial, "missing_shards")."""
         raise NotImplementedError
 
-    def recommend(self, songs, name=None, arrived=None, max_per_artist=None, mix=None, profile=None, fresh=False):
+    def recommend(self, songs, name=None, arrived=None, max_per_artist=None, mix=None, profile=None, fresh=False,
+                  trace=False):
         """The response to a request (songs: Spotify URIs or "Track - Artist" text, oldest first): the
         top 10 songs {uri, track, artist, score} with at most max_per_artist by one artist (0: no limit),
         the songs read {uri, track, artist} and the ones left out (no match in the catalog), the bundle
@@ -316,11 +318,13 @@ class Catalog:
         answer nudged toward that listener's taste (recsys.taste); an unknown key gets the usual answer, and
         "personalized" says which. arrived: when the request came in (time.monotonic()), for dropping it if it
         waits too long (Overloaded). fresh: computed even if the cache has it (and not stored), for checks that
-        must reach the shards and time them."""
+        must reach the shards and time them. trace: the answer also gives "trace", for the timing checks: when the
+        request started (Unix time), the garbage collector's milliseconds during it, and each shard call's record
+        (frontdesk.ShardedRecommender.call_all)."""
         max_per_artist = self.max_per_artist if max_per_artist is None else max_per_artist
         mix = self.mix if mix is None else mix
         profile = self.profiles.get(profile) if profile else None
-        start = time.perf_counter()
+        start, start_s, gc_ms = time.perf_counter(), time.time(), GC.ms
         arrived = time.monotonic() if arrived is None else arrived
         ids = [self.resolve(s) for s in songs]
         known = [(s, j) for s, j in zip(songs, ids) if j is not None]
@@ -335,18 +339,23 @@ class Catalog:
         key = (f"rec:{self.version}:{','.join(str(j) for _, j in used)}:{','.join(map(str, name_ids[0]))}"
                f":a{max_per_artist}:m{mix}" + (f":p{profile.cache_id()}" if profile else ""))
         self.answers["total"] += 1
+        traced = lambda calls: {"trace": {"start_s": start_s, "gc_ms": round(GC.ms - gc_ms, 3),
+                                          "shard_calls": calls}} if trace else {}
         if self.cache and not fresh and (cached := self.cache.get(key)) is not None:
             self.answers["cached"] += 1
             return {"recommendations": cached, **answer, "partial": False, "cached": True,
-                    "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)}}
+                    "timings_ms": {"lookup": round(lookup_ms, 3), "total": round((time.perf_counter() - start) * 1000, 3)},
+                    **traced([])}
         times, recommendations, notes = self.compute(used, name_ids, arrived, max_per_artist, mix, profile)
         self.answers["partial"] += notes["partial"]
         if self.cache and not fresh and not notes["partial"]:  # a partial answer mustn't outlive the shard's outage
             self.cache.set(key, recommendations)
         times = {"lookup": lookup_ms, **times}
         times["total"] = (time.perf_counter() - start) * 1000
-        return {"recommendations": recommendations, **answer, **notes, "cached": False,
-                "timings_ms": {k: round(v, 3) for k, v in times.items()}}
+        # the shard calls' records only when asked: the notes are shared by a batch's requests, so not changed here
+        shown = {k: v for k, v in notes.items() if k != "shard_calls"}
+        return {"recommendations": recommendations, **answer, **shown, "cached": False,
+                "timings_ms": {k: round(v, 3) for k, v in times.items()}, **traced(notes.get("shard_calls", []))}
 
     def compute(self, used, name_ids, arrived=None, max_per_artist=MAX_PER_ARTIST, mix=MIX, profile=None):
         """(timings, the top 10 as dicts (pick_top), notes) for the resolved songs `used` and name-word IDs;

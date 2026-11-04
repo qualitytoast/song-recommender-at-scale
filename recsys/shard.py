@@ -30,6 +30,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from recsys import switch
 from recsys.pair_table import PairTable
 from recsys.proto import shard_pb2, shard_pb2_grpc
+from recsys.tracing import timed
 from recsys.wire import pack, unpack
 
 PER_SONG = ("retriever_song_inputs", "ranker_song_inputs", "song_artist", "song_album", "song_genres")
@@ -157,11 +158,13 @@ class Shard(shard_pb2_grpc.ShardServicer):
         return shard_pb2.InfoReply(version=i["version"], index=i["index"], shards=i["shards"], songs=i["songs"],
                                    catalog=i["catalog"], versions=list(by_version))
 
+    @timed
     def Search(self, request, context):
         s = self.slice_for(request.version, context)
         scores, ids = s.index.search(np.ascontiguousarray(unpack(request.queries), dtype=np.float32), request.k)
         return shard_pb2.SearchReply(ids=pack(ids), scores=pack(scores))
 
+    @timed
     def Lookup(self, request, context):
         s = self.slice_for(request.version, context)
         at = self.rows_of(s, unpack(request.ids), context)
@@ -172,6 +175,7 @@ class Shard(shard_pb2_grpc.ShardServicer):
                                      artist=pack(r["song_artist"]),
                                      album=pack(r["song_album"]), genres=pack(r["song_genres"]))
 
+    @timed
     def Counts(self, request, context):
         s = self.slice_for(request.version, context)
         return shard_pb2.CountsReply(counts=pack(s.pairs.lookup(unpack(request.keys))))

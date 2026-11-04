@@ -164,6 +164,9 @@ def test_the_http_api(served, tmp_path):
         last_only = client.post("/recommend", json={"songs": ["spotify:track:6", "spotify:track:7"], "mix": 0}).json()
         assert last_only["recommendations"] == rec.recommend(["spotify:track:6", "spotify:track:7"], mix=0)["recommendations"]
         assert client.post("/recommend", json={"songs": ["spotify:track:6"], "mix": 1.5}).status_code == 422
+        traced = client.post("/recommend", json={"songs": ["spotify:track:6"]}, headers={"X-Recsys-Trace": "1"}).json()
+        assert traced["trace"]["shard_calls"] == [] and traced["trace"]["gc_ms"] >= 0  # one process: no shards
+        assert "trace" not in client.post("/recommend", json={"songs": ["spotify:track:6"]}).json()
 
 
 def test_finding_songs_by_name_puts_the_most_played_first(served):
