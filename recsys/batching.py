@@ -39,6 +39,9 @@ class Batcher:
             self.closed = True
             self.queue.put(None)  # after everything queued so far: those are still answered
         self.thread.join()
+        # run_batch is the recommender's own method, and the recommender holds this batcher: a cycle that only the
+        # garbage collector frees, which on the server kept every old version (~150 MB more a switch, 2026-11-04)
+        self.run_batch = None
 
     def _loop(self):
         closing = False

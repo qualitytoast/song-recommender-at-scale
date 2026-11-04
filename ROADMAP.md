@@ -50,13 +50,15 @@ the one before it ([RESULTS.md](RESULTS.md)).
 - [x] The site serves the N = 3 + 1.5x pair: 2.46M songs, the offline top 10 for 2,000 of 2,000, 51 s of downtime
 - [x] Co-occurrence counts at 5.26 bytes a pair, not 12: 1.82 -> 0.80 GB on the shards, ~0.9 GB freed, every count exact
 - [x] Replayed 11 days of real daily dumps, no retraining: new songs and their counts give +1.8% NDCG@10 on new listening
+- [x] Daily ListenBrainz updates on the site, no restart: up to 2,000 new songs a day, all 4 shards switch at once, undo
 
 ## TODO Now
 
-Today: 2.46M songs, those played by at least 3 listeners (N) in a 99.5M-listen sample; the full year is on disk.
+Today: 2.49M songs: 2.46M played by at least 3 listeners (N) in a 99.5M-listen sample, plus up to 2,000 a day since.
+The full year is on disk.
 
 - [ ] Older years from a fresh 258 GB dump (back-catalog songs; ~14 h download + ~1 h extract)
-- [ ] Daily ListenBrainz updates to counts and songs, no full rebuild: all 4 shards switch at once, a bad update can be undone
+- [ ] Failure drills for the daily updates: bad and repeated dumps, a bad update, a shard killed mid-switch, an undo
 - [ ] Personalization B: fine-tune the pair on one listener's sessions (a private model)
 - [ ] Personalization C: a learned vector per listener
 - [ ] Personalization D: listening history as an input, so each visitor's own history personalizes their requests

@@ -2449,3 +2449,72 @@ Not done yet: the server. Its deploy, the first switch and the timer all wait fo
 server.
 
 Time: tests 70 s (357); starter 13 s; catch-up 47 s; the two switches 634 s and 837 s; undo 6 s.
+
+**The daily job on the server** (2026-11-03/04; `runs/serving/daily_server_2026-11-04.json`). Deployed, switched to
+the catch-up, two days run by hand under light traffic, two problems found and fixed, then the timer turned on.
+
+Deploy (Nov 3, ~23:00 UTC): first the 8 pair files the compact table replaced were deleted (1.7 GiB). Then the
+starter files and the catch-up were uploaded in 216 s (2.3 GB, every SHA-256 identical), the image built in 174 s and
+the live files pre-read in 34 s. `up -d` gave 16.5 s of 503s, then `--force-recreate nginx` (for the header strip)
+1.7 s of 502s. The serving check after: 2,000 of 2,000 in order, NDCG@10 0.2693, p50 38.8 ms.
+
+| | The catch-up (`switch`) | Nov 3's dumps (`run --until 2026-11-03`) | Nov 4's dumps (`run`) |
+|---|---|---|---|
+| Build | (on the Mac) | 315 s: dump 2762 read in 120 s (1.48M fresh listens, 848k in catalog sessions) | 320 s: dump 2764 in 128 s (1.52M, 864k) |
+| New songs, pairs | 25,918, 30.9M | 2,000 (the cap), 2.62M | 2,000, 2.66M |
+| Songs after | 2,488,290 | 2,490,290 | 2,492,290 |
+| New songs in the search index | 25,918 | 2,000, 48 s after the build | 2,000, 53 s after |
+| Standby ready after prepare | 41.4 s | 24.5 s | 29.4 s |
+| Checks: NDCG@10 live / standby | 0.2627 / 0.2618 | 0.2618 / 0.2619 | 0.2619 / 0.2618 |
+| Checks: p99 live / standby | 140 / 131 ms | 129 / 110 ms | 101 / 103 ms |
+| Checks: lists with a new song; most for one | 8.5%; 3 | 0.4%; 1 | 0.6%; 2 |
+| Watch after the flip | 198 probes, no failures | 197, none | 198, none |
+| Whole run | 873 s | 1,169 s | 1,177 s |
+| Traffic during it | 3,666: all complete | 4,910: 89 partial, 3 refused (503) | 5,425: all complete |
+| Lowest free memory | 4.99 GB | 4.19 GB | 3.86 GB |
+
+What the runs showed:
+- **A working shard was restarted (Nov 3's run).** At 00:57:52 autoheal restarted shard 0, because two health checks
+  in a row took over 2 s. A check starts a new Python process, normally 0.23-0.42 s, but the build was reading and
+  writing at the disk's ~50 MB/s limit, so starting Python waited on the disk. Shard 0 was back 26 s later, on the
+  live version (the restart path works). Meanwhile 89 answers missed a quarter of the catalog and 3 requests were
+  refused. The same cause restarted shard 3 at the 10-28 switch. Nov 4's run had the same disk load and no restart:
+  luck.
+- **The front desk kept every old version.** Its own memory after each switch: 1.17 GiB before, then 1.23, 1.40 and
+  1.54 GiB, while the shards stayed level. A closed version was held by one reference, its batcher's `run_batch`: the
+  recommender's own method, while the recommender holds the batcher. Reference counting never frees such a cycle,
+  and the garbage collector's full passes didn't free it either. At ~150 MB a day, the job's 4 GB memory guard would
+  have stopped it within about two weeks.
+- **A 6.3 s stall at the catch-up's prepare.** 6 requests took over 0.5 s while the 4 shards loaded the standby from
+  cold files at once (37.8 s each). The daily runs' new files were mostly still cached (24-29 s, no stall). Not fixed:
+  loading the shards one after another would spread it out.
+
+Fixed (`ec87ac1`):
+- The batcher drops `run_batch` once its thread has ended. New test: a closed version, built as the front desk
+  builds it, is freed as soon as its last reference goes. Before the fix it failed, held by a `method`.
+- Health checks wait 5 s (was 2 s), for the shards and the front desk; the check's own call waits 4 s. A frozen shard
+  is now restarted after ~14 s instead of ~6 s. Meanwhile the circuit breaker answers without it, as before.
+- The daily container gets at most 20 MB/s of reads and of writes on the server's disk (`docker-compose.oracle.yml`).
+
+Deploying the fixes: the image built in 2 s (only the code layer), pre-read 34 s. `up -d` recreated the shards and
+the front desk for the new health checks: 15.3 s of 503s, healthy after 19 s. The front desk afterwards: 1,188 MiB.
+
+Then a disk-load test: the job's kind of load in its container, under light traffic, with and without the cap. It
+read 1.9 GB past the page cache while writing and flushing 1.5 GB:
+
+| | Capped | Uncapped |
+|---|---|---|
+| The job's write; its read | 20.9 MB/s; 1.9 GB in 78 s | 31.1 MB/s; 61 s |
+| Slowest health check: front desk; shards | 0.19 s; 0.25-0.62 s | 7.4 s; 7.7-8.7 s |
+| Traffic | 478 requests, all complete | 356, all complete |
+
+Uncapped, every container's checks took 7-9 s, so with the old 2 s timeout autoheal would have restarted all five.
+None failed even at 5 s here (Docker's own start of each check most likely waited on the disk). Capped, the slowest
+took 0.62 s. The traffic was mostly cached answers, so it stayed fast in both.
+
+The timer (`deploy/songrec-daily.{service,timer}`) is installed and enabled. Its first run is at 09:00 UTC on Nov 4,
+which finds nothing new (Nov 4's dumps are in), and the first with work is on Nov 5. Still to see: a daily switch
+with the fixed front desk, to confirm its memory stays level; Part D's drills.
+
+Time: deploy 216 s upload, 174 s build, 34 s pre-read, 18.2 s down; catch-up switch 873 s; the daily runs 1,169 s
+and 1,177 s; tests 71 s (358); the fixes' deploy 2 s build, 34 s pre-read, 15.3 s down; disk test 78 s and 61 s.

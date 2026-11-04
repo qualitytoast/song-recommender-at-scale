@@ -182,6 +182,11 @@ a separate visitor still got answers in p50 21 ms, and refusals in 1.5 ms.
 **Updates without downtime.** Blue/green (`scripts/bluegreen.py`): a second stack starts, an entrance nginx
 switches to it with a graceful reload, the old one drains. Under load: 6,126 requests, 0 errors, p99 14 ms.
 
+**Daily updates** (`recsys/daily_job.py`). Every day at 09:00 UTC the server adds the day's ListenBrainz listening
+as a new version, with no retraining and no restart: up to 2,000 new songs and the day's co-occurrence counts. The
+shards hold both versions, the front desk checks the new one on held-out cases and flips one reference, and a bad
+update is undone by the same flip.
+
 **Webpage** (`web/`, plain HTML, CSS and JavaScript): type-ahead song search, the playlist kept in the address
 bar (a link reopens the same recommendations), Spotify's embedded player (songs without a Spotify link, 29% of
 the catalog, say so instead), light and dark mode, phone layouts.

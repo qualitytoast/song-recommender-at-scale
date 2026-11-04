@@ -7,6 +7,8 @@ answers that it's serving, 1 otherwise.
 import sys
 import urllib.request
 
+TIMEOUT = 4.0  # seconds for the answer: within the containers' 5-s check timeout (docker-compose.yml)
+
 
 def main(kind, target):
     try:
@@ -14,9 +16,9 @@ def main(kind, target):
             import grpc
             from grpc_health.v1 import health_pb2, health_pb2_grpc
             with grpc.insecure_channel(target) as channel:
-                reply = health_pb2_grpc.HealthStub(channel).Check(health_pb2.HealthCheckRequest(), timeout=2)
+                reply = health_pb2_grpc.HealthStub(channel).Check(health_pb2.HealthCheckRequest(), timeout=TIMEOUT)
             return 0 if reply.status == health_pb2.HealthCheckResponse.SERVING else 1
-        urllib.request.urlopen(target, timeout=2)
+        urllib.request.urlopen(target, timeout=TIMEOUT)
         return 0
     except Exception:
         return 1
