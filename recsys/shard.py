@@ -8,13 +8,16 @@ The slice comes from recsys.shard_slices. Every request carries the bundle versi
 version the shard doesn't hold is refused (FAILED_PRECONDITION), so a front desk can never mix model
 versions. With --switch the shard holds the versions the switch file names (recsys/switch.py): the live
 one and the standby, each the same slice (shards-N/shard-i) of its folder (the bundle, or an update of it,
-recsys/updates.py). A newly named one is loaded beside the others while the shard keeps answering, and one
-the file no longer names is dropped (the live one only once its replacement is loaded). The standard gRPC
+recsys/updates.py). A newly named one is loaded beside the others while the shard keeps answering, by one shard
+at a time (take_turn), and one the file no longer names is dropped (the live one only once its replacement is
+loaded). The standard gRPC
 health service reports SERVING once the live version is loaded. Imports numpy, FAISS and gRPC only, never
 PyTorch (they can't share a process, see recsys/ann.py).
 """
 import argparse
+import fcntl
 import json
+import os
 import time
 from concurrent import futures
 from pathlib import Path
@@ -59,19 +62,41 @@ class Shard(shard_pb2_grpc.ShardServicer):
         self.state = (None, {}, {})
         self.failed = {}  # folder -> when to try loading it again
         self.unnamed = {}  # folder -> since when the switch file hasn't named it (dropped KEEP_S later)
+        self.waiting = {}  # folder -> since when another shard's turn has kept it from loading
         live = switch.read(self.switch)["live"] if self.switch else switch.BASE
         self.sync({"live": live, "standby": None}, strict=True)  # the standby (if any) loads after startup
 
     def slice_of(self, folder):
         return self.slice if self.switch is None else self.switch.parent / folder / self.relative
 
+    def take_turn(self):
+        """The loading turn, or None if another shard has it: the bundle's folder, opened and locked (flock).
+        Every shard following the bundle's switch file loads a version while serving only during its turn, so
+        they read the disk one at a time: all 4 at once held the server's disk (~50 MB/s) for 38 s and stalled
+        answers up to 6.3 s (2026-11-03). The kernel lets go of a dead shard's turn. Closing the folder ends it."""
+        turn = os.open(self.switch.parent, os.O_RDONLY)
+        try:
+            fcntl.flock(turn, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(turn)
+            return None
+        return turn
+
     def sync(self, state, strict=False):
-        """Hold what the switch state names: load the folders not held (strict: a failure raises, else it's
-        logged and tried again RETRY_S later), then drop the ones it doesn't name."""
+        """Hold what the switch state names: load the folders not held, then drop the ones it doesn't name. At
+        startup (strict) a load starts at once and a failure raises; later, a load waits for this shard's turn,
+        and a failure is logged and tried again RETRY_S later."""
         live, held, _ = self.state
         for folder in switch.wanted(state):
             if folder in held or time.monotonic() < self.failed.get(folder, 0.0):
                 continue
+            turn = None
+            if not strict:  # serving already (starting up, a shard serves nothing: it loads at once)
+                turn = self.take_turn()
+                if turn is None:
+                    self.waiting.setdefault(folder, time.monotonic())
+                    continue  # tried again next second
+            waited = time.monotonic() - self.waiting.pop(folder, time.monotonic())
             start = time.perf_counter()
             try:
                 loaded = Slice(self.slice_of(folder))
@@ -85,14 +110,19 @@ class Shard(shard_pb2_grpc.ShardServicer):
                 self.failed[folder] = time.monotonic() + RETRY_S
                 self.log(f"shard: couldn't load {folder}: {type(e).__name__}: {e}")
                 continue
+            finally:
+                if turn is not None:
+                    os.close(turn)  # the next shard's turn
             held = {**held, folder: loaded}
             i = loaded.info
             self.log(f"shard {i['index']}/{i['shards']}: loaded version {i['version']} ({folder}): {i['songs']:,} "
-                     f"songs, {len(loaded.pairs):,} pairs, in {time.perf_counter() - start:.1f}s")
+                     f"songs, {len(loaded.pairs):,} pairs, in {time.perf_counter() - start:.1f}s"
+                     + (f", after {waited:.0f}s waiting for its turn" if waited >= 0.5 else ""))
         if state["live"] in held:
             live = state["live"]
         now, named = time.monotonic(), set(switch.wanted(state))
         self.unnamed = {f: self.unnamed.get(f, now) for f in held if f not in named}
+        self.waiting = {f: since for f, since in self.waiting.items() if f in named}
         # the live one stays until its replacement is loaded, any other KEEP_S after the file stops naming it
         keep = named | {live} | {f for f, since in self.unnamed.items() if now - since < KEEP_S}
         for folder in [f for f in held if f not in keep]:
